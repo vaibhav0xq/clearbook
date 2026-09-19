@@ -167,7 +167,7 @@ export default function Trade() {
         <div className="flex flex-col gap-10 md:gap-14">
           <PageHeader 
             title="Trade" 
-            description="Sell a position through Jupiter. Lots are relieved in the exact order set by the current cost method." 
+            description="Sell a position through Jupiter. Lots are relieved in the order set by the current cost method." 
           />
 
           {lotsError && (

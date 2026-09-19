@@ -19,7 +19,7 @@ export default function Events() {
   const { hoverMint, setHoverMint } = useStageContext();
   useStage({
     focusMint: hoverMint,
-    caption: "Corporate actions adjust the raw to stock multiplier of a holding."
+    caption: "Corporate actions change the multiplier that turns raw token units into shares of exposure."
   });
 
   return (

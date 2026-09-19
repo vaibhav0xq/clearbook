@@ -274,7 +274,7 @@ export async function confirmTrade(address: string, input: { quoteId: string; si
     event: processed ? eventView(processed, ctx) : null,
     realizedPnl: processed?.realizedUsd ?? null,
     proceeds: processed?.input.grossUsd ?? quote.expectedProceeds ?? 0,
-    message: processed ? "Swap confirmed and recorded in the ledger." : "Swap confirmed. The ledger was re-indexed but the sale was not recognised as a sell; check the activity list.",
+    message: processed ? "Swap confirmed and recorded in the ledger." : "Swap confirmed. The ledger was re-indexed but the sale was not recognized as a sell; check the activity list.",
     walletStatus: walletStatusView(ctx.wallet, ctx.simulatedTrades),
   };
 }

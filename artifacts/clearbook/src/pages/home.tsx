@@ -515,7 +515,7 @@ export default function Home() {
             {/* 05 Proof */}
             <Chapter progress={progress} index={5} side="left">
               <Eyebrow index={5}>Proof</Eyebrow>
-              <Headline lines={["One period.", "One method.", "One hash."]} />
+              <Headline lines={["One hash", "per statement."]} />
               <Lede>Written to Solana in a memo so anyone can check it.</Lede>
               <div className="mt-8 flex flex-col gap-2">
                 <span className="label">{latestStatement ? `SHA-256 of ${latestStatement.title}` : "SHA-256"}</span>
@@ -618,7 +618,7 @@ export default function Home() {
           <div className="flex flex-col gap-3">
             <Brand />
             <p className="max-w-sm text-[13px] leading-relaxed text-foreground/55">
-              Figures are rebuilt from public Solana history. Estimates are labelled. Nothing here is tax advice.
+              Figures are rebuilt from public Solana history. Estimates are labeled. Nothing here is tax advice.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px]">

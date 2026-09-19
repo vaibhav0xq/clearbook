@@ -274,7 +274,7 @@ export function Shell({ address, children }: ShellProps) {
           </main>
 
           <footer className="flex flex-col justify-between gap-3 px-6 pb-8 pt-4 text-[12px] text-muted-foreground md:flex-row md:items-center md:px-10">
-            <span>Figures are rebuilt from public Solana history. Estimates are labelled. Nothing here is tax advice.</span>
+            <span>Figures are rebuilt from public Solana history. Estimates are labeled. Nothing here is tax advice.</span>
             <Link href="/methodology" className="transition-colors hover:text-foreground">
               Methodology
             </Link>

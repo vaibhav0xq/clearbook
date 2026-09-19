@@ -24,8 +24,8 @@ export default function Statements() {
   const count = statements?.length ?? 0;
   useStage({
     caption: statements 
-      ? (count > 0 ? `${count} ${count === 1 ? "statement" : "statements"} generated for this ledger.` : "Statements prove holdings and compute realized gains for a specific period.")
-      : "Statements prove holdings and compute realized gains for a specific period."
+      ? (count > 0 ? `${count} ${count === 1 ? "statement" : "statements"} generated for this ledger.` : "Statements record holdings and realized gains for a chosen period.")
+      : "Statements record holdings and realized gains for a chosen period."
   });
 
   const [showForm, setShowForm] = useState(true);
@@ -207,7 +207,7 @@ export default function Statements() {
             <Reveal>
               <EmptyState 
                 title="No statements found"
-                description="Generate your first statement to verify holdings and compute realized gains for a specific period."
+                description="Generate a statement to record holdings and realized gains for a chosen period."
                 action={
                   !showForm && (
                     <button

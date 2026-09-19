@@ -9,7 +9,7 @@ Last updated 19 September 2026.
 | Wallet indexing | Token account discovery, signature scan per stock token account, parsed transaction classification into buys, sells, transfers and wrapper swaps | Public RPC by default. 90 second budget and 400 signature cap per run, then the ledger is marked partial with explicit warnings. Verified against mainnet wallets holding xStocks and Ondo tokens |
 | Asset registry | 934 tokenized stock mints: 828 xStocks, 98 Ondo Global Markets, 8 PreStocks, with issuer, underlying and decimals | Generated from issuer lists into `lib/ledger/src/registry/assets.json` |
 | Multipliers | Token-2022 scaled UI amount extension read from each mint, current and pending multiplier, observations stored so later increases become income events | Live for Ondo and xStocks mints that use the extension |
-| Pricing | Jupiter price API and PreStocks API, session state of the underlying market, premium or discount against the reference | Pyth Pro is the first choice when `PYTH_API_KEY` is set and drops out with a labelled status when it is not |
+| Pricing | Jupiter price API and PreStocks API, session state of the underlying market, premium or discount against the reference | Pyth Pro is the first choice when `PYTH_API_KEY` is set and drops out with a labeled status when it is not |
 | Accounting | Lots, FIFO, LIFO, HIFO, realized and unrealized P/L, income estimate from multiplier growth, holding period | 14 unit tests in `lib/ledger/test` |
 | Statements | Period statements with SHA-256 hash, CSV and PDF export, assumptions and data sources printed in the document | |
 | Notarization | Memo transaction built server side for the connected wallet to sign, signature verified against the chain after submission | Only the simulated path has been exercised in this environment because no browser wallet is installed here |
@@ -35,7 +35,7 @@ Last updated 19 September 2026.
 5. Owner level history beyond the current token accounts, so stocks held in closed accounts appear in realized P/L.
 6. Tax lot export in a broker style 1099-B layout.
 7. A background indexing queue. Indexing currently runs inside the request that triggers it.
-8. Viewer scoped simulations. Simulated sales and proofs are stored per wallet address and are visible to anyone who opens that address. They are always labelled and can be reset, but a public deployment should key them to a signed session.
+8. Viewer scoped simulations. Simulated sales and proofs are stored per wallet address and are visible to anyone who opens that address. They are always labeled and can be reset, but a public deployment should key them to a signed session.
 9. Historical marks for statement boundaries, so opening and closing values reflect the close of the period rather than the mark at generation time.
 
 ## Environment specific findings

@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import type { StorySceneProps } from "./story-scene";
 import { SceneBoundary, StrataFallback, hasWebGL, useLowPower } from "./strata";
-import { CAPTURE, CaptureMeta, noteIntersection } from "./capture-probe";
 
 const StoryScene = lazy(() => import("./story-scene"));
 
@@ -19,7 +18,6 @@ export function Story({ className, ...props }: Omit<StorySceneProps, "lowPower" 
     if (!el || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (CAPTURE) noteIntersection(entry);
         setVisible(entry.isIntersecting);
       },
       { rootMargin: "100px" },
@@ -28,19 +26,10 @@ export function Story({ className, ...props }: Omit<StorySceneProps, "lowPower" 
     return () => io.disconnect();
   }, []);
 
-  const probe = CAPTURE ? <CaptureMeta supported={supported} lowPower={lowPower} reduced={reduced} visible={visible} /> : null;
-
-  if (!supported)
-    return (
-      <>
-        {probe}
-        <StrataFallback className={className} />
-      </>
-    );
+  if (!supported) return <StrataFallback className={className} />;
 
   return (
-    <div ref={ref} className={`relative ${className ?? ""}`} data-story>
-      {probe}
+    <div ref={ref} className={`relative ${className ?? ""}`}>
       <SceneBoundary fallback={<StrataFallback className="absolute inset-0" />}>
         <Suspense fallback={<StrataFallback className="absolute inset-0" />}>
           <StoryScene {...props} lowPower={lowPower} reduced={reduced} frameloop={visible ? "always" : "never"} />

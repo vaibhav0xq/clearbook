@@ -281,14 +281,14 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     const openingSymbols: string[] = [];
     const closingSymbols: string[] = [];
     if (scan.accountsSkipped > 0) {
-      warnings.push(`${scan.accountsSkipped} token account${scan.accountsSkipped === 1 ? "" : "s"} could not be read within the time budget. Their history is summarised as opening balances.`);
+      warnings.push(`${scan.accountsSkipped} token account${scan.accountsSkipped === 1 ? "" : "s"} could not be read within the time budget. Their history is summarized as opening balances.`);
     }
     let unknownCount = 0;
     let scanned = 0;
     for (let i = 0; i < signatures.length; i += 50) {
       if (Date.now() > deadline) {
         truncated = true;
-        warnings.push(`Indexing stopped after ${Math.round(INDEX_TIME_BUDGET_MS / 1000)} seconds. Older activity is summarised as an opening balance.`);
+        warnings.push(`Indexing stopped after ${Math.round(INDEX_TIME_BUDGET_MS / 1000)} seconds. Older activity is summarized as an opening balance.`);
         break;
       }
       // Newest first, so that a time budget cut drops the oldest history.
@@ -360,7 +360,7 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     }
     warnings.push(...summariseSymbols(openingSymbols, "part of the balance predates the indexed history. Its cost basis is unknown."));
     warnings.push(...summariseSymbols(closingSymbols, "some tokens left the wallet outside the indexed history. Recorded as a transfer out."));
-    if (truncated && !warnings.some((w) => w.startsWith("Indexing stopped"))) warnings.push(`History capped at ${env.maxSignatures} signatures. Older activity is summarised as an opening balance.`);
+    if (truncated && !warnings.some((w) => w.startsWith("Indexing stopped"))) warnings.push(`History capped at ${env.maxSignatures} signatures. Older activity is summarized as an opening balance.`);
     if (!scan.ownerHistoryRead) warnings.push("Only transactions touching the current tokenized stock accounts were read. Stocks held in closed token accounts are not included.");
     if (unknownCount > 0) warnings.push(`${unknownCount} transaction${unknownCount === 1 ? "" : "s"} could not be classified.`);
     if (!env.rpcConfigured) warnings.push("Indexed through the public RPC endpoint. Set SOLANA_RPC_URL or HELIUS_API_KEY for deeper history.");

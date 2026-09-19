@@ -85,7 +85,7 @@ export const ListAssetsResponse = zod.array(ListAssetsResponseItem)
 
 
 /**
- * Discovers token accounts, fetches history and rebuilds the ledger. Demo wallets load instantly.
+ * Discovers token accounts, fetches history and rebuilds the ledger. Demo wallets load from a stored scenario.
  * @summary Index or refresh a wallet
  */
 export const IndexWalletParams = zod.object({
@@ -958,7 +958,7 @@ export const SubmitNotarizationParams = zod.object({
 
 export const SubmitNotarizationBody = zod.object({
   "signature": zod.string().nullish().describe('Signature of the memo transaction sent by the wallet'),
-  "simulate": zod.boolean().describe('Create a clearly labelled simulated proof instead of verifying on chain')
+  "simulate": zod.boolean().describe('Create a clearly labeled simulated proof instead of verifying on chain')
 })
 
 export const SubmitNotarizationResponse = zod.object({

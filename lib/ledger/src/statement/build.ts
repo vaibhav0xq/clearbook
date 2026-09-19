@@ -319,7 +319,7 @@ function buildAssumptions(
     );
   }
   if (periodEvents.some((e) => e.input.source === "simulated")) {
-    list.push("This ledger contains simulated trades that never touched the chain. They are labelled simulated in the activity table.");
+    list.push("This ledger contains simulated trades that never touched the chain. They are labeled simulated in the activity table.");
   }
   const unvalued = periodEvents.filter(
     (e) => e.input.kind !== "transfer_out" && e.input.rawDelta < 0n && e.reliefs.length > 0 && e.realizedUsd === null,

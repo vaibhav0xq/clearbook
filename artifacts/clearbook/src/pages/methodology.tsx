@@ -99,7 +99,7 @@ export default function Methodology() {
                   </div>
                   <div className="flex flex-col gap-4">
                     <h3 className="text-foreground font-medium">Income estimate</h3>
-                    <p>The income estimate is the value of exposure gained through multiplier increases on lots still held, priced at the current mark. It is an estimate of reinvested dividends rather than a cash figure and it is labelled as an estimate everywhere it appears. Lots whose multiplier at acquisition could not be reconstructed contribute nothing to it.</p>
+                    <p>The income estimate is the value of exposure gained through multiplier increases on lots still held, priced at the current mark. It is an estimate of reinvested dividends rather than a cash figure and it is labeled as an estimate everywhere it appears. Lots whose multiplier at acquisition could not be reconstructed contribute nothing to it.</p>
                     <p>Network fees paid in SOL are not converted to USD. Fees shown are those charged in the cash asset of the trade.</p>
                   </div>
                 </div>
@@ -111,7 +111,7 @@ export default function Methodology() {
                 <h2 className="display text-[32px] text-foreground">Statements and proofs</h2>
                 <div className="text-[15px] leading-[1.8] text-muted-foreground max-w-3xl flex flex-col gap-6">
                   <p>A statement covers a chosen period and cost method and contains opening and closing values, holdings, activity, closed lots, corporate actions, assumptions and the data sources used. Its SHA-256 hash covers the statement body, including the generation time, without the statement id. Generating a new statement for the same period produces a new document with its own hash. CSV and PDF exports carry the same figures and the same hash.</p>
-                  <p>Notarizing a statement writes its hash to Solana in a memo transaction signed by the connected wallet. Verification checks memo inclusion, not signer identity. It confirms that the transaction succeeded and contains the memo with the hash, then records the signature, the confirmed slot and the signing account. It does not check who that account is, so a proof shows that the hash existed at that slot, not who published it. When no wallet is connected the hash is stored and the proof is labelled simulated. A simulated proof is not evidence of anything on chain.</p>
+                  <p>Notarizing a statement writes its hash to Solana in a memo transaction signed by the connected wallet. Verification checks memo inclusion, not signer identity. It confirms that the transaction succeeded and contains the memo with the hash, then records the signature, the confirmed slot and the signing account. It does not check who that account is, so a proof shows that the hash existed at that slot, not who published it. When no wallet is connected the hash is stored and the proof is labeled simulated. A simulated proof is not evidence of anything on chain.</p>
                 </div>
               </Reveal>
             </section>

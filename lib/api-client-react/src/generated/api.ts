@@ -398,7 +398,7 @@ export const getIndexWalletUrl = (address: string,) => {
 }
 
 /**
- * Discovers token accounts, fetches history and rebuilds the ledger. Demo wallets load instantly.
+ * Discovers token accounts, fetches history and rebuilds the ledger. Demo wallets load from a stored scenario.
  * @summary Index or refresh a wallet
  */
 export const indexWallet = async (address: string, options?: Parameters<typeof customFetch>[1]): Promise<WalletStatus> => {

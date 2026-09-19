@@ -715,7 +715,7 @@ export interface NotarizationPayload {
 export interface NotarizationSubmission {
   /** Signature of the memo transaction sent by the wallet */
   signature?: string | null;
-  /** Create a clearly labelled simulated proof instead of verifying on chain */
+  /** Create a clearly labeled simulated proof instead of verifying on chain */
   simulate: boolean;
 }
 

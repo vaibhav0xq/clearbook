@@ -4,8 +4,6 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
-import fs from 'fs';
-import type { Plugin } from 'vite';
 
 const rawPort = process.env.PORT;
 
@@ -29,56 +27,12 @@ if (!basePath) {
   );
 }
 
-/**
- * Development only. The landing scene posts what the visitor's browser rendered (see
- * src/components/three/capture-probe.tsx) and this writes it under /tmp/captures so the scene can
- * be checked on a real GPU from the workspace. Dev server middleware never ships in a build.
- */
-function captureSink(base: string): Plugin {
-  const route = `${base.replace(/\/$/, '')}/__capture`;
-  return {
-    name: 'clearbook-capture-sink',
-    configureServer(server) {
-      server.middlewares.use(route, (req, res) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405;
-          res.end();
-          return;
-        }
-        let body = '';
-        req.on('data', (chunk) => {
-          body += chunk;
-          if (body.length > 16e6) req.destroy();
-        });
-        req.on('end', () => {
-          try {
-            const { name, meta, image } = JSON.parse(body) as { name?: string; meta?: unknown; image?: string };
-            const dir = '/tmp/captures';
-            fs.mkdirSync(dir, { recursive: true });
-            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const safe = String(name ?? 'capture').replace(/[^a-z0-9-]/gi, '');
-            fs.writeFileSync(`${dir}/${stamp}-${safe}.json`, JSON.stringify(meta ?? null, null, 2));
-            if (typeof image === 'string' && image.startsWith('data:image/')) {
-              fs.writeFileSync(`${dir}/${stamp}-${safe}.jpg`, Buffer.from(image.slice(image.indexOf(',') + 1), 'base64'));
-            }
-            res.statusCode = 204;
-          } catch {
-            res.statusCode = 400;
-          }
-          res.end();
-        });
-      });
-    },
-  };
-}
-
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
-    captureSink(basePath),
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined
       ? [

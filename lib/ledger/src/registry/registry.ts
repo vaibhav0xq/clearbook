@@ -45,7 +45,7 @@ export const ISSUERS: IssuerProfile[] = [
     name: "xStocks by Backed",
     shortName: "xStocks",
     structure:
-      "Swiss law tracker certificates issued by Backed Assets (JE) Limited, fully collateralised by the underlying shares held with regulated custodians.",
+      "Swiss law tracker certificates issued by Backed Assets (JE) Limited, fully collateralized by the underlying shares held with regulated custodians.",
     dividendHandling:
       "Cash dividends are reinvested net of withholding tax. The reinvestment appears as an increase of the Token-2022 multiplier, not as a new token transfer.",
     redemption:

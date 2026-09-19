@@ -12,10 +12,10 @@ Built for the Stocklana hackathon. Main track, Pyth bounty and PreStocks bounty.
 - Tax lots with FIFO by default and LIFO or HIFO on a toggle, long or short term flag per lot
 - Realized and unrealized P/L, year to date realized P/L and fees paid in the cash asset
 - Mark to market with a source label per position, premium or discount to the reference price and the session state of the underlying market
-- Corporate actions read from the token itself: multiplier increases on Ondo and xStocks mints are recorded as income or split events and labelled best effort
+- Corporate actions read from the token itself: multiplier increases on Ondo and xStocks mints are recorded as income or split events and labeled best effort
 - Statements for any period with a SHA-256 hash, opening and closing value, holdings, activity, closed lots, corporate actions and written assumptions
 - CSV and PDF export
-- Notarization: a memo transaction that writes the statement hash to Solana signed by the visitor's wallet, or a clearly labelled simulated proof when no wallet is connected
+- Notarization: a memo transaction that writes the statement hash to Solana signed by the visitor's wallet or a clearly labeled simulated proof when no wallet is connected
 - One sell action through Jupiter that relieves lots and updates the ledger, with a simulated path that does the same bookkeeping without a transaction
 - Three demo ledgers so the product can be reviewed without holding any tokenized stock
 

@@ -320,7 +320,7 @@ export async function prepareNotarization(id: string, payer?: string): Promise<N
     return {
       ...base,
       mode: "simulated",
-      instructions: "Connect a wallet to write the statement hash to Solana as a memo transaction, or record a simulated proof for the demo.",
+      instructions: "Connect a wallet to write the statement hash to Solana as a memo transaction or record a simulated proof for the demo.",
       transaction: null,
       lastValidBlockHeight: null,
     };
