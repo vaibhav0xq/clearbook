@@ -44,10 +44,14 @@ import {
   storySaleQuantity,
 } from "@/components/three/story-data";
 import { Magnetic } from "@/components/motion/magnetic";
+import { Cursor, setCursorLabel } from "@/components/motion/cursor";
 import { EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
 
 const DEMO = "demo-holder";
+
+/** A column under the pointer turns the custom cursor into a label. Stable so the scene effect does not rerun. */
+const onStoryHover = (mint: string | null) => setCursorLabel(mint ? "Open lots" : null);
 
 /** Copy for one chapter. Fades and drifts with scroll, never with time. */
 type ChapterSide = "left" | "right" | "bottom" | "center";
@@ -286,6 +290,7 @@ export default function Home() {
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip">
       <div aria-hidden className="grain-overlay" />
+      <Cursor />
 
       {/* Header */}
       <motion.header
@@ -307,6 +312,7 @@ export default function Home() {
             </Link>
             <Link
               href={`/w/${DEMO}`}
+              data-cursor="Open"
               className="group inline-flex h-9 items-center gap-2 rounded-full bg-primary pl-4 pr-3 text-[12px] font-medium text-primary-foreground transition-transform duration-500 ease-out-expo hover:scale-[1.03]"
             >
               Open demo ledger
@@ -339,6 +345,7 @@ export default function Home() {
               type="button"
               onClick={() => scrollToChapter(i)}
               aria-current={active ? "step" : undefined}
+              data-cursor={active ? undefined : "Go"}
               className="group flex items-center justify-end gap-3 py-0.5"
             >
               <span
@@ -371,6 +378,7 @@ export default function Home() {
               featuredMint={featured?.mint ?? null}
               incomeMint={incomeColumn?.mint ?? null}
               onSelectColumn={() => setLocation(`/w/${DEMO}`)}
+              onHoverColumn={onStoryHover}
             />
             <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[60] h-[46svh] bg-gradient-to-t from-background via-background/85 to-transparent md:h-48 md:via-background/40" />
             <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[60] h-28 bg-gradient-to-b from-background/90 to-transparent" />
@@ -553,6 +561,7 @@ export default function Home() {
                     <button
                       type="submit"
                       aria-label="Open ledger"
+                      data-cursor="Open"
                       className="group flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform duration-500 ease-out-expo hover:scale-105 md:h-[52px] md:w-[52px]"
                     >
                       <ArrowRight className="h-4.5 w-4.5 transition-transform duration-500 ease-out-expo group-hover:translate-x-0.5" />
@@ -574,6 +583,7 @@ export default function Home() {
                       type="button"
                       onClick={() => setLocation(`/w/${demo.id}`)}
                       title={demo.description}
+                      data-cursor="Open"
                       className="group inline-flex h-8 items-center gap-2 rounded-full border hairline bg-white/[0.03] px-3.5 text-[12px] text-foreground transition-all duration-300 hover:border-primary/50 hover:bg-primary/10"
                     >
                       {demo.label}

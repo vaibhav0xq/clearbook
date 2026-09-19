@@ -69,6 +69,8 @@ export interface LayerPlacement {
 
 interface LayerState {
   progress: number;
+  /** Height eased toward the layout height, so a rewound or repriced ledger settles instead of snapping. */
+  height?: number;
   lift: number;
   glow: number;
   dim: number;
@@ -548,11 +550,13 @@ function Layers({
       st.lift = THREE.MathUtils.damp(st.lift, targetLift, 6, delta);
       st.glow = THREE.MathUtils.damp(st.glow, targetGlow, 8, delta);
 
+      st.height = st.height === undefined || reduced ? p.h : THREE.MathUtils.damp(st.height, p.h, 7, delta);
       const y0 = acc.get(p.column.mint) ?? 0;
-      const h = p.h * st.progress;
+      const h = st.height * st.progress;
       const centerY = y0 + h / 2;
       mesh.position.set(p.x, centerY, st.lift);
-      mesh.scale.set(1, Math.max(0.0001, st.progress), 1);
+      // The block geometry is unit height times the layout height, so the eased height is a scale on top of it.
+      mesh.scale.set(1, Math.max(0.0001, st.progress * (st.height / Math.max(1e-6, p.h))), 1);
       acc.set(p.column.mint, y0 + h + GAP * st.progress);
 
       const base = p.color;
@@ -654,7 +658,11 @@ function Layers({
                 style={{ transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)" }}
               >
                 <span className="num text-[11px] tracking-[0.12em] text-foreground">{c.symbol}</span>
-                {showValues && <span className="num text-[10px] text-muted-foreground">{formatUSD(c.value)}</span>}
+                {showValues && (
+                  <span className="num text-[10px] text-muted-foreground">
+                    {c.value > 0 ? formatUSD(c.value) : c.layers.every((l) => l.basisUnknown) ? "Unknown cost" : c.markPrice === null ? "Unpriced" : formatUSD(c.value)}
+                  </span>
+                )}
               </div>
             </Html>
           );

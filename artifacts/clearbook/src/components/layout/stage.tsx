@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { useGetPortfolio, useListLots } from "@workspace/api-client-react";
+import { getListLotsQueryKey, useGetPortfolio, useListLots } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { Strata } from "@/components/three/strata";
-import { buildStrata, type StrataColumn } from "@/components/three/strata-data";
+import { buildStrata, buildStrataAsOf, ledgerSpan, type StrataColumn } from "@/components/three/strata-data";
+import { Rewind } from "@/components/layout/rewind";
+import { format } from "date-fns";
 import { formatUSD, formatQuantity } from "@/lib/format";
 import { EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
@@ -33,9 +35,20 @@ interface StageContextValue extends StageState {
   /** Publishes page state. The owner token lets a page skip its cleanup when a newer page has already published. */
   publish: (owner: string, state: StageState) => void;
   release: (owner: string) => void;
+  /** The ledger as it stands now. Pages always work from these. */
   columns: StrataColumn[];
+  /** What the stage draws: the rewound ledger when a past date is set, otherwise the live columns. */
+  stageColumns: StrataColumn[];
   lotDetail: LotDetail;
   unpricedCount: number;
+  /** End of the past day the stage is rewound to. Null shows the ledger as it stands now. */
+  asOf: Date | null;
+  setAsOf: (date: Date | null) => void;
+  /** Earliest and latest dates the stage can be rewound to. Null until lot history has loaded or when there is none. */
+  span: { start: Date; end: Date } | null;
+  history: "idle" | "loading" | "error" | "ready";
+  /** Starts fetching closed lots. Called when the visitor reaches for the rewind control. */
+  loadHistory: () => void;
 }
 
 const StageContext = createContext<StageContextValue | null>(null);
@@ -47,7 +60,23 @@ export function StageProvider({ address, children }: { address: string; children
   const ownerRef = useRef<string | null>(null);
   const { data: portfolio } = useGetPortfolio(address, { method });
   const { data: lots, error: lotsError } = useListLots(address, { method, status: "open" });
+  const [asOf, setAsOfState] = useState<Date | null>(null);
+  const [wantHistory, setWantHistory] = useState(false);
+  // Closed lots are only fetched once the visitor reaches for the rewind control.
+  const historyParams = useMemo(() => ({ method, status: "all" as const }), [method]);
+  const { data: allLots, error: allLotsError } = useListLots(address, historyParams, {
+    query: { queryKey: getListLotsQueryKey(address, historyParams), enabled: wantHistory },
+  });
   const columns = useMemo(() => (portfolio ? buildStrata(portfolio.positions, lots) : []), [portfolio, lots]);
+  const past = useMemo(() => (asOf && allLots ? buildStrataAsOf(allLots, asOf) : null), [asOf, allLots]);
+  const stageColumns = past ?? columns;
+  const span = useMemo(() => ledgerSpan(allLots), [allLots]);
+  const history = !wantHistory ? "idle" : allLots ? "ready" : allLotsError ? "error" : "loading";
+  const loadHistory = useCallback(() => setWantHistory(true), []);
+  const setAsOf = useCallback((date: Date | null) => {
+    if (date) setWantHistory(true);
+    setAsOfState(date);
+  }, []);
   const lotDetail: LotDetail = lots ? "ready" : lotsError ? "error" : "loading";
   const unpricedCount = portfolio?.totals.unpricedValueCount ?? 0;
 
@@ -64,8 +93,8 @@ export function StageProvider({ address, children }: { address: string; children
   }, []);
 
   const value = useMemo<StageContextValue>(
-    () => ({ ...state, hoverMint, setHoverMint, publish, release, columns, lotDetail, unpricedCount }),
-    [state, hoverMint, publish, release, columns, lotDetail, unpricedCount],
+    () => ({ ...state, hoverMint, setHoverMint, publish, release, columns, stageColumns, lotDetail, unpricedCount, asOf, setAsOf, span, history, loadHistory }),
+    [state, hoverMint, publish, release, columns, stageColumns, lotDetail, unpricedCount, asOf, setAsOf, span, history, loadHistory],
   );
   return <StageContext.Provider value={value}>{children}</StageContext.Provider>;
 }
@@ -99,8 +128,14 @@ export function StageView({ address, className }: { address: string; className?:
   const { method } = useCostMethod();
   const ctx = useStageContext();
   const [, setLocation] = useLocation();
-  const { columns, hoverMint, setHoverMint, focusMint, highlightLayerId, preview, caption, lotDetail, unpricedCount } = ctx;
+  const { stageColumns: columns, hoverMint, setHoverMint, focusMint, highlightLayerId, preview, caption, lotDetail, unpricedCount, asOf } = ctx;
   const lotsReady = lotDetail === "ready";
+  const rewound = asOf !== null;
+  const unknownBasis = (cols: StrataColumn[]) => cols.reduce((s, c) => s + c.layers.filter((l) => l.basisUnknown).length, 0);
+  const costNote = (cols: StrataColumn[]) => {
+    const n = unknownBasis(cols);
+    return n > 0 ? ` at cost, ${n} ${n === 1 ? "lot" : "lots"} unknown` : " at cost";
+  };
   const lotsNote = lotDetail === "loading" ? "lots loading" : "lots unavailable";
   const unpricedNote = unpricedCount > 0 ? `, ${unpricedCount} unpriced` : "";
   const onHover = useCallback((mint: string | null) => setHoverMint(mint), [setHoverMint]);
@@ -119,7 +154,7 @@ export function StageView({ address, className }: { address: string; className?:
         highlightMint={hoverMint}
         highlightLayerId={highlightLayerId}
         focusMint={focusMint ?? null}
-        preview={preview ?? null}
+        preview={rewound ? null : (preview ?? null)}
         onHoverColumn={onHover}
         onSelectColumn={onSelect}
       />
@@ -142,8 +177,8 @@ export function StageView({ address, className }: { address: string; className?:
                 <>
                   <span className="display text-[26px] leading-none text-foreground md:text-[32px]">{shown.symbol}</span>
                   <span className="num text-[12px] text-foreground/60">
-                    {formatQuantity(shown.quantity, 4)} sh, {lotsReady ? `${shown.layers.length} ${shown.layers.length === 1 ? "lot" : "lots"}` : lotsNote},{" "}
-                    {shown.value > 0 ? formatUSD(shown.value) : "unpriced"}
+                    {formatQuantity(shown.quantity, 4)} sh, {lotsReady || rewound ? `${shown.layers.length} ${shown.layers.length === 1 ? "lot" : "lots"}` : lotsNote},{" "}
+                    {rewound ? `${formatUSD(shown.value)}${costNote([shown])}` : shown.value > 0 ? formatUSD(shown.value) : "unpriced"}
                   </span>
                 </>
               ) : (
@@ -152,21 +187,28 @@ export function StageView({ address, className }: { address: string; className?:
                     {columns.length} {columns.length === 1 ? "position" : "positions"}
                   </span>
                   <span className="num text-[12px] text-foreground/60">
-                    {lotsReady ? `${columns.reduce((s, c) => s + c.layers.length, 0)} open lots` : lotsNote}, {formatUSD(total)}
-                    {unpricedNote}
+                    {lotsReady || rewound ? `${columns.reduce((s, c) => s + c.layers.length, 0)} open lots` : lotsNote}, {formatUSD(total)}
+                    {rewound ? costNote(columns) : unpricedNote}
                   </span>
                 </>
               )}
             </motion.div>
           </AnimatePresence>
-          {caption && <span className="max-w-[46ch] text-[12px] leading-relaxed text-foreground/50">{caption}</span>}
+          {rewound ? (
+            <span className="max-w-[46ch] text-[12px] leading-relaxed text-foreground/50">
+              As of {format(asOf, "MMM d, yyyy")}. Height is cost basis. Approximate: partial sales are undated.
+            </span>
+          ) : (
+            caption && <span className="max-w-[46ch] text-[12px] leading-relaxed text-foreground/50">{caption}</span>
+          )}
         </div>
         <span className="hidden shrink-0 text-right text-[11px] leading-relaxed text-foreground/40 md:block">
-          Height is market value.
+          {rewound ? "Height is cost basis." : "Height is market value."}
           <br />
           Click a column to open its lots.
         </span>
       </div>
+      <Rewind />
     </div>
   );
 }

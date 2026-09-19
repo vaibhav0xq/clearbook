@@ -21,7 +21,8 @@ import {
   useLayout,
   type LayerPlacement,
 } from "./strata-scene";
-import { CHAPTER_COUNT, chapterAt, colorize, dividendWave, local, reliefStory, scan, seg, split } from "./story-data";
+import { CHAPTER_COUNT, chapterAt, colorize, copyVisibility, dividendWave, local, reliefStory, scan, seg, split } from "./story-data";
+import { DimensionLine, FloorType, Horizon, Torch, writeDimensionLine } from "./story-set";
 
 export interface StorySceneProps {
   columns: StrataColumn[];
@@ -273,6 +274,8 @@ function StoryLayers({
   const [chapter, setChapter] = useState(0);
   const [reliefMethod, setReliefMethod] = useState<"fifo" | "lifo" | "hifo">("fifo");
   const reliefCache = useRef<{ p: number; column: StrataColumn | null; story: ReturnType<typeof reliefStory> }>({ p: -1, column: null, story: null });
+  const dimension = useRef<THREE.Group>(null);
+  const dimensionBounds = useRef<number[]>([]);
   useCursor(!!hovered);
 
   const featured = useMemo(() => columns.find((c) => c.mint === featuredMint) ?? null, [columns, featuredMint]);
@@ -332,6 +335,9 @@ function StoryLayers({
 
     const acc = stackHeights.current;
     acc.clear();
+    const bounds = dimensionBounds.current;
+    bounds.length = 0;
+    let dimX = 0;
     for (const pl of placements) {
       const mesh = meshes.current.get(pl.layer.id);
       const mat = materials.current.get(pl.layer.id);
@@ -398,8 +404,21 @@ function StoryLayers({
       }
 
       const tag = tagGroups.current.get(pl.layer.id);
-      if (tag) tag.position.set(pl.x - WIDTH / 2 - 0.16, centerY, 0.3);
+      if (tag) tag.position.set(pl.x - WIDTH / 2 - 0.58, centerY, 0.3);
       if (isHovered && tooltipGroup.current) tooltipGroup.current.position.set(pl.x, centerY, st.lift);
+
+      // The featured column is measured: one boundary per lot edge, following the split and the lift.
+      if (pl.column.mint === featuredMint) {
+        dimX = pl.x;
+        if (bounds.length === 0) bounds.push(y0);
+        bounds.push(y0 + h);
+      }
+    }
+
+    const dim = dimension.current?.children[0] as THREE.LineSegments | undefined;
+    if (dim) {
+      const show = Math.max(copyVisibility(p, 1), copyVisibility(p, 2)) * sp;
+      writeDimensionLine(dim, dimX, 0.3, bounds, show);
     }
 
     for (const c of columns) {
@@ -412,7 +431,7 @@ function StoryLayers({
   const showValues = chapter >= 4;
   const viewport = useThree((state) => state.size);
   // Lot tags sit left of the column, which only fits beside the copy on wide screens.
-  const showTags = chapter === 2 && viewport.width / Math.max(1, viewport.height) > 1.15;
+  const showTags = (chapter === 1 || chapter === 2) && viewport.width / Math.max(1, viewport.height) > 1.15;
   const focusHeights = {
     relief: featured ? (fullHeights.get(featured.mint) ?? tallest) : tallest,
     income: incomeColumn ? (fullHeights.get(incomeColumn.mint) ?? tallest) : tallest,
@@ -425,6 +444,12 @@ function StoryLayers({
   return (
     <group>
       <StoryRig progress={progress} totalWidth={totalWidth} tallest={tallest} focusX={focusX} focusHeights={focusHeights} reduced={reduced} />
+      <FloorType progress={progress} />
+      <Horizon progress={progress} />
+      <Torch enabled={!reduced} />
+      <group ref={dimension}>
+        <DimensionLine />
+      </group>
       {placements.map((pl) => (
         <LotBlock
           key={pl.layer.id}
@@ -510,8 +535,14 @@ function StoryLayers({
             <Html zIndexRange={[20, 0]} style={{ pointerEvents: "none", transform: "translate(-100%, -50%)" }}>
               <div className="flex items-center gap-2.5 whitespace-nowrap text-[11px] animate-in fade-in slide-in-from-right-2 duration-500">
                 <span className="text-foreground/90">{layer.openedAt ? format(new Date(layer.openedAt), "MMM d, yyyy") : "Opening balance"}</span>
-                <span className="num text-muted-foreground">{layer.basisUnknown ? "Unknown cost" : `${formatUSD(layer.costPerShare)} / sh`}</span>
-                <span className="num text-primary">#{(ranks.get(layer.id) ?? 0) + 1}</span>
+                {chapter === 1 ? (
+                  <span className="num text-muted-foreground">{formatQuantity(layer.quantity, 2)} sh</span>
+                ) : (
+                  <>
+                    <span className="num text-muted-foreground">{layer.basisUnknown ? "Unknown cost" : `${formatUSD(layer.costPerShare)} / sh`}</span>
+                    <span className="num text-primary">#{(ranks.get(layer.id) ?? 0) + 1}</span>
+                  </>
+                )}
               </div>
             </Html>
           </group>

@@ -40,6 +40,19 @@ ledger and hides column labels so the centred form reads. Scrolling runs
 through Lenis except under reduced motion, where native scrolling and snapped
 camera moves are used.
 
+The scene is a place, not a void. `src/components/three/story-set.tsx` holds
+the set dressing: `Torch` (a warm spotlight that follows the pointer across the
+floor, so whatever the visitor points at is lit), `FloorType` (the chapter name
+set into the floor in front of the ledger, visible only while its chapter is in
+view), `Horizon` (a faint amber band far behind the ledger, kept on render
+layer 1 so the reflective floor does not mirror it) and `DimensionLine` (a rule
+with a tick at every lot boundary beside the featured column in the lots and
+relief chapters, written each frame from the animated stack). The landing also
+draws its own pointer (`src/components/motion/cursor.tsx`): a dot and a lagging
+ring, which becomes an amber label when the pointer is over an element with
+`data-cursor="Open"` or over a column in the scene. It only mounts for fine
+pointers and it hides the native cursor through `html.has-cursor`.
+
 ## Ledger pages (src/pages/*.tsx under /w/:address)
 
 Every wallet page renders inside one `Shell` (src/components/layout/shell.tsx),

@@ -156,3 +156,77 @@ export function reliefRank(column: StrataColumn, method: CostMethod): Map<string
   reliefOrder(column, method).forEach((l, i) => out.set(l.id, i));
   return out;
 }
+
+/** First and last dates the ledger can be rewound to. Null when there is no dated lot. */
+export function ledgerSpan(lots: Lot[] | undefined): { start: Date; end: Date } | null {
+  let start = Infinity;
+  for (const lot of lots ?? []) {
+    const t = new Date(lot.openedAt).getTime();
+    if (Number.isFinite(t)) start = Math.min(start, t);
+  }
+  if (!Number.isFinite(start)) return null;
+  return { start: new Date(start), end: new Date() };
+}
+
+/**
+ * Rebuilds the ledger as it stood at the end of a past day, from every lot the wallet has held.
+ * There are no historical marks, so layer thickness is cost basis. A lot that is still held today
+ * (open or partly sold) is drawn at its remaining quantity and basis on every date it was open,
+ * because partial disposals are undated in the lot record. A lot that has since closed is drawn at
+ * its original size. Callers must label the result approximate.
+ */
+export function buildStrataAsOf(lots: Lot[] | undefined, asOf: Date): StrataColumn[] {
+  const cutoff = asOf.getTime();
+  const byMint = new Map<string, Lot[]>();
+  for (const lot of lots ?? []) {
+    const opened = new Date(lot.openedAt).getTime();
+    if (!Number.isFinite(opened) || opened > cutoff) continue;
+    const closed = lot.closedAt ? new Date(lot.closedAt).getTime() : null;
+    if (closed !== null && closed <= cutoff) continue;
+    const list = byMint.get(lot.mint) ?? [];
+    list.push(lot);
+    byMint.set(lot.mint, list);
+  }
+
+  const columns: StrataColumn[] = [];
+  for (const [mint, open] of byMint) {
+    open.sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime() || a.id.localeCompare(b.id));
+    const layers: StrataLayer[] = open.map((lot) => {
+      const held = lot.closedAt === null;
+      const quantity = held ? lot.remainingQuantity : lot.quantity;
+      const unknown = lot.basisStatus === "unknown";
+      const basis = held ? lot.remainingCostBasis : lot.costBasis;
+      const cost = unknown || basis === null ? null : basis;
+      return {
+        id: lot.id,
+        mint: lot.mint,
+        symbol: lot.symbol,
+        openedAt: lot.openedAt,
+        quantity,
+        value: cost ?? 0,
+        costPerShare: lot.costPerShare,
+        costBasis: cost,
+        reliefCost: cost === null || quantity <= 0 ? null : cost / quantity,
+        unrealizedPnl: null,
+        pnlPct: null,
+        basisUnknown: unknown,
+        holdingDays: Math.max(0, Math.floor((cutoff - new Date(lot.openedAt).getTime()) / 86_400_000)),
+        term: "",
+      };
+    });
+    if (layers.every((l) => l.quantity <= 0)) continue;
+    const first = open[0];
+    columns.push({
+      mint,
+      symbol: first.symbol,
+      name: first.symbol,
+      value: layers.reduce((s, l) => s + l.value, 0),
+      quantity: layers.reduce((s, l) => s + l.quantity, 0),
+      unrealizedPnl: null,
+      pnlPct: null,
+      markPrice: null,
+      layers,
+    });
+  }
+  return columns.sort((a, b) => b.value - a.value);
+}
