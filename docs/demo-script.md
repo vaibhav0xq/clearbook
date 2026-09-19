@@ -1,0 +1,64 @@
+# Demo script
+
+Three minutes. Use the Active trader ledger for the walk through and the Long term holder for the income slide.
+
+## 0:00 The problem
+
+"Tokenized stocks trade like tokens but they are securities. Anyone holding xStocks or Ondo tokens has no brokerage statement, no cost basis and no record of the dividends that arrive as multiplier changes. Clearbook is the post trade accounting layer that gives them one."
+
+Open the home page. Point at the certificate unfolding into a live statement, then at the data sources line at the bottom that shows which feeds are live.
+
+## 0:20 Portfolio
+
+Click Active trader.
+
+- Five summary figures: net value, cost basis, unrealized P/L, realized P/L and income estimate.
+- Each position carries an issuer badge, the mark, its source and freshness, and the raw token quantity next to the shares of exposure when a multiplier is in force.
+- Switch the method from FIFO to HIFO in the header. Cost basis and realized P/L change immediately. Switch back to FIFO.
+
+## 0:50 Tax lots and activity
+
+Open Tax lots.
+
+- Every open lot with acquisition date, cost per share and holding period.
+- Lots opened by a transfer show an estimated or unknown basis rather than a guess.
+
+Open Activity.
+
+- Buys, sells, wrapper swaps and transfers with fees and counter asset.
+- Realized P/L per sell.
+
+## 1:20 Corporate actions
+
+Open the Long term holder ledger and then Events.
+
+- Multiplier increases read from the Token-2022 mint, classified as dividend reinvestment, split or reverse split, with the quantity and value effect.
+- Say that this is read from the token itself, not from an issuer announcement, and that it is labelled best effort.
+
+## 1:45 Statement
+
+Open Statements and generate one for this year.
+
+- Opening and closing value, holdings, activity, closed lots, corporate actions, disclosures and data sources on one document.
+- Download the PDF. Show the hash on the first page.
+- Click the proof button. With a wallet connected this signs a memo transaction that carries the hash. Without one the app records a simulated proof and says so.
+
+## 2:20 Trade
+
+Open Trade. Sell one share of NVDAx.
+
+- The quote shows expected proceeds, price impact, the reference price and the realized P/L the sale would create under the selected method.
+- Execute. With a wallet this is a Jupiter swap. Here it is a simulated sale, and Activity shows the new sell with a simulated label.
+
+## 2:45 Live wallets and close
+
+Paste a real address from the clipboard. The status bar shows indexing progress, then either a ready or a partial ledger with the exact warnings about what could not be reconstructed.
+
+"Everything you saw is the same code path for demo and live data. Add a Helius key and a Pyth Pro key and the fallbacks switch to primary sources. The statement is honest about what it knows and what it does not."
+
+## Addresses used in rehearsal
+
+- `GToT3ig6vhnULUq84XC8HDkiLjT5LM9JsZx3TmsKRWeK` holds many xStocks accounts, indexes to a ready ledger in about a minute on the public RPC
+- `2Cq2RNFFxxPXL7teNQAji1beA2vFbBDYW5BGPBFvoN9m` holds hundreds of Ondo accounts, indexes to a partial ledger with warnings
+
+Both are market making wallets. Their ledgers demonstrate indexing and warnings rather than a retail trading history.

@@ -3,13 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Clearbook API. Issuer-aware brokerage statements for tokenized stocks on Solana.
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: config
+    description: Runtime configuration and data-source modes
+  - name: registry
+    description: Issuer and asset registry
+  - name: wallets
+    description: Wallet indexing and ledger
+  - name: statements
+    description: Statement generation, export and notarization
+  - name: trades
+    description: Sell and rebalance actions
 paths:
   /healthz:
     get:
@@ -24,7 +34,502 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /config:
+    get:
+      operationId: getAppConfig
+      tags: [config]
+      summary: Runtime configuration
+      description: Which data sources are live, which are simulated, and the demo wallets available.
+      responses:
+        "200":
+          description: Configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppConfig"
+  /issuers:
+    get:
+      operationId: listIssuers
+      tags: [registry]
+      summary: List supported issuers
+      responses:
+        "200":
+          description: Issuers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Issuer"
+  /assets:
+    get:
+      operationId: listAssets
+      tags: [registry]
+      summary: List verified tokenized stock assets
+      responses:
+        "200":
+          description: Assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RegistryAsset"
+  /wallets/{address}/index:
+    post:
+      operationId: indexWallet
+      tags: [wallets]
+      summary: Index or refresh a wallet
+      description: Discovers token accounts, fetches history and rebuilds the ledger. Demo wallets load instantly.
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Index status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /wallets/{address}/reset:
+    post:
+      operationId: resetWallet
+      tags: [wallets]
+      summary: Remove simulated trades and cached ledger for a wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Status after reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /wallets/{address}/status:
+    get:
+      operationId: getWalletStatus
+      tags: [wallets]
+      summary: Indexing status for a wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /wallets/{address}/portfolio:
+    get:
+      operationId: getPortfolio
+      tags: [wallets]
+      summary: Portfolio valuation, positions and totals
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CostMethod"
+      responses:
+        "200":
+          description: Portfolio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Portfolio"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /wallets/{address}/lots:
+    get:
+      operationId: listLots
+      tags: [wallets]
+      summary: Tax lots for a wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CostMethod"
+        - name: mint
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/LotStatusFilter"
+      responses:
+        "200":
+          description: Lots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lot"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /wallets/{address}/activity:
+    get:
+      operationId: listActivity
+      tags: [wallets]
+      summary: Ledger activity for a wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CostMethod"
+        - name: mint
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activity page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /wallets/{address}/events:
+    get:
+      operationId: listCorporateActions
+      tags: [wallets]
+      summary: Corporate action and multiplier events for a wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CorporateActionEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /wallets/{address}/pricing:
+    get:
+      operationId: getPricingStatus
+      tags: [wallets]
+      summary: Pricing source status for a wallet's holdings
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Pricing status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /wallets/{address}/statements:
+    get:
+      operationId: listStatements
+      tags: [statements]
+      summary: Statements generated for a wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      responses:
+        "200":
+          description: Statements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatementSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    post:
+      operationId: createStatement
+      tags: [statements]
+      summary: Generate a statement for a period
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatementRequest"
+      responses:
+        "201":
+          description: Statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Statement"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /statements/{statementId}:
+    get:
+      operationId: getStatement
+      tags: [statements]
+      summary: Fetch a generated statement
+      parameters:
+        - $ref: "#/components/parameters/StatementId"
+      responses:
+        "200":
+          description: Statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Statement"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /statements/{statementId}/export.csv:
+    get:
+      operationId: exportStatementCsv
+      tags: [statements]
+      summary: Download the statement as CSV
+      parameters:
+        - $ref: "#/components/parameters/StatementId"
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /statements/{statementId}/export.pdf:
+    get:
+      operationId: exportStatementPdf
+      tags: [statements]
+      summary: Download the statement as PDF
+      parameters:
+        - $ref: "#/components/parameters/StatementId"
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /statements/{statementId}/notarization:
+    get:
+      operationId: prepareNotarization
+      tags: [statements]
+      summary: Memo payload the wallet signs to notarize the statement
+      parameters:
+        - $ref: "#/components/parameters/StatementId"
+        - name: payer
+          in: query
+          required: false
+          description: Wallet public key that will pay for the memo transaction. When present the response includes an unsigned transaction.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notarization payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotarizationPayload"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: submitNotarization
+      tags: [statements]
+      summary: Record a signed memo transaction or create a simulated proof
+      parameters:
+        - $ref: "#/components/parameters/StatementId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotarizationSubmission"
+      responses:
+        "200":
+          description: Proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatementProof"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /wallets/{address}/trades/quote:
+    post:
+      operationId: quoteTrade
+      tags: [trades]
+      summary: Quote a sell of a position and preview the lots it closes
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeQuoteRequest"
+      responses:
+        "200":
+          description: Quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeQuote"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /wallets/{address}/trades/prepare:
+    post:
+      operationId: prepareTrade
+      tags: [trades]
+      summary: Build the Jupiter swap transaction for a quote
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradePrepareRequest"
+      responses:
+        "200":
+          description: Unsigned transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeTransaction"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /wallets/{address}/trades/confirm:
+    post:
+      operationId: confirmTrade
+      tags: [trades]
+      summary: Confirm a signed swap on chain and post it to the ledger
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeConfirmRequest"
+      responses:
+        "200":
+          description: Trade result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /wallets/{address}/trades/simulate:
+    post:
+      operationId: simulateTrade
+      tags: [trades]
+      summary: Post a simulated sell to the ledger at the quoted price
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeSimulateRequest"
+      responses:
+        "200":
+          description: Trade result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    WalletAddress:
+      name: address
+      in: path
+      required: true
+      description: Base58 Solana wallet address or a demo wallet id
+      schema:
+        type: string
+    StatementId:
+      name: statementId
+      in: path
+      required: true
+      schema:
+        type: string
+    CostMethod:
+      name: method
+      in: query
+      required: false
+      description: Lot relief method. FIFO is the default.
+      schema:
+        $ref: "#/components/schemas/CostMethod"
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    UpstreamError:
+      description: An upstream data source failed or rejected the request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +538,1088 @@ components:
           type: string
       required:
         - status
-
+    ApiError:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Machine readable error code such as invalid_address, wallet_not_indexed, upstream_unauthorized, upstream_unavailable
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+      required: [code, message]
+    CostMethod:
+      type: string
+      enum: [fifo, lifo, hifo]
+    LotStatusFilter:
+      type: string
+      enum: [open, closed, all]
+    DataMode:
+      type: string
+      description: live means real upstream data, fallback means a keyless real source, demo means scripted data, simulated means an action that never touched the chain
+      enum: [live, fallback, demo, simulated, unavailable]
+    IssuerId:
+      type: string
+      enum: [xstocks, ondo, prestocks, unknown]
+    SourceStatus:
+      type: object
+      properties:
+        id:
+          type: string
+          description: solana_rpc, pyth, jupiter, backed, prestocks, notary
+        label:
+          type: string
+        mode:
+          $ref: "#/components/schemas/DataMode"
+        detail:
+          type: string
+        requiredEnv:
+          type: array
+          items:
+            type: string
+      required: [id, label, mode, detail, requiredEnv]
+    DemoWallet:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identifier accepted anywhere a wallet address is accepted
+        label:
+          type: string
+        description:
+          type: string
+        holdingsPreview:
+          type: array
+          items:
+            type: string
+      required: [id, label, description, holdingsPreview]
+    AppConfig:
+      type: object
+      properties:
+        appName:
+          type: string
+        cluster:
+          type: string
+        appUrl:
+          type: string
+        rpcUrlPublic:
+          type: string
+          description: RPC endpoint the browser may use for sending signed transactions
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceStatus"
+        demoWallets:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoWallet"
+        defaultMethod:
+          $ref: "#/components/schemas/CostMethod"
+        walletConnectEnabled:
+          type: boolean
+      required: [appName, cluster, appUrl, rpcUrlPublic, sources, demoWallets, defaultMethod, walletConnectEnabled]
+    Issuer:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/IssuerId"
+        name:
+          type: string
+        shortName:
+          type: string
+        structure:
+          type: string
+          description: How the token gives exposure, for example Swiss tracker certificate, SPV share
+        dividendHandling:
+          type: string
+        redemption:
+          type: string
+        website:
+          type: string
+        eligibilityNote:
+          type: string
+        tokenProgram:
+          type: string
+        assetCount:
+          type: integer
+      required: [id, name, shortName, structure, dividendHandling, redemption, website, eligibilityNote, tokenProgram, assetCount]
+    RegistryAsset:
+      type: object
+      properties:
+        mint:
+          type: string
+        symbol:
+          type: string
+        name:
+          type: string
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        underlyingSymbol:
+          type: string
+        underlyingName:
+          type: string
+        decimals:
+          type: integer
+        tokenProgram:
+          type: string
+        assetClass:
+          type: string
+          enum: [equity, etf, private_company]
+        pythEquityFeed:
+          type: string
+          nullable: true
+          description: Pyth symbol for the underlying, for example Equity.US.AAPL/USD
+        pythWrapperFeed:
+          type: string
+          nullable: true
+          description: Pyth symbol for the token itself, for example Crypto.AAPLX/USD
+        multiplierSupported:
+          type: boolean
+        logoUrl:
+          type: string
+          nullable: true
+        verified:
+          type: boolean
+      required: [mint, symbol, name, issuer, underlyingSymbol, underlyingName, decimals, tokenProgram, assetClass, pythEquityFeed, pythWrapperFeed, multiplierSupported, logoUrl, verified]
+    WalletStatus:
+      type: object
+      properties:
+        address:
+          type: string
+        displayAddress:
+          type: string
+        isDemo:
+          type: boolean
+        demoLabel:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [not_indexed, indexing, ready, partial, empty, error]
+        source:
+          $ref: "#/components/schemas/DataMode"
+        message:
+          type: string
+        eventsIndexed:
+          type: integer
+        signaturesScanned:
+          type: integer
+        unknownTransactions:
+          type: integer
+        lastIndexedAt:
+          type: string
+          format: date-time
+          nullable: true
+        simulatedTrades:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+      required: [address, displayAddress, isDemo, demoLabel, state, source, message, eventsIndexed, signaturesScanned, unknownTransactions, lastIndexedAt, simulatedTrades, warnings]
+    MarketSession:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [regular, pre_market, post_market, overnight, closed, continuous, unknown]
+        label:
+          type: string
+        venue:
+          type: string
+        timezone:
+          type: string
+        nextChangeAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextState:
+          type: string
+          nullable: true
+      required: [state, label, venue, timezone, nextChangeAt, nextState]
+    Mark:
+      type: object
+      description: Price used to value a position
+      properties:
+        price:
+          type: number
+          nullable: true
+        currency:
+          type: string
+        source:
+          type: string
+          enum: [pyth, jupiter, prestocks, demo, none]
+        sourceLabel:
+          type: string
+        feed:
+          type: string
+          nullable: true
+        publishTime:
+          type: string
+          format: date-time
+          nullable: true
+        ageSeconds:
+          type: number
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        status:
+          type: string
+          enum: [live, delayed, stale, closed, demo, unavailable]
+        statusLabel:
+          type: string
+      required: [price, currency, source, sourceLabel, feed, publishTime, ageSeconds, confidence, status, statusLabel]
+    PremiumDiscount:
+      type: object
+      description: Token price versus the reference market
+      properties:
+        tokenPrice:
+          type: number
+          nullable: true
+        referencePrice:
+          type: number
+          nullable: true
+        referenceLabel:
+          type: string
+        differencePct:
+          type: number
+          nullable: true
+        direction:
+          type: string
+          enum: [premium, discount, par, unknown]
+      required: [tokenPrice, referencePrice, referenceLabel, differencePct, direction]
+    MultiplierInfo:
+      type: object
+      properties:
+        current:
+          type: number
+        pending:
+          type: number
+          nullable: true
+        pendingEffectiveAt:
+          type: string
+          format: date-time
+          nullable: true
+        observedAt:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          type: string
+          enum: [onchain, jupiter, backed, demo, none]
+      required: [current, pending, pendingEffectiveAt, observedAt, source]
+    Position:
+      type: object
+      properties:
+        mint:
+          type: string
+        symbol:
+          type: string
+        name:
+          type: string
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        underlyingSymbol:
+          type: string
+        assetClass:
+          type: string
+          enum: [equity, etf, private_company]
+        logoUrl:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+          description: Shares of exposure after the multiplier is applied
+        rawQuantity:
+          type: number
+          description: Raw token units divided by decimals, before the multiplier
+        multiplier:
+          $ref: "#/components/schemas/MultiplierInfo"
+        mark:
+          $ref: "#/components/schemas/Mark"
+        session:
+          $ref: "#/components/schemas/MarketSession"
+        premiumDiscount:
+          $ref: "#/components/schemas/PremiumDiscount"
+        marketValue:
+          type: number
+          nullable: true
+        costBasis:
+          type: number
+          nullable: true
+        averageCost:
+          type: number
+          nullable: true
+        unrealizedPnl:
+          type: number
+          nullable: true
+        unrealizedPnlPct:
+          type: number
+          nullable: true
+        realizedPnl:
+          type: number
+        incomeEstimate:
+          type: number
+          nullable: true
+          description: Value of multiplier growth on held lots since acquisition when reconstructable
+        basisStatus:
+          type: string
+          enum: [complete, partial, unknown]
+        basisNote:
+          type: string
+          nullable: true
+        openLots:
+          type: integer
+        weightPct:
+          type: number
+          nullable: true
+        dayChangePct:
+          type: number
+          nullable: true
+      required: [mint, symbol, name, issuer, underlyingSymbol, assetClass, logoUrl, quantity, rawQuantity, multiplier, mark, session, premiumDiscount, marketValue, costBasis, averageCost, unrealizedPnl, unrealizedPnlPct, realizedPnl, incomeEstimate, basisStatus, basisNote, openLots, weightPct, dayChangePct]
+    PortfolioTotals:
+      type: object
+      properties:
+        netValue:
+          type: number
+        costBasis:
+          type: number
+        unrealizedPnl:
+          type: number
+        unrealizedPnlPct:
+          type: number
+          nullable: true
+        realizedPnl:
+          type: number
+        realizedPnlYtd:
+          type: number
+        incomeEstimate:
+          type: number
+        feesPaid:
+          type: number
+        positionsCount:
+          type: integer
+        unpricedValueCount:
+          type: integer
+          description: Positions that could not be valued
+        unknownBasisCount:
+          type: integer
+      required: [netValue, costBasis, unrealizedPnl, unrealizedPnlPct, realizedPnl, realizedPnlYtd, incomeEstimate, feesPaid, positionsCount, unpricedValueCount, unknownBasisCount]
+    IssuerAllocation:
+      type: object
+      properties:
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        label:
+          type: string
+        marketValue:
+          type: number
+        weightPct:
+          type: number
+        positions:
+          type: integer
+      required: [issuer, label, marketValue, weightPct, positions]
+    Portfolio:
+      type: object
+      properties:
+        address:
+          type: string
+        displayAddress:
+          type: string
+        isDemo:
+          type: boolean
+        asOf:
+          type: string
+          format: date-time
+        method:
+          $ref: "#/components/schemas/CostMethod"
+        currency:
+          type: string
+        totals:
+          $ref: "#/components/schemas/PortfolioTotals"
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Position"
+        allocation:
+          type: array
+          items:
+            $ref: "#/components/schemas/IssuerAllocation"
+        pricing:
+          $ref: "#/components/schemas/PricingStatus"
+        walletStatus:
+          $ref: "#/components/schemas/WalletStatus"
+        assumptions:
+          type: array
+          items:
+            type: string
+      required: [address, displayAddress, isDemo, asOf, method, currency, totals, positions, allocation, pricing, walletStatus, assumptions]
+    Lot:
+      type: object
+      properties:
+        id:
+          type: string
+        mint:
+          type: string
+        symbol:
+          type: string
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        openedAt:
+          type: string
+          format: date-time
+        openSignature:
+          type: string
+          nullable: true
+        openKind:
+          type: string
+          enum: [buy, transfer_in, wrapper_swap, opening_balance]
+        quantity:
+          type: number
+          description: Original quantity of exposure at acquisition
+        remainingQuantity:
+          type: number
+        costPerShare:
+          type: number
+          nullable: true
+        costBasis:
+          type: number
+          nullable: true
+        remainingCostBasis:
+          type: number
+          nullable: true
+        marketValue:
+          type: number
+          nullable: true
+        unrealizedPnl:
+          type: number
+          nullable: true
+        realizedPnl:
+          type: number
+        holdingDays:
+          type: integer
+        term:
+          type: string
+          enum: [short, long]
+        status:
+          type: string
+          enum: [open, partial, closed]
+        basisStatus:
+          type: string
+          enum: [complete, estimated, unknown]
+        basisNote:
+          type: string
+          nullable: true
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+        explorerUrl:
+          type: string
+          nullable: true
+      required: [id, mint, symbol, issuer, openedAt, openSignature, openKind, quantity, remainingQuantity, costPerShare, costBasis, remainingCostBasis, marketValue, unrealizedPnl, realizedPnl, holdingDays, term, status, basisStatus, basisNote, closedAt, explorerUrl]
+    LotRelief:
+      type: object
+      description: Portion of a lot consumed by a disposal
+      properties:
+        lotId:
+          type: string
+        quantity:
+          type: number
+        costBasis:
+          type: number
+          nullable: true
+        proceeds:
+          type: number
+        realizedPnl:
+          type: number
+          nullable: true
+        term:
+          type: string
+          enum: [short, long]
+      required: [lotId, quantity, costBasis, proceeds, realizedPnl, term]
+    LedgerEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        signature:
+          type: string
+          nullable: true
+        slot:
+          type: integer
+          nullable: true
+        blockTime:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: [buy, sell, transfer_in, transfer_out, wrapper_swap_in, wrapper_swap_out, multiplier_change, unknown]
+        kindLabel:
+          type: string
+        mint:
+          type: string
+        symbol:
+          type: string
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        quantity:
+          type: number
+          description: Signed exposure change, positive for inflows
+        rawQuantity:
+          type: number
+        pricePerShare:
+          type: number
+          nullable: true
+        grossAmount:
+          type: number
+          nullable: true
+          description: Cash side of the trade in USD
+        fee:
+          type: number
+          nullable: true
+        counterAsset:
+          type: string
+          nullable: true
+        counterAmount:
+          type: number
+          nullable: true
+        realizedPnl:
+          type: number
+          nullable: true
+        reliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/LotRelief"
+        source:
+          $ref: "#/components/schemas/DataMode"
+        venue:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        explorerUrl:
+          type: string
+          nullable: true
+      required: [id, signature, slot, blockTime, kind, kindLabel, mint, symbol, issuer, quantity, rawQuantity, pricePerShare, grossAmount, fee, counterAsset, counterAmount, realizedPnl, reliefs, source, venue, note, explorerUrl]
+    ActivityPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerEvent"
+        nextCursor:
+          type: string
+          nullable: true
+        total:
+          type: integer
+      required: [items, nextCursor, total]
+    CorporateActionEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        mint:
+          type: string
+        symbol:
+          type: string
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        kind:
+          type: string
+          enum: [dividend_reinvested, stock_split, reverse_split, multiplier_change, pending_multiplier]
+        kindLabel:
+          type: string
+        previousMultiplier:
+          type: number
+        newMultiplier:
+          type: number
+        ratio:
+          type: number
+        effectiveAt:
+          type: string
+          format: date-time
+        detectedAt:
+          type: string
+          format: date-time
+        quantityBefore:
+          type: number
+          nullable: true
+        quantityAfter:
+          type: number
+          nullable: true
+        valueEffect:
+          type: number
+          nullable: true
+        confidence:
+          type: string
+          enum: [confirmed, inferred, scripted]
+        source:
+          type: string
+        note:
+          type: string
+        explorerUrl:
+          type: string
+          nullable: true
+      required: [id, mint, symbol, issuer, kind, kindLabel, previousMultiplier, newMultiplier, ratio, effectiveAt, detectedAt, quantityBefore, quantityAfter, valueEffect, confidence, source, note, explorerUrl]
+    PricingFeedStatus:
+      type: object
+      properties:
+        mint:
+          type: string
+        symbol:
+          type: string
+        wrapperFeed:
+          type: string
+          nullable: true
+        referenceFeed:
+          type: string
+          nullable: true
+        mark:
+          $ref: "#/components/schemas/Mark"
+        session:
+          $ref: "#/components/schemas/MarketSession"
+      required: [mint, symbol, wrapperFeed, referenceFeed, mark, session]
+    PricingStatus:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [pyth, jupiter, prestocks, mixed, demo, none]
+        providerLabel:
+          type: string
+        mode:
+          $ref: "#/components/schemas/DataMode"
+        headline:
+          type: string
+        detail:
+          type: string
+        asOf:
+          type: string
+          format: date-time
+        pythConfigured:
+          type: boolean
+        pythAuthorized:
+          type: boolean
+          nullable: true
+        feedsResolved:
+          type: integer
+        feedsTotal:
+          type: integer
+        usSession:
+          $ref: "#/components/schemas/MarketSession"
+        feeds:
+          type: array
+          items:
+            $ref: "#/components/schemas/PricingFeedStatus"
+      required: [provider, providerLabel, mode, headline, detail, asOf, pythConfigured, pythAuthorized, feedsResolved, feedsTotal, usSession, feeds]
+    StatementRequest:
+      type: object
+      properties:
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        method:
+          $ref: "#/components/schemas/CostMethod"
+        title:
+          type: string
+      required: [periodStart, periodEnd]
+    StatementSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        title:
+          type: string
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        method:
+          $ref: "#/components/schemas/CostMethod"
+        generatedAt:
+          type: string
+          format: date-time
+        hash:
+          type: string
+        closingValue:
+          type: number
+        realizedPnl:
+          type: number
+        proofStatus:
+          type: string
+          enum: [none, pending, confirmed, failed, simulated]
+      required: [id, address, title, periodStart, periodEnd, method, generatedAt, hash, closingValue, realizedPnl, proofStatus]
+    StatementPosition:
+      type: object
+      properties:
+        mint:
+          type: string
+        symbol:
+          type: string
+        name:
+          type: string
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        openingQuantity:
+          type: number
+        closingQuantity:
+          type: number
+        closingPrice:
+          type: number
+          nullable: true
+        priceSource:
+          type: string
+        closingValue:
+          type: number
+          nullable: true
+        costBasis:
+          type: number
+          nullable: true
+        unrealizedPnl:
+          type: number
+          nullable: true
+        realizedPnlInPeriod:
+          type: number
+        multiplier:
+          type: number
+        basisStatus:
+          type: string
+          enum: [complete, partial, unknown]
+      required: [mint, symbol, name, issuer, openingQuantity, closingQuantity, closingPrice, priceSource, closingValue, costBasis, unrealizedPnl, realizedPnlInPeriod, multiplier, basisStatus]
+    StatementTotals:
+      type: object
+      properties:
+        openingValue:
+          type: number
+          nullable: true
+        closingValue:
+          type: number
+        netContributions:
+          type: number
+          description: Cash in for buys and transfers in minus cash out for sells and transfers out
+        purchases:
+          type: number
+        proceeds:
+          type: number
+        transfersInValue:
+          type: number
+        transfersOutValue:
+          type: number
+        realizedPnl:
+          type: number
+        realizedShortTerm:
+          type: number
+        realizedLongTerm:
+          type: number
+        unrealizedPnl:
+          type: number
+        incomeEstimate:
+          type: number
+        fees:
+          type: number
+        tradesCount:
+          type: integer
+        corporateActionsCount:
+          type: integer
+      required: [openingValue, closingValue, netContributions, purchases, proceeds, transfersInValue, transfersOutValue, realizedPnl, realizedShortTerm, realizedLongTerm, unrealizedPnl, incomeEstimate, fees, tradesCount, corporateActionsCount]
+    StatementProof:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [none, pending, confirmed, failed, simulated]
+        kind:
+          type: string
+          enum: [onchain_memo, simulated, none]
+        hash:
+          type: string
+        memo:
+          type: string
+        signature:
+          type: string
+          nullable: true
+        slot:
+          type: integer
+          nullable: true
+        signer:
+          type: string
+          nullable: true
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        explorerUrl:
+          type: string
+          nullable: true
+        message:
+          type: string
+      required: [status, kind, hash, memo, signature, slot, signer, confirmedAt, explorerUrl, message]
+    Statement:
+      type: object
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        displayAddress:
+          type: string
+        isDemo:
+          type: boolean
+        title:
+          type: string
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        method:
+          $ref: "#/components/schemas/CostMethod"
+        generatedAt:
+          type: string
+          format: date-time
+        currency:
+          type: string
+        hash:
+          type: string
+        hashAlgorithm:
+          type: string
+        totals:
+          $ref: "#/components/schemas/StatementTotals"
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatementPosition"
+        activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerEvent"
+        corporateActions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CorporateActionEvent"
+        closedLots:
+          type: array
+          items:
+            $ref: "#/components/schemas/LotRelief"
+        pricing:
+          $ref: "#/components/schemas/PricingStatus"
+        assumptions:
+          type: array
+          items:
+            type: string
+        dataSources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceStatus"
+        proof:
+          $ref: "#/components/schemas/StatementProof"
+        csvUrl:
+          type: string
+        pdfUrl:
+          type: string
+      required: [id, address, displayAddress, isDemo, title, periodStart, periodEnd, method, generatedAt, currency, hash, hashAlgorithm, totals, positions, activity, corporateActions, closedLots, pricing, assumptions, dataSources, proof, csvUrl, pdfUrl]
+    NotarizationPayload:
+      type: object
+      properties:
+        statementId:
+          type: string
+        hash:
+          type: string
+        memo:
+          type: string
+          description: Exact UTF-8 memo the wallet must sign
+        memoProgramId:
+          type: string
+        cluster:
+          type: string
+        mode:
+          type: string
+          enum: [onchain, simulated]
+        instructions:
+          type: string
+        transaction:
+          type: string
+          nullable: true
+          description: Base64 encoded unsigned versioned transaction containing the memo, present when payer was supplied and mode is onchain
+        lastValidBlockHeight:
+          type: integer
+          nullable: true
+        proof:
+          $ref: "#/components/schemas/StatementProof"
+      required: [statementId, hash, memo, memoProgramId, cluster, mode, instructions, transaction, lastValidBlockHeight, proof]
+    NotarizationSubmission:
+      type: object
+      properties:
+        signature:
+          type: string
+          nullable: true
+          description: Signature of the memo transaction sent by the wallet
+        simulate:
+          type: boolean
+          description: Create a clearly labelled simulated proof instead of verifying on chain
+      required: [simulate]
+    TradeQuoteRequest:
+      type: object
+      properties:
+        mint:
+          type: string
+        quantity:
+          type: number
+          description: Exposure quantity to sell, after multiplier
+        method:
+          $ref: "#/components/schemas/CostMethod"
+        slippageBps:
+          type: integer
+        outputMint:
+          type: string
+          description: Defaults to USDC
+      required: [mint, quantity]
+    TradeQuote:
+      type: object
+      properties:
+        quoteId:
+          type: string
+        address:
+          type: string
+        mint:
+          type: string
+        symbol:
+          type: string
+        issuer:
+          $ref: "#/components/schemas/IssuerId"
+        side:
+          type: string
+          enum: [sell]
+        quantity:
+          type: number
+        rawAmount:
+          type: string
+          description: Raw token units as an integer string
+        outputMint:
+          type: string
+        outputSymbol:
+          type: string
+        expectedProceeds:
+          type: number
+        minimumProceeds:
+          type: number
+        pricePerShare:
+          type: number
+        referencePrice:
+          type: number
+          nullable: true
+        priceImpactPct:
+          type: number
+          nullable: true
+        slippageBps:
+          type: integer
+        route:
+          type: array
+          items:
+            type: string
+        mode:
+          $ref: "#/components/schemas/DataMode"
+        modeLabel:
+          type: string
+        canExecuteOnChain:
+          type: boolean
+        blockedReason:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        estimatedRealizedPnl:
+          type: number
+          nullable: true
+        reliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/LotRelief"
+        session:
+          $ref: "#/components/schemas/MarketSession"
+        warnings:
+          type: array
+          items:
+            type: string
+      required: [quoteId, address, mint, symbol, issuer, side, quantity, rawAmount, outputMint, outputSymbol, expectedProceeds, minimumProceeds, pricePerShare, referencePrice, priceImpactPct, slippageBps, route, mode, modeLabel, canExecuteOnChain, blockedReason, expiresAt, estimatedRealizedPnl, reliefs, session, warnings]
+    TradePrepareRequest:
+      type: object
+      properties:
+        quoteId:
+          type: string
+        userPublicKey:
+          type: string
+      required: [quoteId, userPublicKey]
+    TradeTransaction:
+      type: object
+      properties:
+        quoteId:
+          type: string
+        swapTransaction:
+          type: string
+          description: Base64 encoded versioned transaction to sign
+        lastValidBlockHeight:
+          type: integer
+        rpcUrl:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required: [quoteId, swapTransaction, lastValidBlockHeight, rpcUrl, expiresAt]
+    TradeConfirmRequest:
+      type: object
+      properties:
+        quoteId:
+          type: string
+        signature:
+          type: string
+      required: [quoteId, signature]
+    TradeSimulateRequest:
+      type: object
+      properties:
+        quoteId:
+          type: string
+      required: [quoteId]
+    TradeResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [confirmed, simulated, pending, failed]
+        mode:
+          $ref: "#/components/schemas/DataMode"
+        signature:
+          type: string
+          nullable: true
+        explorerUrl:
+          type: string
+          nullable: true
+        event:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/LedgerEvent"
+        realizedPnl:
+          type: number
+          nullable: true
+        proceeds:
+          type: number
+        message:
+          type: string
+        walletStatus:
+          $ref: "#/components/schemas/WalletStatus"
+      required: [status, mode, signature, explorerUrl, event, realizedPnl, proceeds, message, walletStatus]

@@ -1,0 +1,24 @@
+{
+  "capturedAt": "2026-09-19T10:40:00Z",
+  "note": "Fallback marks for demo wallets when live price sources are unreachable. Captured from Jupiter and PreStocks.",
+  "prices": {
+    "AAPLx": { "price": 334.43, "referencePrice": 334.875, "dayChangePct": -0.70 },
+    "AAPLon": { "price": 334.47, "referencePrice": 334.875, "dayChangePct": -0.83 },
+    "NVDAx": { "price": 222.24, "referencePrice": 222.53, "dayChangePct": 0.61 },
+    "SPYx": { "price": 762.30, "referencePrice": 761.69, "dayChangePct": -0.08 },
+    "QQQx": { "price": 720.63, "referencePrice": 722.05, "dayChangePct": 0.08 },
+    "MSFTon": { "price": 492.56, "referencePrice": 493.99, "dayChangePct": -2.65 },
+    "TSLAx": { "price": 364.41, "referencePrice": 364.18, "dayChangePct": -1.12 },
+    "COINx": { "price": 194.58, "referencePrice": 194.60, "dayChangePct": 8.46 },
+    "HOODx": { "price": 119.43, "referencePrice": 119.91, "dayChangePct": 6.08 },
+    "CRCLx": { "price": 91.88, "referencePrice": 91.59, "dayChangePct": 4.46 },
+    "MSTRx": { "price": 156.18, "referencePrice": 153.19, "dayChangePct": 13.41 },
+    "METAx": { "price": 667.79, "referencePrice": 668.51, "dayChangePct": -2.66 },
+    "GOOGLx": { "price": 348.83, "referencePrice": 350.86, "dayChangePct": -1.60 },
+    "AMZNx": { "price": 253.49, "referencePrice": 254.25, "dayChangePct": 0.57 },
+    "MSFTx": { "price": 493.63, "referencePrice": 493.99, "dayChangePct": -0.64 },
+    "SPACEX": { "price": 115.71, "referencePrice": 152.72, "dayChangePct": -7.43 },
+    "OPENAI": { "price": 1135.02, "referencePrice": 984.86, "dayChangePct": 5.34 },
+    "ANTHROPIC": { "price": 1002.20, "referencePrice": 1021.44, "dayChangePct": -0.97 }
+  }
+}
