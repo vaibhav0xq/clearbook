@@ -9,6 +9,7 @@ import { reliefRank, type StrataColumn } from "./strata-data";
 import {
   COLOR_AMBER,
   COLOR_EDGE,
+  DprGovernor,
   Dust,
   Ground,
   LayerTooltipCard,
@@ -18,6 +19,7 @@ import {
   SceneLights,
   WIDTH,
   faceVisibility,
+  useDprCap,
   useLayout,
   type LayerPlacement,
 } from "./strata-scene";
@@ -593,14 +595,16 @@ function StoryLayers({
 }
 
 export default function StoryScene({ lowPower = false, reduced = false, frameloop = "always", ...props }: StorySceneProps) {
+  const [dprCap, lowerDpr] = useDprCap(lowPower);
   return (
     <Canvas
-      dpr={lowPower ? [1, 1.25] : [1, 1.75]}
+      dpr={[1, dprCap]}
       frameloop={frameloop}
       camera={{ position: [0, 3.4, 12], fov: 30, near: 0.1, far: 120 }}
       gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
       style={{ background: "transparent" }}
     >
+      <DprGovernor onSlow={lowerDpr} />
       <SceneLights />
       <group position={[0, -0.02, 0]}>
         <StoryLayers {...props} reduced={reduced} />

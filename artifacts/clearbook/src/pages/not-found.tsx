@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
-import { Brand } from "@/components/layout/shell";
+import { Brand } from "@/components/layout/brand";
 import { Reveal } from "@/components/motion/reveal";
 
 export default function NotFound() {

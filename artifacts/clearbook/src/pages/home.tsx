@@ -24,7 +24,7 @@ import { WalletConnectButton } from "@/components/wallet-connect-button";
 import { useWalletSession } from "@/lib/wallet";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { formatUSD, formatQuantity } from "@/lib/format";
-import { Brand } from "@/components/layout/shell";
+import { Brand } from "@/components/layout/brand";
 import { Story } from "@/components/three/story";
 import { buildStrata } from "@/components/three/strata-data";
 import {
@@ -192,6 +192,18 @@ export default function Home() {
     const c = chapterAt(p);
     if (c !== chapter) setChapter(c);
   });
+
+  // The wallet pages are a separate chunk. Fetch it once the landing is idle so opening a ledger
+  // does not wait on the network.
+  useEffect(() => {
+    const prefetch = () => void import("@/pages/wallet-section");
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(prefetch, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(prefetch, 2500);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const columns = useMemo(() => (demoPortfolio ? buildStrata(demoPortfolio.positions, demoLots) : []), [demoPortfolio, demoLots]);
   // Without lot data buildStrata shows one aggregate layer per position, which is the balance view, not a lot view.

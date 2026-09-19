@@ -1,22 +1,18 @@
-import { type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import { WalletSessionProvider } from '@/lib/wallet';
-import { Shell } from '@/components/layout/shell';
 
 import Home from '@/pages/home';
-import Portfolio from '@/pages/portfolio';
-import Lots from '@/pages/lots';
-import Activity from '@/pages/activity';
-import Events from '@/pages/events';
-import Statements from '@/pages/statements';
-import StatementDetail from '@/pages/statement-detail';
-import Trade from '@/pages/trade';
-import Methodology from '@/pages/methodology';
 import NotFound from '@/pages/not-found';
+
+// The landing page ships in the main bundle. The wallet section and the methodology page load on
+// first navigation, so a visitor pays only for the page in front of them.
+const WalletSection = lazy(() => import('@/pages/wallet-section'));
+const Methodology = lazy(() => import('@/pages/methodology'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,44 +24,32 @@ const queryClient = new QueryClient({
         return failureCount < 1;
       },
       refetchOnWindowFocus: false,
+      // Moving between wallet pages reuses the ledger fetched moments ago instead of showing
+      // skeletons again. Mutations invalidate explicitly through invalidateWalletQueries.
+      staleTime: 20_000,
     },
   },
 });
 
-/**
- * Every wallet page renders inside one Shell so the ledger stage (the WebGL view of the lots) stays
- * mounted while the reading panel changes. The inner switch keeps absolute paths so the pages can
- * keep reading their params with useRoute.
- */
-function WalletPages() {
+/** Shown for the moment a route chunk takes to arrive. The page background is already dark. */
+function RouteFallback() {
   return (
-    <Switch>
-      <Route path="/w/:address/statements/:statementId" component={StatementDetail} />
-      <Route path="/w/:address/statements" component={Statements} />
-      <Route path="/w/:address/lots" component={Lots} />
-      <Route path="/w/:address/activity" component={Activity} />
-      <Route path="/w/:address/events" component={Events} />
-      <Route path="/w/:address/trade" component={Trade} />
-      <Route path="/w/:address" component={Portfolio} />
-      <Route component={NotFound} />
-    </Switch>
+    <div className="min-h-screen" aria-busy="true">
+      <span className="label fixed bottom-5 left-5 text-foreground/40">Loading</span>
+    </div>
   );
 }
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/methodology" component={Methodology} />
-      <Route path="/w/:address/*?">
-        {(params) => (
-          <Shell address={params.address ?? ''}>
-            <WalletPages />
-          </Shell>
-        )}
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<RouteFallback />}>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/methodology" component={Methodology} />
+        <Route path="/w/:address/*?">{(params) => <WalletSection address={params.address ?? ''} />}</Route>
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

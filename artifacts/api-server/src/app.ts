@@ -1,4 +1,5 @@
 import express, { type Express } from "express";
+import compression from "compression";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
@@ -27,6 +28,8 @@ app.use(
   }),
 );
 app.use(cors());
+// Ledger and asset responses are large JSON that compresses about ten to one.
+app.use(compression({ threshold: 1024 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

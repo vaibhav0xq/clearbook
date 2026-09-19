@@ -1,5 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { warmPricing } from "./services/pricing";
+import { warmDemoLedgers } from "./services/portfolio";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +24,7 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  // Both warm ups are independent. Upstream requests for the same mint are shared, so running
+  // them together does not repeat work.
+  void Promise.all([warmPricing(), warmDemoLedgers()]);
 });

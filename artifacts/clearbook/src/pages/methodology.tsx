@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { useListIssuers, useListAssets, useGetAppConfig } from "@workspace/api-client-react";
 import { ArrowLeft } from "lucide-react";
-import { Brand } from "@/components/layout/shell";
+import { Brand } from "@/components/layout/brand";
 import { Reveal } from "@/components/motion/reveal";
 import { Panel, Pill, Skeleton } from "@/components/surface";
 

@@ -2,6 +2,7 @@ import {
   deriveCorporateActions,
   getAsset,
   getDemoWallet,
+  DEMO_IDS,
   isDemoId,
   issuerLabel,
   rawToUi,
@@ -20,6 +21,7 @@ import {
 import type { Wallet } from "@workspace/db";
 import { env } from "../lib/env";
 import { explorerTxUrl, shortAddress } from "../lib/http";
+import { logger } from "../lib/logger";
 import { ensureWallet } from "./indexer";
 import { priceMints, type MarkBundle, type MultiplierView, type PricingSnapshot } from "./pricing";
 import { countEvents, listMultiplierObservations, recordMultiplier } from "./store";
@@ -75,6 +77,23 @@ function demoMultiplierOverrides(address: string): Map<string, MultiplierView> {
     }
   }
   return out;
+}
+
+/**
+ * Opens the demo ledgers once at startup. The first database query of a process pays the connection
+ * handshake and the demo events are seeded on first use, so this keeps that cost off the first visitor.
+ */
+export async function warmDemoLedgers(): Promise<void> {
+  let warmed = 0;
+  for (const id of DEMO_IDS) {
+    try {
+      await loadContext(id, "fifo");
+      warmed++;
+    } catch (err) {
+      logger.warn({ err, wallet: id }, "Demo ledger warm up failed");
+    }
+  }
+  logger.info({ warmed, total: DEMO_IDS.length }, "Demo ledgers warmed");
 }
 
 export async function loadContext(address: string, method: CostMethod): Promise<WalletContext> {

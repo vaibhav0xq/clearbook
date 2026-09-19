@@ -820,15 +820,78 @@ export function SceneEffects({ lowPower }: { lowPower: boolean }) {
   );
 }
 
+/**
+ * Pixel ratio cap for the canvas. It starts at the full cap and only steps down, by a quarter at a
+ * time, when DprGovernor reports a sustained frame rate drop. A strong GPU never sees a change.
+ */
+export function useDprCap(lowPower: boolean) {
+  const max = lowPower ? 1.25 : 1.75;
+  const [cap, setCap] = useState(max);
+  useEffect(() => setCap(max), [max]);
+  const lower = useCallback(() => setCap((c) => Math.max(1, Math.round(c * 75) / 100)), []);
+  return [cap, lower] as const;
+}
+
+const GOVERNOR_WARMUP_MS = 4000;
+const GOVERNOR_WINDOW_MS = 1000;
+const GOVERNOR_MIN_FPS = 30;
+const GOVERNOR_SLOW_WINDOWS = 3;
+
+/**
+ * Watches the frame rate from inside the canvas and calls onSlow after three consecutive seconds
+ * under 30 fps. The first seconds are skipped because shader compilation stalls every GPU, windows
+ * interrupted by a hidden tab or a paused frameloop are discarded rather than counted as slow, and
+ * a display that simply runs at its refresh rate never trips it.
+ */
+export function DprGovernor({ onSlow }: { onSlow: () => void }) {
+  const state = useRef({ start: -1, windowStart: 0, frames: 0, slowWindows: 0 });
+  useFrame(() => {
+    const s = state.current;
+    const now = performance.now();
+    if (s.start < 0) {
+      s.start = now;
+      s.windowStart = now;
+      return;
+    }
+    if (now - s.start < GOVERNOR_WARMUP_MS) {
+      s.windowStart = now;
+      s.frames = 0;
+      return;
+    }
+    s.frames++;
+    const elapsed = now - s.windowStart;
+    if (elapsed < GOVERNOR_WINDOW_MS) return;
+    const fps = (s.frames * 1000) / elapsed;
+    const interrupted = elapsed > GOVERNOR_WINDOW_MS * 2 || document.visibilityState !== "visible";
+    s.frames = 0;
+    s.windowStart = now;
+    if (interrupted) {
+      s.slowWindows = 0;
+      return;
+    }
+    if (fps >= GOVERNOR_MIN_FPS) {
+      s.slowWindows = 0;
+      return;
+    }
+    if (++s.slowWindows >= GOVERNOR_SLOW_WINDOWS) {
+      s.slowWindows = 0;
+      onSlow();
+    }
+  });
+  return null;
+}
+
 export default function StrataScene({ lowPower = false, reduced = false, frameloop = "always", ...props }: StrataSceneProps) {
+  const [dprCap, lowerDpr] = useDprCap(lowPower);
   return (
     <Canvas
-      dpr={lowPower ? [1, 1.25] : [1, 1.75]}
+      dpr={[1, dprCap]}
       frameloop={frameloop}
       camera={{ position: [4, 3.4, 12], fov: 30, near: 0.1, far: 80 }}
       gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
       style={{ background: "transparent" }}
     >
+      <DprGovernor onSlow={lowerDpr} />
       <SceneLights />
       <group position={[0, -0.02, 0]}>
         <Layers {...props} reduced={reduced} />

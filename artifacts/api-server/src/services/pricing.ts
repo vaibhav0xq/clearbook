@@ -1,9 +1,12 @@
 import {
+  DEMO_IDS,
   DEMO_PRICES,
   US_EQUITY_SESSIONS,
   continuousSession,
   getAsset,
+  getDemoWallet,
   getPythFeed,
+  listAssets,
   sessionAt,
   unknownSession,
   venueName,
@@ -111,6 +114,13 @@ interface CacheEntry<T> {
 }
 
 const TTL_MS = 20_000;
+/**
+ * Prices older than TTL_MS but younger than this are served at once and refreshed in the
+ * background, so a visitor never waits on Jupiter or PreStocks once the cache is warm. The age
+ * shown next to each mark is the time the price was fetched, so a served-from-cache price is
+ * still reported honestly. The limit stays under the 90 second "live" threshold in statusFor.
+ */
+const SERVE_STALE_MS = 60_000;
 const MULTIPLIER_TTL_MS = 60_000;
 
 const jupiterCache = new Map<string, CacheEntry<JupiterPrice | null>>();
@@ -162,38 +172,128 @@ function statusFor(source: MarkView["source"], publishTime: Date | null, now: Da
   return { status: "stale", statusLabel: "Stale", ageSeconds };
 }
 
-async function fetchJupiter(mints: string[]): Promise<Map<string, JupiterPrice | null>> {
-  const out = new Map<string, JupiterPrice | null>();
-  const now = Date.now();
-  const missing: string[] = [];
-  for (const m of mints) {
-    const c = jupiterCache.get(m);
-    if (c && now - c.at < TTL_MS) out.set(m, c.value);
-    else missing.push(m);
-  }
-  for (let i = 0; i < missing.length; i += 50) {
-    const chunk = missing.slice(i, i + 50);
+/** A cached upstream value with the time its request started, kept together so ages stay honest. */
+export type Observed<T> = Readonly<CacheEntry<T>>;
+
+const jupiterInflight = new Map<string, Promise<void>>();
+let prestocksInflight: Promise<Observed<Map<string, PreStocksEntry>>> | null = null;
+
+async function loadJupiter(mints: string[]): Promise<void> {
+  for (let i = 0; i < mints.length; i += 50) {
+    const chunk = mints.slice(i, i + 50);
+    // Stamped before the request so the reported age is never younger than the price.
+    const at = Date.now();
     const json = await fetchJson<Record<string, JupiterPrice | null>>(
       `https://lite-api.jup.ag/price/v3?ids=${chunk.join(",")}`,
       { timeoutMs: 8_000 },
     );
-    for (const m of chunk) {
-      const v = json[m] ?? null;
-      jupiterCache.set(m, { at: now, value: v });
-      out.set(m, v);
-    }
+    for (const m of chunk) jupiterCache.set(m, { at, value: json[m] ?? null });
+  }
+}
+
+/**
+ * Loads the given mints, joining any request already in flight for a mint instead of repeating it.
+ * Chunks go out one after another so a large warm up does not burst the endpoint, and each mint is
+ * released as soon as its own chunk lands rather than when the whole list is done.
+ */
+function loadJupiterShared(mints: string[]): Promise<void> {
+  const waits: Promise<void>[] = [];
+  const fresh: string[] = [];
+  for (const m of mints) {
+    const inflight = jupiterInflight.get(m);
+    if (inflight) waits.push(inflight);
+    else fresh.push(m);
+  }
+  let previous: Promise<void> = Promise.resolve();
+  for (let i = 0; i < fresh.length; i += 50) {
+    const chunk = fresh.slice(i, i + 50);
+    const load: Promise<void> = previous
+      .then(() => loadJupiter(chunk))
+      .finally(() => {
+        for (const m of chunk) if (jupiterInflight.get(m) === load) jupiterInflight.delete(m);
+      });
+    previous = load.catch(() => undefined);
+    for (const m of chunk) jupiterInflight.set(m, load);
+    waits.push(load);
+  }
+  return Promise.all(waits).then(() => undefined);
+}
+
+/**
+ * Jupiter prices for the given mints. Fresh cache entries are returned as they are, entries older
+ * than TTL_MS but younger than SERVE_STALE_MS are returned at once while a refresh runs in the
+ * background, and anything older is fetched before returning. Each entry carries its own fetch
+ * time, so a background refresh landing mid request cannot make an older price look newer.
+ */
+async function fetchJupiter(mints: string[]): Promise<Map<string, Observed<JupiterPrice | null>>> {
+  const now = Date.now();
+  const missing: string[] = [];
+  const stale: string[] = [];
+  for (const m of mints) {
+    const c = jupiterCache.get(m);
+    if (!c || now - c.at >= SERVE_STALE_MS) missing.push(m);
+    else if (now - c.at >= TTL_MS) stale.push(m);
+  }
+  if (missing.length) await loadJupiterShared(missing);
+  if (stale.length) {
+    loadJupiterShared(stale).catch((err) => logger.warn({ err: reason(err) }, "Background Jupiter refresh failed"));
+  }
+  const out = new Map<string, Observed<JupiterPrice | null>>();
+  for (const m of mints) {
+    const c = jupiterCache.get(m);
+    if (c) out.set(m, c);
   }
   return out;
 }
 
-async function fetchPreStocks(): Promise<Map<string, PreStocksEntry>> {
+function loadPreStocks(): Promise<Observed<Map<string, PreStocksEntry>>> {
+  if (prestocksInflight) return prestocksInflight;
+  const at = Date.now();
+  const load = fetchJson<PreStocksEntry[]>("https://prestocks.com/api/prestocks", { timeoutMs: 8_000 })
+    .then((list) => {
+      const map = new Map<string, PreStocksEntry>();
+      for (const e of list) map.set(e.contract_address, e);
+      const entry: Observed<Map<string, PreStocksEntry>> = { at, value: map };
+      prestocksCache = entry;
+      return entry;
+    })
+    .finally(() => {
+      if (prestocksInflight === load) prestocksInflight = null;
+    });
+  prestocksInflight = load;
+  return load;
+}
+
+/** The PreStocks price list with the same fresh, serve stale and refetch rules as fetchJupiter. */
+async function fetchPreStocks(): Promise<Observed<Map<string, PreStocksEntry>>> {
   const now = Date.now();
-  if (prestocksCache && now - prestocksCache.at < TTL_MS) return prestocksCache.value;
-  const list = await fetchJson<PreStocksEntry[]>("https://prestocks.com/api/prestocks", { timeoutMs: 8_000 });
-  const map = new Map<string, PreStocksEntry>();
-  for (const e of list) map.set(e.contract_address, e);
-  prestocksCache = { at: now, value: map };
-  return map;
+  const cached = prestocksCache;
+  if (cached && now - cached.at < TTL_MS) return cached;
+  if (cached && now - cached.at < SERVE_STALE_MS) {
+    loadPreStocks().catch((err) => logger.warn({ err: reason(err) }, "Background PreStocks refresh failed"));
+    return cached;
+  }
+  return loadPreStocks();
+}
+
+/**
+ * Fills the price caches for every registry asset. Called once at startup so the first visitor
+ * gets a warm response; failures are logged and the next request fetches on demand.
+ */
+export async function warmPricing(): Promise<void> {
+  // The demo ledgers are the first thing a visitor opens, so their mints go out first.
+  const demoMints = new Set(DEMO_IDS.flatMap((id) => getDemoWallet(id)?.events.map((e) => e.mint) ?? []));
+  const mints = listAssets()
+    .map((a) => a.mint)
+    .sort((a, b) => Number(demoMints.has(b)) - Number(demoMints.has(a)));
+  if (!mints.length) return;
+  try {
+    const snapshot = await priceMints(mints);
+    if (snapshot.errors.length) logger.warn({ errors: snapshot.errors }, "Price warm up finished with errors");
+    else logger.info({ mints: mints.length }, "Price caches warmed");
+  } catch (err) {
+    logger.warn({ err: reason(err) }, "Price warm up failed");
+  }
 }
 
 interface LazerFeed {
@@ -257,7 +357,7 @@ async function fetchPyth(feedSymbols: string[]): Promise<Map<string, RawQuote>> 
   return out;
 }
 
-async function readMultipliers(assets: RegistryAsset[], jupiter: Map<string, JupiterPrice | null>, now: Date): Promise<Map<string, MultiplierView>> {
+async function readMultipliers(assets: RegistryAsset[], jupiter: Map<string, Observed<JupiterPrice | null>>, now: Date): Promise<Map<string, MultiplierView>> {
   const out = new Map<string, MultiplierView>();
   const missing: RegistryAsset[] = [];
   for (const a of assets) {
@@ -288,7 +388,7 @@ async function readMultipliers(assets: RegistryAsset[], jupiter: Map<string, Jup
   }
   for (const a of assets) {
     if (out.has(a.mint)) continue;
-    const j = jupiter.get(a.mint);
+    const j = jupiter.get(a.mint)?.value;
     const cfg = j?.scaledUiConfig;
     if (cfg && typeof cfg.multiplier === "number") {
       const effAt = cfg.newMultiplierEffectiveAt ? new Date(cfg.newMultiplierEffectiveAt) : null;
@@ -325,15 +425,15 @@ export async function priceMints(mints: string[], options: PricingOptions = {}):
   const errors: string[] = [];
 
   const [jupiterResult, prestocksResult, pythResult] = await Promise.allSettled([
-    assets.length ? fetchJupiter(assets.map((a) => a.mint)) : Promise.resolve(new Map<string, JupiterPrice | null>()),
-    assets.some((a) => a.issuer === "prestocks") ? fetchPreStocks() : Promise.resolve(new Map<string, PreStocksEntry>()),
+    assets.length ? fetchJupiter(assets.map((a) => a.mint)) : Promise.resolve(new Map<string, Observed<JupiterPrice | null>>()),
+    assets.some((a) => a.issuer === "prestocks") ? fetchPreStocks() : Promise.resolve<Observed<Map<string, PreStocksEntry>> | null>(null),
     fetchPyth([
       ...new Set(assets.flatMap((a) => [a.pythWrapperFeed, a.pythEquityFeed].filter((f): f is string => !!f))),
     ]),
   ]);
-  const jupiter = jupiterResult.status === "fulfilled" ? jupiterResult.value : new Map<string, JupiterPrice | null>();
+  const jupiter = jupiterResult.status === "fulfilled" ? jupiterResult.value : new Map<string, Observed<JupiterPrice | null>>();
   if (jupiterResult.status === "rejected") errors.push(`Jupiter: ${reason(jupiterResult.reason)}`);
-  const prestocks = prestocksResult.status === "fulfilled" ? prestocksResult.value : new Map<string, PreStocksEntry>();
+  const prestocks = prestocksResult.status === "fulfilled" ? prestocksResult.value : null;
   if (prestocksResult.status === "rejected") errors.push(`PreStocks: ${reason(prestocksResult.reason)}`);
   const pyth = pythResult.status === "fulfilled" ? pythResult.value : new Map<string, RawQuote>();
   if (pythLastError && env.pythApiKey) errors.push(`Pyth: ${pythLastError}`);
@@ -344,8 +444,9 @@ export async function priceMints(mints: string[], options: PricingOptions = {}):
 
   for (const asset of assets) {
     const session = sessionForAsset(asset, now);
-    const j = jupiter.get(asset.mint) ?? null;
-    const p = asset.issuer === "prestocks" ? prestocks.get(asset.mint) ?? null : null;
+    const jupiterEntry = jupiter.get(asset.mint) ?? null;
+    const j = jupiterEntry?.value ?? null;
+    const p = asset.issuer === "prestocks" ? prestocks?.value.get(asset.mint) ?? null : null;
     const pythWrapper = asset.pythWrapperFeed ? pyth.get(asset.pythWrapperFeed) ?? null : null;
     const pythEquity = asset.pythEquityFeed ? pyth.get(asset.pythEquityFeed) ?? null : null;
 
@@ -367,12 +468,12 @@ export async function priceMints(mints: string[], options: PricingOptions = {}):
       source = "jupiter";
       sourceLabel = "Jupiter";
       price = j.usdPrice;
-      publishTime = now;
+      publishTime = jupiterEntry ? new Date(jupiterEntry.at) : now;
     } else if (p && p.tokenPrice > 0) {
       source = "prestocks";
       sourceLabel = "PreStocks";
       price = p.tokenPrice;
-      publishTime = now;
+      publishTime = prestocks ? new Date(prestocks.at) : now;
     } else if (options.allowDemoFallback && DEMO_PRICES.prices[asset.symbol]) {
       source = "demo";
       sourceLabel = "Demo snapshot";
