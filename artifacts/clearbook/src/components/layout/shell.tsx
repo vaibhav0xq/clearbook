@@ -31,7 +31,7 @@ export function Brand({ className }: { className?: string }) {
         <span className="absolute left-0 top-[10px] h-[5px] w-6 rounded-[2px] bg-primary transition-transform duration-500 ease-out-expo group-hover:-translate-x-[3px]" />
         <span className="absolute left-0 top-[17px] h-[5px] w-6 rounded-[2px] bg-foreground/50 transition-transform duration-500 ease-out-expo group-hover:translate-x-[2px]" />
       </span>
-      <span className="font-serif text-[22px] leading-none tracking-tight text-foreground">Clearbook</span>
+      <span className="wordmark text-[15px] leading-none text-foreground">Clearbook</span>
     </Link>
   );
 }

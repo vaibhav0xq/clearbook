@@ -13,9 +13,27 @@ changes. Switching the cost method sends an amber pulse through the layers in
 the order a sale would relieve them. The trade page lifts the layers a sale
 would take.
 
-Everything else in the product supports that idea: dark glass surfaces,
-hairline rules, a single phosphor amber accent, serif display type for
-statements and mono type for numbers.
+Everything else in the product supports that idea: a neutral near black
+field, hairline rules, a single signal amber accent, a wide light grotesk for
+display type and mono type for numbers.
+
+## Landing page (src/pages/home.tsx)
+
+The landing is one pinned scene, not a page of sections. A 7 x 108vh scroll
+container holds a sticky viewport with `Story` (src/components/three/story.tsx)
+and seven short copy overlays. Scroll progress is a framer `MotionValue` passed
+into the scene and read in `useFrame`, so nothing on the landing animates on a
+timer except the first headline. Every visual state is a pure function of
+progress in `src/components/three/story-data.ts` (`split`, `reliefStory`,
+`dividendWave`, `colorize`, `scan`, `copyVisibility`) and both the scene and
+the DOM copy call the same functions. Chapters: Balance (one grey block per
+position), Lots (the block splits into dated layers), Relief (the same sale
+walked through FIFO, LIFO and HIFO with the realized figure), Income (the
+multiplier change as an amber band), Marks (P/L colours flood in, net value
+counts up), Proof (a beam sweeps the columns while the statement hash reveals)
+and Open (address input, demo ledgers, wallet). Copy budget is about a hundred
+words in total. Keep it that way: one eyebrow, one headline, at most one
+sentence and one live figure per chapter.
 
 ## Tokens (already defined in src/index.css, do not redefine)
 
@@ -25,18 +43,21 @@ statements and mono type for numbers.
 - `text-success` mint and `text-destructive` coral. Only for signed deltas and
   status. Never decorative.
 - `text-muted-foreground` for secondary copy.
-- Fonts: `.display` (Instrument Serif, headings and hero numbers in prose
-  contexts), default sans (Geist, body and UI), `.num` (Geist Mono, every
-  number, address, hash, timestamp and ticker symbol).
+- Fonts: `.display` (Archivo variable, normal width, page and section
+  headings), `.display-wide` (Archivo at 122% width and light weight, landing
+  headlines only), `.wordmark` (Archivo wide caps, the brand), default sans
+  (Geist, body and UI), `.num` (Geist Mono, every number, address, hash,
+  timestamp and ticker symbol), `.eyebrow` (mono uppercase tracked label).
+- No italic accent words, no text glows, no glass cards on the landing.
 
 ## Utilities (src/index.css)
 
 `.glass` and `.glass-strong` (panel surfaces), `.hairline` (1px border colour,
 use with `border`), `.grain` (film grain overlay, absolute positioned child),
 `.grid-lines`, `.shimmer` (loading), `.label` (10px uppercase tracked label),
-`.row-hover` (table row hover with amber left rule), `.amber-glow`,
-`.ring-glow` (focus ring), `.ticker` (marquee), `ease-out-expo`,
-`animate-pulse-dot`, `animate-sweep`.
+`.row-hover` (table row hover with amber left rule), `.ring-glow` (focus
+ring), `.ticker` (marquee), `ease-out-expo`, `animate-pulse-dot`,
+`animate-sweep`, `animate-cue` (scroll cue).
 
 ## Components (reuse, do not modify)
 
@@ -56,6 +77,10 @@ use with `border`), `.grain` (film grain overlay, absolute positioned child),
 - `@/components/three/strata-data`: `buildStrata(positions, lots)`,
   `reliefOrder(column, method)`, `reliefPreview(column, method, quantity)`,
   `reliefRank(column, method)`.
+- `@/components/three/story`: `Story` (props: columns, progress MotionValue,
+  featuredMint, incomeMint, onSelectColumn, className). Landing only.
+  `story-scene.tsx` reuses `useLayout`, `Ground`, `SceneLights`, `Dust` and
+  `LayerTooltipCard` from `strata-scene.tsx`.
 - `@/components/layout/shell`: `Shell` (wallet pages), `Brand`,
   `CostMethodControl`.
 - `@/lib/format`: `formatUSD`, `formatQuantity`, `formatPercent`,

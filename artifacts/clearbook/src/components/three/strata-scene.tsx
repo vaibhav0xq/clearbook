@@ -24,20 +24,20 @@ export interface StrataSceneProps {
   frameloop?: "always" | "never";
 }
 
-const PITCH = 1.6;
-const WIDTH = 0.92;
-const GAP = 0.06;
+export const PITCH = 1.6;
+export const WIDTH = 0.92;
+export const GAP = 0.06;
 const MIN_H = 0.1;
 const MAX_STACK = 4.0;
 
-const COLOR_LOSS = new THREE.Color("#ff6a5b");
-const COLOR_FLAT = new THREE.Color("#5f6f92");
-const COLOR_GAIN = new THREE.Color("#35d39c");
-const COLOR_UNKNOWN = new THREE.Color("#3a4152");
-const COLOR_AMBER = new THREE.Color("#f7b544");
-const COLOR_BG = "#06080d";
+export const COLOR_LOSS = new THREE.Color("#ff6a5b");
+export const COLOR_FLAT = new THREE.Color("#6a7080");
+export const COLOR_GAIN = new THREE.Color("#35d39c");
+export const COLOR_UNKNOWN = new THREE.Color("#3a3e47");
+export const COLOR_AMBER = new THREE.Color("#ffa733");
+export const COLOR_BG = "#0a0a0b";
 
-function layerColor(layer: StrataLayer): THREE.Color {
+export function layerColor(layer: StrataLayer): THREE.Color {
   if (layer.basisUnknown) return COLOR_UNKNOWN.clone();
   const pct = layer.pnlPct;
   if (pct === null) return COLOR_FLAT.clone();
@@ -46,7 +46,7 @@ function layerColor(layer: StrataLayer): THREE.Color {
   return COLOR_FLAT.clone().lerp(target, 0.25 + 0.75 * t);
 }
 
-interface LayerPlacement {
+export interface LayerPlacement {
   layer: StrataLayer;
   column: StrataColumn;
   columnIndex: number;
@@ -64,7 +64,7 @@ interface LayerState {
   born: number | null;
 }
 
-function useLayout(columns: StrataColumn[]) {
+export function useLayout(columns: StrataColumn[]) {
   return useMemo(() => {
     const n = columns.length;
     const pitch = n > 9 ? PITCH * (9 / n) : PITCH;
@@ -125,7 +125,7 @@ function Rig({ totalWidth, tallest, mode, reduced }: { totalWidth: number; talle
   return null;
 }
 
-function Dust({ count = 260, spread = 18 }: { count?: number; spread?: number }) {
+export function Dust({ count = 260, spread = 18 }: { count?: number; spread?: number }) {
   const ref = useRef<THREE.Points>(null);
   const positions = useMemo(() => {
     const arr = new Float32Array(count * 3);
@@ -146,7 +146,7 @@ function Dust({ count = 260, spread = 18 }: { count?: number; spread?: number })
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
-      <pointsMaterial size={0.035} color="#f7b544" transparent opacity={0.35} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
+      <pointsMaterial size={0.035} color="#ffa733" transparent opacity={0.35} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
     </points>
   );
 }
@@ -317,60 +317,62 @@ function Layers({
         );
       })}
 
-      {hovered && (
-        <Html
-          position={[hovered.x, hovered.y + hovered.h / 2, 0.9]}
-          zIndexRange={[40, 0]}
-          style={{ pointerEvents: "none", transform: "translate(18px, -50%)" }}
-        >
-          <div className="glass-strong rounded-lg px-3.5 py-3 min-w-[220px] animate-in fade-in zoom-in-95 duration-300">
-            <div className="flex items-baseline justify-between gap-6">
-              <span className="num text-[12px] text-foreground tracking-[0.1em]">{hovered.layer.symbol}</span>
-              <span className="label !text-[9px]">
-                {hovered.layer.openedAt ? `Lot ${format(new Date(hovered.layer.openedAt), "MMM d, yyyy")}` : "Position"}
-              </span>
-            </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[11px]">
-              <span className="text-muted-foreground">Shares</span>
-              <span className="num text-right text-foreground">{formatQuantity(hovered.layer.quantity, 4)}</span>
-              <span className="text-muted-foreground">Cost / share</span>
-              <span className="num text-right text-foreground">
-                {hovered.layer.basisUnknown ? "Unknown" : formatUSD(hovered.layer.costPerShare)}
-              </span>
-              <span className="text-muted-foreground">Value</span>
-              <span className="num text-right text-foreground">{formatUSD(hovered.layer.value)}</span>
-              <span className="text-muted-foreground">Unrealized</span>
-              <span
-                className={`num text-right ${
-                  (hovered.layer.unrealizedPnl ?? 0) > 0
-                    ? "text-success"
-                    : (hovered.layer.unrealizedPnl ?? 0) < 0
-                      ? "text-destructive"
-                      : "text-foreground"
-                }`}
-              >
-                {hovered.layer.unrealizedPnl === null
-                  ? "Unknown"
-                  : `${formatUSD(hovered.layer.unrealizedPnl)} (${formatPercent(hovered.layer.pnlPct)})`}
-              </span>
-            </div>
-            <div className="mt-2.5 pt-2 border-t hairline flex items-center justify-between text-[10px]">
-              <span className="text-muted-foreground">{method.toUpperCase()} relief order</span>
-              <span className="num text-primary">#{(ranks.get(hovered.layer.id) ?? 0) + 1}</span>
-            </div>
-          </div>
-        </Html>
-      )}
+      {hovered && <LayerTooltip placement={hovered} method={method} rank={ranks.get(hovered.layer.id) ?? 0} />}
     </group>
   );
 }
 
-function Ground({ lowPower }: { lowPower: boolean }) {
+export function LayerTooltipCard({ layer, method, rank }: { layer: StrataLayer; method: CostMethod; rank: number }) {
+  return (
+    <div className="glass-strong rounded-lg px-3.5 py-3 min-w-[220px] animate-in fade-in zoom-in-95 duration-300">
+      <div className="flex items-baseline justify-between gap-6">
+        <span className="num text-[12px] text-foreground tracking-[0.1em]">{layer.symbol}</span>
+        <span className="label !text-[9px]">
+          {layer.openedAt ? `Lot ${format(new Date(layer.openedAt), "MMM d, yyyy")}` : "Position"}
+        </span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[11px]">
+        <span className="text-muted-foreground">Shares</span>
+        <span className="num text-right text-foreground">{formatQuantity(layer.quantity, 4)}</span>
+        <span className="text-muted-foreground">Cost / share</span>
+        <span className="num text-right text-foreground">{layer.basisUnknown ? "Unknown" : formatUSD(layer.costPerShare)}</span>
+        <span className="text-muted-foreground">Value</span>
+        <span className="num text-right text-foreground">{formatUSD(layer.value)}</span>
+        <span className="text-muted-foreground">Unrealized</span>
+        <span
+          className={`num text-right ${
+            (layer.unrealizedPnl ?? 0) > 0 ? "text-success" : (layer.unrealizedPnl ?? 0) < 0 ? "text-destructive" : "text-foreground"
+          }`}
+        >
+          {layer.unrealizedPnl === null ? "Unknown" : `${formatUSD(layer.unrealizedPnl)} (${formatPercent(layer.pnlPct)})`}
+        </span>
+      </div>
+      <div className="mt-2.5 pt-2 border-t hairline flex items-center justify-between text-[10px]">
+        <span className="text-muted-foreground">{method.toUpperCase()} relief order</span>
+        <span className="num text-primary">#{rank + 1}</span>
+      </div>
+    </div>
+  );
+}
+
+export function LayerTooltip({ placement, method, rank, z = 0.9 }: { placement: LayerPlacement; method: CostMethod; rank: number; z?: number }) {
+  return (
+    <Html
+      position={[placement.x, placement.y + placement.h / 2, z]}
+      zIndexRange={[40, 0]}
+      style={{ pointerEvents: "none", transform: "translate(18px, -50%)" }}
+    >
+      <LayerTooltipCard layer={placement.layer} method={method} rank={rank} />
+    </Html>
+  );
+}
+
+export function Ground({ lowPower }: { lowPower: boolean }) {
   if (lowPower) {
     return (
       <mesh rotation-x={-Math.PI / 2} position-y={-0.001} receiveShadow>
         <planeGeometry args={[60, 60]} />
-        <meshStandardMaterial color="#0a0d15" roughness={1} metalness={0} />
+        <meshStandardMaterial color="#0c0c0d" roughness={1} metalness={0} />
       </mesh>
     );
   }
@@ -386,11 +388,30 @@ function Ground({ lowPower }: { lowPower: boolean }) {
         depthScale={1.1}
         minDepthThreshold={0.4}
         maxDepthThreshold={1.6}
-        color="#0b0e16"
+        color="#0e0e10"
         metalness={0.45}
         mirror={0.55}
       />
     </mesh>
+  );
+}
+
+export function SceneLights() {
+  return (
+    <>
+      <fog attach="fog" args={[COLOR_BG, 14, 34]} />
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[5, 10, 6]} intensity={1.5} color="#fff4e0" />
+      <pointLight position={[-7, 4, -3]} intensity={26} distance={24} color="#ffa733" />
+      <pointLight position={[8, 3, -5]} intensity={18} distance={24} color="#7f8cb0" />
+      <Environment resolution={128} frames={1}>
+        <group>
+          <Lightformer intensity={2.2} form="rect" position={[0, 7, -6]} scale={[14, 5, 1]} color="#fff2dc" />
+          <Lightformer intensity={1.1} form="rect" position={[-8, 3, 2]} rotation-y={Math.PI / 2} scale={[6, 2, 1]} color="#ffa733" />
+          <Lightformer intensity={0.9} form="rect" position={[8, 2, 2]} rotation-y={-Math.PI / 2} scale={[6, 2, 1]} color="#9aa6c8" />
+        </group>
+      </Environment>
+    </>
   );
 }
 
@@ -403,18 +424,7 @@ export default function StrataScene({ lowPower = false, reduced = false, framelo
       gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
       style={{ background: "transparent" }}
     >
-      <fog attach="fog" args={[COLOR_BG, 14, 34]} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[5, 10, 6]} intensity={1.5} color="#fff4e0" />
-      <pointLight position={[-7, 4, -3]} intensity={26} distance={24} color="#f7b544" />
-      <pointLight position={[8, 3, -5]} intensity={18} distance={24} color="#5b8cff" />
-      <Environment resolution={128} frames={1}>
-        <group>
-          <Lightformer intensity={2.2} form="rect" position={[0, 7, -6]} scale={[14, 5, 1]} color="#fff2dc" />
-          <Lightformer intensity={1.1} form="rect" position={[-8, 3, 2]} rotation-y={Math.PI / 2} scale={[6, 2, 1]} color="#f7b544" />
-          <Lightformer intensity={0.9} form="rect" position={[8, 2, 2]} rotation-y={-Math.PI / 2} scale={[6, 2, 1]} color="#6f9cff" />
-        </group>
-      </Environment>
+      <SceneLights />
       <group position={[0, -0.02, 0]}>
         <Layers {...props} reduced={reduced} />
         <Ground lowPower={lowPower} />

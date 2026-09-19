@@ -5,7 +5,7 @@ import type { StrataSceneProps } from "./strata-scene";
 const StrataScene = lazy(() => import("./strata-scene"));
 
 let webglSupport: boolean | null = null;
-function hasWebGL(): boolean {
+export function hasWebGL(): boolean {
   if (webglSupport !== null) return webglSupport;
   try {
     const canvas = document.createElement("canvas");
@@ -16,7 +16,7 @@ function hasWebGL(): boolean {
   return webglSupport;
 }
 
-function useLowPower(reduce: boolean): boolean {
+export function useLowPower(reduce: boolean): boolean {
   return useMemo(() => {
     if (typeof window === "undefined") return true;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -27,7 +27,7 @@ function useLowPower(reduce: boolean): boolean {
 }
 
 /** A WebGL context that fails after the capability probe must not take the page down. */
-class SceneBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+export class SceneBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
