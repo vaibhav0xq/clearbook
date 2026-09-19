@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html, RoundedBox, useCursor } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
+import { Html, useCursor } from "@react-three/drei";
 import * as THREE from "three";
 import type { MotionValue } from "framer-motion";
 import { format } from "date-fns";
@@ -9,11 +8,16 @@ import { formatUSD, formatQuantity } from "@/lib/format";
 import { reliefRank, type StrataColumn } from "./strata-data";
 import {
   COLOR_AMBER,
+  COLOR_EDGE,
   Dust,
   Ground,
   LayerTooltipCard,
+  LotBlock,
+  LotFace,
+  SceneEffects,
   SceneLights,
   WIDTH,
+  faceVisibility,
   useLayout,
   type LayerPlacement,
 } from "./strata-scene";
@@ -38,8 +42,11 @@ export interface StorySceneProps {
 const STORY_GAP = 0.2;
 /** Visual growth of the income column. The real multiplier change is printed in the copy. */
 const INCOME_GROWTH = 0.07;
-const COLOR_MONO = new THREE.Color("#676b75");
-const COLOR_MONO_DIM = new THREE.Color("#4f535c");
+const COLOR_MONO = new THREE.Color("#72747c");
+const COLOR_MONO_DIM = new THREE.Color("#585b63");
+/** Where the columns sit on wide screens per chapter: 1 right of the copy, -1 left of it, 0 centred. Mirrors home.tsx. */
+export const CHAPTER_SIDE = [1, -1, 1, -1, 0, 0, 0] as const;
+type TextMesh = THREE.Mesh & { fillOpacity: number };
 
 interface LayerState {
   progress: number;
@@ -88,57 +95,68 @@ function StoryRig({
     }
     const halfFov = THREE.MathUtils.degToRad(fov / 2);
     const tanH = Math.tan(halfFov);
-    // Copy sits on the left on wide screens, so the scene is framed toward the right.
-    const share = wide ? 0.42 : 1;
-    const fitZ = Math.max(8, (totalWidth / 2 + 0.7) / (tanH * aspect * share), (tallest * 0.6 + 1.3) / tanH);
-    const visW = 2 * fitZ * tanH * aspect;
-    const shift = wide ? -visW * 0.235 : 0;
-    // On narrow screens the copy sits under the scene, so the columns are raised.
-    const vshift = wide ? 0 : -tallest * 0.55;
-    // Close ups frame one column at roughly two thirds of the viewport height.
-    const closeZFor = (h: number) => Math.max(7, (h * 0.78 + 1.3) / tanH) * (wide ? 1 : 1.5);
-    const closeShift = vshift * 0.75;
-    const closeOffFor = (z: number) => (wide ? 2 * z * tanH * aspect * 0.19 : 0);
-
-    const [f0, f1, f2, f3, f4, f5, f6] = frames;
-    f0.position.set(shift, tallest * 0.55 + 1.4 + vshift, fitZ);
-    f0.target.set(shift, tallest * 0.38 + vshift, 0);
-
-    f1.position.set(shift + fitZ * 0.6, tallest * 1.05 + vshift, fitZ * 0.74);
-    f1.target.set(shift, tallest * 0.34 + vshift, 0);
-
-    const hr = focusHeights.relief;
-    const zr = closeZFor(hr);
-    const offR = closeOffFor(zr);
-    f2.position.set(focusX.relief - offR + zr * 0.42, hr * 0.62 + 1.2 + closeShift, zr * 0.9);
-    f2.target.set(focusX.relief - offR, hr * 0.44 + closeShift, 0);
-
-    const hi = focusHeights.income;
-    const zi = closeZFor(hi);
-    const offI = closeOffFor(zi);
-    f3.position.set(focusX.income - offI + zi * 0.34, hi * 1.5 + 3.2 + closeShift, zi * 0.78);
-    f3.target.set(focusX.income - offI, hi * 0.46 + closeShift, 0);
-
-    f4.position.set(shift, tallest * 1.35 + vshift, fitZ * 1.04);
-    f4.target.set(shift, tallest * 0.3 + vshift, 0);
-
-    f5.position.set(shift - 1.2, tallest * 0.32 + 0.3 + vshift, fitZ * 0.92);
-    f5.target.set(shift, tallest * 0.4 + vshift, 0);
-
-    f6.position.copy(f0.position);
-    f6.target.copy(f0.target);
-
     const p = progress.get();
     const i = chapterAt(p);
     const l = local(p, i);
     const blend = seg(l, 0.6, 1);
+    // Copy and scene swap sides between chapters on wide screens, centred where the copy sits low.
+    const sideNow = THREE.MathUtils.lerp(CHAPTER_SIDE[i], CHAPTER_SIDE[Math.min(CHAPTER_COUNT - 1, i + 1)], blend);
+    const share = wide ? 0.46 : 1;
+    const fitZ = Math.max(8, (totalWidth / 2 + 0.7) / (tanH * aspect * share), (tallest * 0.6 + 1.3) / tanH);
+    const visW = 2 * fitZ * tanH * aspect;
+    const shiftFor = (side: number) => (wide ? -visW * 0.24 * side : 0);
+    const shift = shiftFor(sideNow);
+    // On narrow screens the copy sits under the scene, so the columns are raised.
+    const vshift = wide ? 0 : -tallest * 0.55;
+    // Close ups frame one column at roughly two thirds of the viewport height.
+    const closeZFor = (h: number) => Math.max(6.5, (h * 0.8 + 1.3) / tanH) * (wide ? 1 : 1.5);
+    const closeShift = vshift * 0.75;
+    const closeOffFor = (z: number, side: number) => (wide ? 2 * z * tanH * aspect * 0.2 * side : 0);
+
+    const [f0, f1, f2, f3, f4, f5, f6] = frames;
+    // Balance: low and frontal, the row reads as a skyline.
+    f0.position.set(shift + fitZ * 0.22, tallest * 0.42 + 1.1 + vshift, fitZ * 0.96);
+    f0.target.set(shift, tallest * 0.36 + vshift, 0);
+
+    // Lots: a raking three quarter view that tracks along the row as the chapter scrolls.
+    const track = (seg(l, 0.05, 0.95) - 0.5) * totalWidth * 0.55;
+    f1.position.set(shift + fitZ * 0.55 + track * 0.6, tallest * 0.9 + 0.6 + vshift, fitZ * 0.72);
+    f1.target.set(shift + track, tallest * 0.36 + vshift, 0);
+
+    const hr = focusHeights.relief;
+    const zr = closeZFor(hr);
+    const offR = closeOffFor(zr, CHAPTER_SIDE[2]);
+    f2.position.set(focusX.relief - offR + zr * 0.46, hr * 0.5 + 0.9 + closeShift, zr * 0.88);
+    f2.target.set(focusX.relief - offR, hr * 0.42 + closeShift, 0);
+
+    // Income: a high three quarter view from further back, so the band is seen travelling up the
+    // column while its neighbours stay low in the frame instead of towering into the copy.
+    const hi = focusHeights.income;
+    const zi = Math.max(closeZFor(hi), fitZ * 0.66);
+    const offI = closeOffFor(zi, CHAPTER_SIDE[3]);
+    f3.position.set(focusX.income - offI - zi * 0.3, hi + zi * 0.62 + closeShift, zi * 0.74);
+    f3.target.set(focusX.income - offI, hi * 0.4 + closeShift, 0);
+
+    // Marks: high and centred so every column and its colour is in frame above the strip.
+    f4.position.set(0, tallest * 1.4 + 0.5 + vshift, fitZ * 1.02);
+    f4.target.set(0, tallest * 0.24 + vshift, 0);
+
+    // Proof: low and slightly off axis, the beam crosses the frame.
+    f5.position.set(-1.4, tallest * 0.3 + 0.4 + vshift, fitZ * 0.9);
+    f5.target.set(0, tallest * 0.42 + vshift, 0);
+
+    // Open: a slow turntable around the whole ledger.
+    const turn = reduced ? 0.35 : 0.35 + Math.sin(state.clock.elapsedTime * 0.11) * 0.5;
+    f6.position.set(Math.sin(turn) * fitZ * 1.1, tallest * 0.8 + 2 + vshift, Math.cos(turn) * fitZ * 1.1);
+    f6.target.set(0, tallest * 0.3 + vshift, 0);
+
     const a = frames[i];
     const b = frames[Math.min(CHAPTER_COUNT - 1, i + 1)];
     desired.lerpVectors(a.position, b.position, blend);
     lookAt.lerpVectors(a.target, b.target, blend);
 
     const t = state.clock.elapsedTime;
-    const orbitWeight = i === 0 ? 1 - blend : i === CHAPTER_COUNT - 1 ? blend * 0 + 1 : 0;
+    const orbitWeight = i === 0 ? 1 - blend : 0;
     const orbit = reduced ? 0 : Math.sin(t * 0.12) * 0.8 * orbitWeight;
     const parallax = reduced ? 0 : 0.8;
     desired.x += orbit + state.pointer.x * 0.9 * parallax;
@@ -243,6 +261,9 @@ function StoryLayers({
   const { placements, totalWidth, tallest } = useLayout(columns);
   const meshes = useRef(new Map<string, THREE.Mesh>());
   const materials = useRef(new Map<string, THREE.MeshPhysicalMaterial>());
+  const edgeMaterials = useRef(new Map<string, THREE.LineBasicMaterial>());
+  const faceGroups = useRef(new Map<string, THREE.Group>());
+  const faceTexts = useRef(new Map<string, TextMesh>());
   const states = useRef(new Map<string, LayerState>());
   const labelGroups = useRef(new Map<string, THREE.Group>());
   const tagGroups = useRef(new Map<string, THREE.Group>());
@@ -330,7 +351,10 @@ function StoryLayers({
       const fraction = relief?.fractions.get(pl.layer.id) ?? 0;
       const isHovered = hovered?.layer.id === pl.layer.id;
       const inActive = activeMint === null || activeMint === pl.column.mint;
-      st.dim = THREE.MathUtils.damp(st.dim, inActive ? 1 : 0.42, 5, delta);
+      const finale = ch === CHAPTER_COUNT - 1 && !hovered ? 0.7 : 1;
+      // The income close up keeps its neighbours darker because the copy sits over them.
+      const idle = ch === 3 ? 0.26 : 0.42;
+      st.dim = THREE.MathUtils.damp(st.dim, (inActive ? 1 : idle) * finale, 5, delta);
 
       const y0 = acc.get(pl.column.mint) ?? 0;
       const h = pl.h * st.progress * grow;
@@ -356,8 +380,22 @@ function StoryLayers({
       mat.color.copy(COLOR_MONO).lerp(mono, sp).lerp(pl.color, col).multiplyScalar(st.dim);
       mat.emissive.copy(mat.color).lerp(COLOR_AMBER, st.glow);
       // Flat emissive fill is lowest before the split so the block reads by its lighting alone.
-      mat.emissiveIntensity = (0.1 + 0.1 * sp + st.glow * 1.1) * st.dim;
-      mat.opacity = pl.layer.basisUnknown && col > 0.5 ? 0.72 : 0.94;
+      mat.emissiveIntensity = (0.14 + 0.06 * sp + st.glow * 1.1) * st.dim;
+      // Unknown basis lots turn translucent once the ledger is marked, so the gap in the books is visible.
+      mat.opacity = pl.layer.basisUnknown ? THREE.MathUtils.lerp(0.96, 0.42, col) : 1;
+
+      const edge = edgeMaterials.current.get(pl.layer.id);
+      if (edge) {
+        edge.color.copy(COLOR_EDGE).lerp(COLOR_AMBER, st.glow);
+        edge.opacity = (0.06 + 0.1 * sp + st.glow * 0.7) * st.dim;
+      }
+      const faceGroup = faceGroups.current.get(pl.layer.id);
+      const face = faceTexts.current.get(pl.layer.id);
+      if (faceGroup && face) {
+        faceGroup.position.set(pl.x, centerY, WIDTH / 2 + 0.004 + st.lift);
+        const dist = state.camera.position.distanceTo(mesh.position);
+        face.fillOpacity = faceVisibility(dist, 10, 15) * sp * st.progress * (isHovered || fraction > 0 ? 1 : 0.8) * (0.2 + 0.8 * st.dim);
+      }
 
       const tag = tagGroups.current.get(pl.layer.id);
       if (tag) tag.position.set(pl.x - WIDTH / 2 - 0.16, centerY, 0.3);
@@ -388,16 +426,21 @@ function StoryLayers({
     <group>
       <StoryRig progress={progress} totalWidth={totalWidth} tallest={tallest} focusX={focusX} focusHeights={focusHeights} reduced={reduced} />
       {placements.map((pl) => (
-        <RoundedBox
+        <LotBlock
           key={pl.layer.id}
-          ref={(m: THREE.Mesh | null) => {
+          placement={pl}
+          onMesh={(m) => {
             if (m) meshes.current.set(pl.layer.id, m);
             else meshes.current.delete(pl.layer.id);
           }}
-          args={[WIDTH, pl.h, WIDTH]}
-          radius={0.035}
-          smoothness={3}
-          position={[pl.x, pl.y + pl.h / 2, 0]}
+          onMaterial={(m) => {
+            if (m) materials.current.set(pl.layer.id, m);
+            else materials.current.delete(pl.layer.id);
+          }}
+          onEdges={(m) => {
+            if (m) edgeMaterials.current.set(pl.layer.id, m);
+            else edgeMaterials.current.delete(pl.layer.id);
+          }}
           onPointerOver={(e) => {
             e.stopPropagation();
             setHovered(pl);
@@ -407,30 +450,27 @@ function StoryLayers({
             e.stopPropagation();
             onSelectColumn?.(pl.column.mint);
           }}
-        >
-          <meshPhysicalMaterial
-            ref={(m: THREE.MeshPhysicalMaterial | null) => {
-              if (m) materials.current.set(pl.layer.id, m);
-              else materials.current.delete(pl.layer.id);
-            }}
-            color={COLOR_MONO}
-            emissive={COLOR_MONO}
-            emissiveIntensity={0.2}
-            roughness={0.22}
-            metalness={0.08}
-            clearcoat={1}
-            clearcoatRoughness={0.18}
-            transparent
-            opacity={0.94}
-            envMapIntensity={1.1}
-          />
-        </RoundedBox>
+        />
+      ))}
+      {placements.map((pl) => (
+        <LotFace
+          key={`face-${pl.layer.id}`}
+          placement={pl}
+          onGroup={(g) => {
+            if (g) faceGroups.current.set(pl.layer.id, g);
+            else faceGroups.current.delete(pl.layer.id);
+          }}
+          onText={(m) => {
+            if (m) faceTexts.current.set(pl.layer.id, m as TextMesh);
+            else faceTexts.current.delete(pl.layer.id);
+          }}
+        />
       ))}
 
       <Beam progress={progress} minX={minX} maxX={maxX} height={tallest} />
 
       {columns.map((c) => {
-        const dimmed = focusMint !== null && focusMint !== c.mint;
+        const dimmed = (focusMint !== null && focusMint !== c.mint) || chapter === CHAPTER_COUNT - 1;
         const active = (hovered?.column.mint ?? focusMint) === c.mint;
         return (
           <group
@@ -447,8 +487,8 @@ function StoryLayers({
                 }`}
                 style={{ transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)" }}
               >
-                <span className="num text-[11px] tracking-[0.14em] text-foreground">{c.symbol}</span>
-                <span className="num text-[10px] text-muted-foreground">
+                <span className="num text-[12px] tracking-[0.16em] text-foreground">{c.symbol}</span>
+                <span className="num text-[11px] text-muted-foreground">
                   {showValues ? formatUSD(c.value) : `${formatQuantity(c.quantity, 4)} sh`}
                 </span>
               </div>
@@ -503,12 +543,7 @@ export default function StoryScene({ lowPower = false, reduced = false, frameloo
         <Ground lowPower={lowPower} />
         {!reduced && <Dust />}
       </group>
-      {!lowPower && (
-        <EffectComposer multisampling={0}>
-          <Bloom mipmapBlur intensity={0.75} luminanceThreshold={0.72} luminanceSmoothing={0.25} radius={0.7} />
-          <Vignette eskil={false} offset={0.18} darkness={0.62} />
-        </EffectComposer>
-      )}
+      <SceneEffects lowPower={lowPower} />
     </Canvas>
   );
 }

@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import { WalletSessionProvider } from '@/lib/wallet';
+import { Shell } from '@/components/layout/shell';
 
 import Home from '@/pages/home';
 import Portfolio from '@/pages/portfolio';
@@ -31,13 +32,14 @@ const queryClient = new QueryClient({
   },
 });
 
-function Router() {
+/**
+ * Every wallet page renders inside one Shell so the ledger stage (the WebGL view of the lots) stays
+ * mounted while the reading panel changes. The inner switch keeps absolute paths so the pages can
+ * keep reading their params with useRoute.
+ */
+function WalletPages() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/methodology" component={Methodology} />
-      
-      {/* Wallet routes */}
       <Route path="/w/:address/statements/:statementId" component={StatementDetail} />
       <Route path="/w/:address/statements" component={Statements} />
       <Route path="/w/:address/lots" component={Lots} />
@@ -45,7 +47,23 @@ function Router() {
       <Route path="/w/:address/events" component={Events} />
       <Route path="/w/:address/trade" component={Trade} />
       <Route path="/w/:address" component={Portfolio} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
 
+function Router() {
+  return (
+    <Switch>
+      <Route path="/" component={Home} />
+      <Route path="/methodology" component={Methodology} />
+      <Route path="/w/:address/*?">
+        {(params) => (
+          <Shell address={params.address ?? ''}>
+            <WalletPages />
+          </Shell>
+        )}
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,20 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html, RoundedBox, Environment, Lightformer, MeshReflectorMaterial, useCursor } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Html, RoundedBox, Environment, Lightformer, MeshReflectorMaterial, Grid, Text, useCursor } from "@react-three/drei";
+import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
+import { ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
 import type { CostMethod } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { formatUSD, formatQuantity, formatPercent } from "@/lib/format";
 import { reliefPreview, reliefRank, type StrataColumn, type StrataLayer } from "./strata-data";
 
-export type StrataMode = "hero" | "portfolio" | "trade";
+export type StrataMode = "hero" | "portfolio" | "trade" | "stage";
 
 export interface StrataSceneProps {
   columns: StrataColumn[];
   method: CostMethod;
   mode: StrataMode;
+  /** Column drawn at full strength while the rest recede. Hover wins over this. */
   highlightMint?: string | null;
+  /** Single lot drawn as if hovered, used when a table row is under the pointer. */
+  highlightLayerId?: string | null;
+  /** Stage mode only: the camera closes on this column. */
+  focusMint?: string | null;
   preview?: { mint: string; quantity: number } | null;
   onHoverColumn?: (mint: string | null) => void;
   onSelectColumn?: (mint: string) => void;
@@ -35,7 +41,11 @@ export const COLOR_FLAT = new THREE.Color("#6a7080");
 export const COLOR_GAIN = new THREE.Color("#35d39c");
 export const COLOR_UNKNOWN = new THREE.Color("#3a3e47");
 export const COLOR_AMBER = new THREE.Color("#ffa733");
+export const COLOR_EDGE = new THREE.Color("#c9ccd4");
+export const COLOR_INK = new THREE.Color("#f2f1ec");
 export const COLOR_BG = "#0a0a0b";
+
+export const MONO_FONT = `${import.meta.env.BASE_URL}fonts/GeistMono-Regular.ttf`;
 
 export function layerColor(layer: StrataLayer): THREE.Color {
   if (layer.basisUnknown) return COLOR_UNKNOWN.clone();
@@ -61,6 +71,7 @@ interface LayerState {
   progress: number;
   lift: number;
   glow: number;
+  dim: number;
   born: number | null;
 }
 
@@ -90,35 +101,309 @@ export function useLayout(columns: StrataColumn[]) {
   }, [columns]);
 }
 
-function Rig({ totalWidth, tallest, mode, reduced }: { totalWidth: number; tallest: number; mode: StrataMode; reduced: boolean }) {
-  const { camera, size } = useThree();
+/** Smoothstep style visibility for the engraved faces: fully legible inside `near`, gone past `far`. */
+export function faceVisibility(distance: number, near = 6.5, far = 10.5): number {
+  const t = THREE.MathUtils.clamp((far - distance) / (far - near), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/** Text printed on the front face of a lot. Returns null when the block is too short to carry it. */
+export function faceCopy(layer: StrataLayer, h: number): { lines: string[]; size: number } | null {
+  if (h < 0.26) return null;
+  const date = layer.openedAt ? format(new Date(layer.openedAt), "MMM d, yyyy") : "Opening balance";
+  const cost = layer.basisUnknown ? "cost unknown" : `${formatUSD(layer.costPerShare)} / sh`;
+  const qty = `${formatQuantity(layer.quantity, 4)} sh`;
+  if (h < 0.5) return { lines: [date], size: 0.068 };
+  if (h < 0.8) return { lines: [date, qty], size: 0.068 };
+  return { lines: [date, qty, cost], size: 0.072 };
+}
+
+/**
+ * One lot. The rounded block carries a hairline edge cage and the engraved face copy in a sibling
+ * group, because the block itself is scaled while it grows in and text must never stretch.
+ */
+export function LotBlock({
+  placement,
+  onMesh,
+  onMaterial,
+  onEdges,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+  children,
+}: {
+  placement: LayerPlacement;
+  onMesh: (m: THREE.Mesh | null) => void;
+  onMaterial: (m: THREE.MeshPhysicalMaterial | null) => void;
+  onEdges: (m: THREE.LineBasicMaterial | null) => void;
+  onPointerOver?: (e: ThreeEvent<PointerEvent>) => void;
+  onPointerOut?: (e: ThreeEvent<PointerEvent>) => void;
+  onClick?: (e: ThreeEvent<MouseEvent>) => void;
+  children?: ReactNode;
+}) {
+  const p = placement;
+  const edges = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(WIDTH + 0.006, p.h + 0.006, WIDTH + 0.006)), [p.h]);
+  useEffect(() => () => edges.dispose(), [edges]);
+  return (
+    <RoundedBox
+      ref={onMesh}
+      args={[WIDTH, p.h, WIDTH]}
+      radius={0.03}
+      smoothness={3}
+      position={[p.x, p.y + p.h / 2, 0]}
+      onPointerOver={onPointerOver}
+      onPointerOut={onPointerOut}
+      onClick={onClick}
+    >
+      <meshPhysicalMaterial
+        ref={onMaterial}
+        color={p.color}
+        emissive={p.color}
+        emissiveIntensity={0.16}
+        roughness={0.3}
+        metalness={0.14}
+        clearcoat={1}
+        clearcoatRoughness={0.14}
+        transparent={p.layer.basisUnknown}
+        opacity={p.layer.basisUnknown ? 0.42 : 1}
+        envMapIntensity={1.25}
+      />
+      <lineSegments geometry={edges} raycast={() => null}>
+        <lineBasicMaterial ref={onEdges} color={COLOR_EDGE} transparent opacity={0.14} depthWrite={false} toneMapped={false} />
+      </lineSegments>
+      {children}
+    </RoundedBox>
+  );
+}
+
+/** Engraved copy on the front face. The owner positions the group and drives `fillOpacity` per frame. */
+export function LotFace({
+  placement,
+  onGroup,
+  onText,
+}: {
+  placement: LayerPlacement;
+  onGroup: (g: THREE.Group | null) => void;
+  onText: (t: THREE.Mesh | null) => void;
+}) {
+  const copy = faceCopy(placement.layer, placement.h);
+  if (!copy) return null;
+  return (
+    <group ref={onGroup}>
+      <Text
+        ref={onText}
+        font={MONO_FONT}
+        fontSize={copy.size}
+        lineHeight={1.45}
+        letterSpacing={0.02}
+        color={COLOR_INK}
+        anchorX="left"
+        anchorY="middle"
+        maxWidth={WIDTH - 0.14}
+        position={[-WIDTH / 2 + 0.08, 0, 0]}
+        fillOpacity={0}
+        material-toneMapped={false}
+        material-depthWrite={false}
+        raycast={() => null}
+      >
+        {copy.lines.join("\n")}
+      </Text>
+    </group>
+  );
+}
+
+type TextMesh = THREE.Mesh & { fillOpacity: number };
+
+/** Normalised device box the framed points must land in. The bottom is raised for the stage overlays. */
+interface FrameBox {
+  left: number;
+  right: number;
+  bottom: number;
+  top: number;
+}
+
+/**
+ * Finds the closest camera distance along a fixed direction that keeps every point inside `box`,
+ * then recentres the look target so the framed points sit in the middle of the box.
+ */
+function fitFrame(
+  points: ArrayLike<number>,
+  yaw: number,
+  el: number,
+  look: THREE.Vector3,
+  fov: number,
+  aspect: number,
+  box: FrameBox,
+  scratch: { cam: THREE.PerspectiveCamera; dir: THREE.Vector3; v: THREE.Vector3; right: THREE.Vector3; up: THREE.Vector3 },
+): number {
+  const { cam, dir, v, right, up } = scratch;
+  cam.fov = fov;
+  cam.aspect = aspect;
+  cam.near = 0.1;
+  cam.far = 200;
+  cam.updateProjectionMatrix();
+  dir.set(Math.sin(yaw) * Math.cos(el), Math.sin(el), Math.cos(yaw) * Math.cos(el));
+  const n = points.length / 3;
+  let minX = 0;
+  let maxX = 0;
+  let minY = 0;
+  let maxY = 0;
+  const measure = (d: number) => {
+    cam.position.copy(look).addScaledVector(dir, d);
+    cam.lookAt(look);
+    cam.updateMatrixWorld();
+    minX = Infinity;
+    maxX = -Infinity;
+    minY = Infinity;
+    maxY = -Infinity;
+    for (let i = 0; i < n; i++) {
+      v.set(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]).project(cam);
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+    }
+    return minX >= box.left && maxX <= box.right && minY >= box.bottom && maxY <= box.top;
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    let lo = 1.5;
+    let hi = 80;
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2;
+      if (measure(mid)) hi = mid;
+      else lo = mid;
+    }
+    measure(hi);
+    // Slide the target so the projected bounds share the centre of the box.
+    const ex = (minX + maxX) / 2 - (box.left + box.right) / 2;
+    const ey = (minY + maxY) / 2 - (box.bottom + box.top) / 2;
+    const halfH = hi * Math.tan(THREE.MathUtils.degToRad(fov / 2));
+    right.setFromMatrixColumn(cam.matrixWorld, 0);
+    up.setFromMatrixColumn(cam.matrixWorld, 1);
+    look.addScaledVector(right, ex * halfH * aspect).addScaledVector(up, ey * halfH);
+    if (pass === 1) return hi;
+  }
+  return 0;
+}
+
+function Rig({
+  totalWidth,
+  tallest,
+  mode,
+  reduced,
+  framePoints,
+  focusPoints,
+  focusKey,
+}: {
+  totalWidth: number;
+  tallest: number;
+  mode: StrataMode;
+  reduced: boolean;
+  /** Corners of every column, framed when nothing is focused. */
+  framePoints: Float32Array;
+  /** Corners of the focused column, or null. */
+  focusPoints: Float32Array | null;
+  focusKey: string;
+}) {
+  const { camera, size, scene } = useThree();
   const target = useMemo(() => new THREE.Vector3(), []);
+  const desired = useMemo(() => new THREE.Vector3(), []);
+  const lookAt = useMemo(() => new THREE.Vector3(), []);
+  const scratch = useMemo(
+    () => ({ cam: new THREE.PerspectiveCamera(), dir: new THREE.Vector3(), v: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3() }),
+    [],
+  );
+  const fitted = useRef<{ key: string; distance: number; look: THREE.Vector3 }>({ key: "", distance: 10, look: new THREE.Vector3() });
+  const settled = useRef(false);
+
   useFrame((state, delta) => {
     const aspect = size.width / Math.max(1, size.height);
     const persp = camera as THREE.PerspectiveCamera;
-    const halfFov = THREE.MathUtils.degToRad(persp.fov / 2);
-    const wide = aspect > 1.15;
-    // In the hero the copy sits on the left, so the scene is framed toward the right.
-    const widthShare = mode === "hero" && wide ? 0.58 : 1;
-    const fitZ = (totalWidth / 2 + 1.2) / (Math.tan(halfFov) * aspect * widthShare);
-    // Leave room above the tallest column for its label, less in wide panels where height is scarce.
-    const headroom = aspect > 2.2 ? 0.9 : 1.5;
-    const fitY = (tallest * 0.62 + headroom) / Math.tan(halfFov);
-    const baseZ = Math.max(7.5, fitZ, fitY);
-    const baseY = tallest * 0.5 + 1.6;
-    const visibleWidth = 2 * baseZ * Math.tan(halfFov) * aspect;
-    const shift = mode === "hero" && wide ? -visibleWidth * 0.2 : 0;
+    const wantedFov = mode === "stage" ? (aspect < 0.9 ? 38 : 32) : 30;
+    if (persp.fov !== wantedFov) {
+      persp.fov = wantedFov;
+      persp.updateProjectionMatrix();
+    }
+    const tanH = Math.tan(THREE.MathUtils.degToRad(persp.fov / 2));
     const px = state.pointer.x;
     const py = state.pointer.y;
     const t = state.clock.elapsedTime;
+    const parallax = reduced ? 0.3 : 1;
+
+    if (mode === "stage") {
+      // A three quarter view down the row. The framing is solved numerically so any stage aspect
+      // shows the whole ledger, or the focused column, as large as the overlays allow.
+      const yaw = 0.85;
+      const el = 0.3;
+      const wide = aspect > 1.25;
+      const box: FrameBox = wide
+        ? { left: -0.88, right: 0.88, bottom: -0.6, top: 0.86 }
+        : { left: -0.9, right: 0.9, bottom: -0.52, top: 0.84 };
+      const pts = focusPoints ?? framePoints;
+      const key = `${size.width}x${size.height}|${focusKey}|${pts.length}|${totalWidth.toFixed(2)}|${tallest.toFixed(2)}`;
+      if (fitted.current.key !== key && pts.length > 0) {
+        const look = fitted.current.look;
+        look.set(0, focusPoints ? 0 : tallest * 0.35, 0);
+        if (focusPoints) {
+          // Start from the column's own centre so the recentring converges in two passes.
+          let sx = 0;
+          let sy = 0;
+          for (let i = 0; i < focusPoints.length; i += 3) {
+            sx += focusPoints[i];
+            sy += focusPoints[i + 1];
+          }
+          look.set(sx / (focusPoints.length / 3), sy / (focusPoints.length / 3), 0);
+        }
+        fitted.current.distance = fitFrame(pts, yaw, el, look, persp.fov, aspect, box, scratch);
+        fitted.current.key = key;
+      }
+      const { distance: d, look } = fitted.current;
+      const orbit = reduced ? 0 : Math.sin(t * 0.09) * 0.05;
+      const a = yaw + orbit;
+      desired.set(look.x + d * Math.sin(a) * Math.cos(el), look.y + d * Math.sin(el), look.z + d * Math.cos(a) * Math.cos(el));
+      desired.x += px * 0.5 * parallax;
+      desired.y += py * 0.3 * parallax;
+      lookAt.copy(look);
+      if (!settled.current) {
+        // First frame: start from the solved framing instead of flying in from the default camera.
+        camera.position.copy(desired);
+        target.copy(lookAt);
+        settled.current = true;
+      }
+      const k = focusPoints ? 3 : 2.2;
+      camera.position.x = THREE.MathUtils.damp(camera.position.x, desired.x, k, delta);
+      camera.position.y = THREE.MathUtils.damp(camera.position.y, desired.y, k, delta);
+      camera.position.z = THREE.MathUtils.damp(camera.position.z, desired.z, k, delta);
+      target.x = THREE.MathUtils.damp(target.x, lookAt.x, k, delta);
+      target.y = THREE.MathUtils.damp(target.y, lookAt.y, k, delta);
+      target.z = THREE.MathUtils.damp(target.z, lookAt.z, k, delta);
+      camera.lookAt(target);
+      const fog = scene.fog as THREE.Fog | null;
+      if (fog) {
+        const dist = camera.position.distanceTo(target);
+        fog.near = dist * 1.4;
+        fog.far = dist * 3.8;
+      }
+      return;
+    }
+
+    const wide = aspect > 1.15;
+    // In the hero the copy sits on the left, so the scene is framed toward the right.
+    const widthShare = mode === "hero" && wide ? 0.58 : 1;
+    const fitZ = (totalWidth / 2 + 1.2) / (tanH * aspect * widthShare);
+    // Leave room above the tallest column for its label, less in wide panels where height is scarce.
+    const headroom = aspect > 2.2 ? 0.9 : 1.5;
+    const fitY = (tallest * 0.62 + headroom) / tanH;
+    const baseZ = Math.max(7.5, fitZ, fitY);
+    const baseY = tallest * 0.5 + 1.6;
+    const visibleWidth = 2 * baseZ * tanH * aspect;
+    const shift = mode === "hero" && wide ? -visibleWidth * 0.2 : 0;
     const orbit = mode === "hero" && !reduced ? Math.sin(t * 0.12) * 0.9 : 0;
-    const parallax = reduced ? 0.35 : 1;
     const desiredX = shift + px * 1.1 * parallax + orbit;
     const desiredY = baseY + py * 0.55 * parallax;
-    const desiredZ = baseZ;
     camera.position.x = THREE.MathUtils.damp(camera.position.x, desiredX, 2.2, delta);
     camera.position.y = THREE.MathUtils.damp(camera.position.y, desiredY, 2.2, delta);
-    camera.position.z = THREE.MathUtils.damp(camera.position.z, desiredZ, 2.2, delta);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, baseZ, 2.2, delta);
     target.set(shift, tallest * 0.4, 0);
     camera.lookAt(target);
   });
@@ -156,6 +441,8 @@ function Layers({
   method,
   mode,
   highlightMint,
+  highlightLayerId,
+  focusMint,
   preview,
   onHoverColumn,
   onSelectColumn,
@@ -164,12 +451,16 @@ function Layers({
   const { placements, heights, totalWidth, tallest } = useLayout(columns);
   const meshes = useRef(new Map<string, THREE.Mesh>());
   const materials = useRef(new Map<string, THREE.MeshPhysicalMaterial>());
+  const edgeMaterials = useRef(new Map<string, THREE.LineBasicMaterial>());
+  const faceGroups = useRef(new Map<string, THREE.Group>());
+  const faceTexts = useRef(new Map<string, TextMesh>());
   const states = useRef(new Map<string, LayerState>());
   // Reused every frame so the render loop does not allocate.
   const stackHeights = useRef(new Map<string, number>());
   const [hovered, setHovered] = useState<LayerPlacement | null>(null);
   const pulseStart = useRef<number>(-10);
   const lastMethod = useRef(method);
+  const camera = useThree((s) => s.camera);
   useCursor(!!hovered);
 
   useEffect(() => {
@@ -196,11 +487,34 @@ function Layers({
     onHoverColumn?.(hovered ? hovered.column.mint : null);
   }, [hovered, onHoverColumn]);
 
+  // Corners of each column plus label headroom, used by the stage camera to solve its framing.
+  const columnPoints = useCallback(
+    (mints: string[]) => {
+      const out: number[] = [];
+      const half = WIDTH / 2;
+      for (const c of columns) {
+        if (!mints.includes(c.mint)) continue;
+        const p = placements.find((pl) => pl.column.mint === c.mint);
+        if (!p) continue;
+        const h = heights.get(c.mint) ?? 0;
+        for (const dx of [-half, half]) for (const dz of [-half, half]) out.push(p.x + dx, 0, dz, p.x + dx, h, dz);
+        out.push(p.x, h + 0.9, 0);
+      }
+      return new Float32Array(out);
+    },
+    [columns, placements, heights],
+  );
+  const framePoints = useMemo(() => columnPoints(columns.map((c) => c.mint)), [columnPoints, columns]);
+  const focusPoints = useMemo(() => {
+    if (mode !== "stage" || !focusMint || !columns.some((c) => c.mint === focusMint)) return null;
+    return columnPoints([focusMint]);
+  }, [mode, focusMint, columns, columnPoints]);
+
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
     if (pulseStart.current === -1) pulseStart.current = t;
     const sincePulse = t - pulseStart.current;
-    const activeMint = hovered?.column.mint ?? highlightMint ?? null;
+    const activeMint = hovered?.column.mint ?? highlightMint ?? focusMint ?? null;
     const anyActive = activeMint !== null;
 
     // Stack heights are recomputed every frame from the animated progress of each layer.
@@ -212,7 +526,7 @@ function Layers({
       if (!mesh || !mat) continue;
       let st = states.current.get(p.layer.id);
       if (!st) {
-        st = { progress: 0, lift: 0, glow: 0, born: null };
+        st = { progress: 0, lift: 0, glow: 0, dim: 1, born: null };
         states.current.set(p.layer.id, st);
       }
       if (st.born === null) st.born = t + p.columnIndex * 0.05 + p.layerIndex * 0.07;
@@ -221,9 +535,9 @@ function Layers({
       st.progress = Math.max(st.progress, target);
 
       const fraction = previewFractions.get(p.layer.id) ?? 0;
-      const isHovered = hovered?.layer.id === p.layer.id;
+      const isHovered = hovered?.layer.id === p.layer.id || highlightLayerId === p.layer.id;
       const inActiveColumn = activeMint === p.column.mint;
-      const dim = anyActive && !inActiveColumn ? 0.45 : 1;
+      st.dim = THREE.MathUtils.damp(st.dim, anyActive && !inActiveColumn ? 0.42 : 1, 5, delta);
 
       const rank = ranks.get(p.layer.id) ?? 0;
       const band = sincePulse - 0.25 - rank * 0.16;
@@ -236,15 +550,31 @@ function Layers({
 
       const y0 = acc.get(p.column.mint) ?? 0;
       const h = p.h * st.progress;
-      mesh.position.set(p.x, y0 + h / 2, st.lift);
+      const centerY = y0 + h / 2;
+      mesh.position.set(p.x, centerY, st.lift);
       mesh.scale.set(1, Math.max(0.0001, st.progress), 1);
       acc.set(p.column.mint, y0 + h + GAP * st.progress);
 
       const base = p.color;
-      mat.color.copy(base).multiplyScalar(dim);
+      mat.color.copy(base).multiplyScalar(st.dim);
       mat.emissive.copy(base).lerp(COLOR_AMBER, st.glow);
-      mat.emissiveIntensity = (0.22 + st.glow * 1.1) * dim;
-      mat.opacity = p.layer.basisUnknown ? 0.7 : 0.94;
+      mat.emissiveIntensity = (0.16 + st.glow * 1.1) * st.dim;
+
+      const edge = edgeMaterials.current.get(p.layer.id);
+      if (edge) {
+        edge.color.copy(COLOR_EDGE).lerp(COLOR_AMBER, st.glow);
+        edge.opacity = (0.12 + st.glow * 0.7) * st.dim;
+      }
+
+      const faceGroup = faceGroups.current.get(p.layer.id);
+      const face = faceTexts.current.get(p.layer.id);
+      if (faceGroup && face) {
+        faceGroup.position.set(p.x, centerY, WIDTH / 2 + 0.004 + st.lift);
+        const dist = camera.position.distanceTo(mesh.position);
+        const legible = faceVisibility(dist);
+        const emphasis = isHovered || fraction > 0 ? 1 : inActiveColumn && anyActive ? 0.95 : 0.78;
+        face.fillOpacity = legible * st.progress * emphasis * (0.25 + 0.75 * st.dim);
+      }
     }
   });
 
@@ -255,18 +585,31 @@ function Layers({
 
   return (
     <group>
-      <Rig totalWidth={totalWidth} tallest={tallest} mode={mode} reduced={reduced} />
+      <Rig
+        totalWidth={totalWidth}
+        tallest={tallest}
+        mode={mode}
+        reduced={reduced}
+        framePoints={framePoints}
+        focusPoints={focusPoints}
+        focusKey={focusPoints ? (focusMint ?? "") : ""}
+      />
       {placements.map((p) => (
-        <RoundedBox
+        <LotBlock
           key={p.layer.id}
-          ref={(m: THREE.Mesh | null) => {
+          placement={p}
+          onMesh={(m) => {
             if (m) meshes.current.set(p.layer.id, m);
             else meshes.current.delete(p.layer.id);
           }}
-          args={[WIDTH, p.h, WIDTH]}
-          radius={0.035}
-          smoothness={3}
-          position={[p.x, p.y + p.h / 2, 0]}
+          onMaterial={(m) => {
+            if (m) materials.current.set(p.layer.id, m);
+            else materials.current.delete(p.layer.id);
+          }}
+          onEdges={(m) => {
+            if (m) edgeMaterials.current.set(p.layer.id, m);
+            else edgeMaterials.current.delete(p.layer.id);
+          }}
           onPointerOver={(e) => {
             e.stopPropagation();
             setHovered(p);
@@ -276,46 +619,46 @@ function Layers({
             e.stopPropagation();
             onSelectColumn?.(p.column.mint);
           }}
-        >
-          <meshPhysicalMaterial
-            ref={(m: THREE.MeshPhysicalMaterial | null) => {
-              if (m) materials.current.set(p.layer.id, m);
-              else materials.current.delete(p.layer.id);
-            }}
-            color={p.color}
-            emissive={p.color}
-            emissiveIntensity={0.22}
-            roughness={0.22}
-            metalness={0.08}
-            clearcoat={1}
-            clearcoatRoughness={0.18}
-            transparent
-            opacity={0.94}
-            envMapIntensity={1.1}
-          />
-        </RoundedBox>
+        />
+      ))}
+      {placements.map((p) => (
+        <LotFace
+          key={`face-${p.layer.id}`}
+          placement={p}
+          onGroup={(g) => {
+            if (g) faceGroups.current.set(p.layer.id, g);
+            else faceGroups.current.delete(p.layer.id);
+          }}
+          onText={(m) => {
+            if (m) faceTexts.current.set(p.layer.id, m as TextMesh);
+            else faceTexts.current.delete(p.layer.id);
+          }}
+        />
       ))}
 
-      {showLabels && columns.map((c, i) => {
-        const n = columns.length;
-        const pitch = n > 9 ? PITCH * (9 / n) : PITCH;
-        const x = (i - (n - 1) / 2) * pitch;
-        const h = heights.get(c.mint) ?? 0;
-        const active = (hovered?.column.mint ?? highlightMint) === c.mint;
-        return (
-          <Html key={c.mint} position={[x, h + 0.42, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
-            <div
-              className={`flex flex-col items-center gap-0.5 whitespace-nowrap transition-all duration-500 ${
-                active ? "opacity-100 scale-105" : "opacity-70"
-              }`}
-              style={{ transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)" }}
-            >
-              <span className="num text-[11px] tracking-[0.12em] text-foreground">{c.symbol}</span>
-              {showValues && <span className="num text-[10px] text-muted-foreground">{formatUSD(c.value)}</span>}
-            </div>
-          </Html>
-        );
-      })}
+      {showLabels &&
+        columns.map((c, i) => {
+          const n = columns.length;
+          const pitch = n > 9 ? PITCH * (9 / n) : PITCH;
+          const x = (i - (n - 1) / 2) * pitch;
+          const h = heights.get(c.mint) ?? 0;
+          const activeMint = hovered?.column.mint ?? highlightMint ?? focusMint ?? null;
+          const active = activeMint === c.mint;
+          const dimmed = activeMint !== null && !active;
+          return (
+            <Html key={c.mint} position={[x, h + 0.42, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
+              <div
+                className={`flex flex-col items-center gap-0.5 whitespace-nowrap transition-all duration-500 ${
+                  active ? "opacity-100 scale-105" : dimmed ? "opacity-30" : "opacity-70"
+                }`}
+                style={{ transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)" }}
+              >
+                <span className="num text-[11px] tracking-[0.12em] text-foreground">{c.symbol}</span>
+                {showValues && <span className="num text-[10px] text-muted-foreground">{formatUSD(c.value)}</span>}
+              </div>
+            </Html>
+          );
+        })}
 
       {hovered && <LayerTooltip placement={hovered} method={method} rank={ranks.get(hovered.layer.id) ?? 0} />}
     </group>
@@ -367,32 +710,49 @@ export function LayerTooltip({ placement, method, rank, z = 0.9 }: { placement: 
   );
 }
 
+/** A dark reflective slab ruled like a ledger sheet. */
 export function Ground({ lowPower }: { lowPower: boolean }) {
-  if (lowPower) {
-    return (
-      <mesh rotation-x={-Math.PI / 2} position-y={-0.001} receiveShadow>
-        <planeGeometry args={[60, 60]} />
-        <meshStandardMaterial color="#0c0c0d" roughness={1} metalness={0} />
-      </mesh>
-    );
-  }
   return (
-    <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
-      <planeGeometry args={[60, 60]} />
-      <MeshReflectorMaterial
-        blur={[500, 120]}
-        resolution={640}
-        mixBlur={1}
-        mixStrength={14}
-        roughness={0.9}
-        depthScale={1.1}
-        minDepthThreshold={0.4}
-        maxDepthThreshold={1.6}
-        color="#0e0e10"
-        metalness={0.45}
-        mirror={0.55}
+    <group>
+      {lowPower ? (
+        <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
+          <planeGeometry args={[80, 80]} />
+          <meshStandardMaterial color="#0c0c0d" roughness={1} metalness={0} />
+        </mesh>
+      ) : (
+        <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
+          <planeGeometry args={[80, 80]} />
+          <MeshReflectorMaterial
+            blur={[420, 110]}
+            resolution={1024}
+            mixBlur={1}
+            mixStrength={11}
+            roughness={0.85}
+            depthScale={1.15}
+            minDepthThreshold={0.4}
+            maxDepthThreshold={1.7}
+            color="#0c0c0e"
+            metalness={0.42}
+            mirror={0.55}
+          />
+        </mesh>
+      )}
+      <Grid
+        position={[0, 0.003, 0]}
+        args={[80, 80]}
+        cellSize={0.8}
+        cellThickness={0.6}
+        cellColor="#1b1c21"
+        sectionSize={4}
+        sectionThickness={1}
+        sectionColor="#2b2d34"
+        fadeDistance={30}
+        fadeStrength={1.6}
+        fadeFrom={1}
+        infiniteGrid
+        followCamera={false}
       />
-    </mesh>
+    </group>
   );
 }
 
@@ -400,18 +760,32 @@ export function SceneLights() {
   return (
     <>
       <fog attach="fog" args={[COLOR_BG, 14, 34]} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[5, 10, 6]} intensity={1.5} color="#fff4e0" />
-      <pointLight position={[-7, 4, -3]} intensity={26} distance={24} color="#ffa733" />
-      <pointLight position={[8, 3, -5]} intensity={18} distance={24} color="#7f8cb0" />
-      <Environment resolution={128} frames={1}>
+      <ambientLight intensity={0.22} />
+      <directionalLight position={[6, 12, 7]} intensity={2.1} color="#fff1dc" />
+      <directionalLight position={[-9, 7, -9]} intensity={1.7} color="#dfe6ff" />
+      <pointLight position={[-7, 3, 4]} intensity={28} distance={22} color="#ffa733" />
+      <pointLight position={[9, 2, -4]} intensity={14} distance={24} color="#7f8cb0" />
+      <Environment resolution={256} frames={1}>
         <group>
-          <Lightformer intensity={2.2} form="rect" position={[0, 7, -6]} scale={[14, 5, 1]} color="#fff2dc" />
-          <Lightformer intensity={1.1} form="rect" position={[-8, 3, 2]} rotation-y={Math.PI / 2} scale={[6, 2, 1]} color="#ffa733" />
-          <Lightformer intensity={0.9} form="rect" position={[8, 2, 2]} rotation-y={-Math.PI / 2} scale={[6, 2, 1]} color="#9aa6c8" />
+          <Lightformer intensity={2.4} form="rect" position={[0, 8, -6]} scale={[16, 5, 1]} color="#fff2dc" />
+          <Lightformer intensity={3} form="rect" position={[0, 5, 8]} rotation-x={Math.PI / 2.4} scale={[18, 0.5, 1]} color="#ffffff" />
+          <Lightformer intensity={1.2} form="rect" position={[-8, 3, 2]} rotation-y={Math.PI / 2} scale={[6, 2, 1]} color="#ffa733" />
+          <Lightformer intensity={1} form="rect" position={[8, 2, 2]} rotation-y={-Math.PI / 2} scale={[6, 2, 1]} color="#9aa6c8" />
         </group>
       </Environment>
     </>
+  );
+}
+
+/** Shared post chain: soft bloom for the amber pulses, a light vignette and filmic tone mapping last. */
+export function SceneEffects({ lowPower }: { lowPower: boolean }) {
+  if (lowPower) return null;
+  return (
+    <EffectComposer multisampling={4}>
+      <Bloom mipmapBlur intensity={0.8} luminanceThreshold={0.7} luminanceSmoothing={0.25} radius={0.66} />
+      <Vignette eskil={false} offset={0.16} darkness={0.6} />
+      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+    </EffectComposer>
   );
 }
 
@@ -420,7 +794,7 @@ export default function StrataScene({ lowPower = false, reduced = false, framelo
     <Canvas
       dpr={lowPower ? [1, 1.25] : [1, 1.75]}
       frameloop={frameloop}
-      camera={{ position: [0, 3.4, 12], fov: 30, near: 0.1, far: 80 }}
+      camera={{ position: [4, 3.4, 12], fov: 30, near: 0.1, far: 80 }}
       gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
       style={{ background: "transparent" }}
     >
@@ -428,14 +802,9 @@ export default function StrataScene({ lowPower = false, reduced = false, framelo
       <group position={[0, -0.02, 0]}>
         <Layers {...props} reduced={reduced} />
         <Ground lowPower={lowPower} />
-        {props.mode === "hero" && !reduced && <Dust />}
+        {(props.mode === "hero" || props.mode === "stage") && !reduced && <Dust />}
       </group>
-      {!lowPower && (
-        <EffectComposer multisampling={0}>
-          <Bloom mipmapBlur intensity={0.75} luminanceThreshold={0.72} luminanceSmoothing={0.25} radius={0.7} />
-          <Vignette eskil={false} offset={0.18} darkness={0.62} />
-        </EffectComposer>
-      )}
+      <SceneEffects lowPower={lowPower} />
     </Canvas>
   );
 }

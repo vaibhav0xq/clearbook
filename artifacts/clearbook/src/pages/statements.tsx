@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { Shell } from "@/components/layout/shell";
 import { useListStatements, useCreateStatement, CostMethod } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
+import { useStage } from "@/components/layout/stage";
 import { formatUSD } from "@/lib/format";
 import { Plus, ShieldCheck, Clock, Loader2, AlertTriangle } from "lucide-react";
 import { format, subMonths, startOfMonth, endOfMonth, startOfYear, startOfQuarter } from "date-fns";
@@ -20,6 +20,13 @@ export default function Statements() {
 
   const { data: statements, isLoading, error } = useListStatements(address);
   const createStatement = useCreateStatement();
+
+  const count = statements?.length ?? 0;
+  useStage({
+    caption: statements 
+      ? (count > 0 ? `${count} ${count === 1 ? "statement" : "statements"} generated for this ledger.` : "Statements prove holdings and compute realized gains for a specific period.")
+      : "Statements prove holdings and compute realized gains for a specific period."
+  });
 
   const [showForm, setShowForm] = useState(true);
   const [newStart, setNewStart] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
@@ -71,7 +78,7 @@ export default function Statements() {
   };
 
   return (
-    <Shell address={address}>
+    <>
       <PageHeader 
         title="Statements"
         description="Statements for any period, each with a document hash that can be notarized on Solana."
@@ -281,6 +288,6 @@ export default function Statements() {
           )
         ) : null}
       </div>
-    </Shell>
+    </>
   );
 }

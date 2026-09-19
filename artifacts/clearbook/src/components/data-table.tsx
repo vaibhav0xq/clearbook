@@ -21,7 +21,7 @@ export function TableHeader({ children }: { children: ReactNode }) {
 
 export function TableHead({ children, align = "left", className }: { children: ReactNode; align?: "left" | "right"; className?: string }) {
   return (
-    <th className={cn("label py-3.5 px-5 font-normal", align === "right" ? "text-right" : "text-left", className)}>
+    <th className={cn("label py-3.5 px-4 font-normal first:pl-5 last:pr-5", align === "right" ? "text-right" : "text-left", className)}>
       {children}
     </th>
   );
@@ -63,7 +63,7 @@ export function TableRow({ children, className, index = 0, active = false, onCli
 
 export function TableCell({ children, align = "left", className }: { children: ReactNode; align?: "left" | "right"; className?: string }) {
   return (
-    <td className={cn("py-3.5 px-5 text-[14px] align-middle", align === "right" ? "text-right" : "text-left", className)}>
+    <td className={cn("py-3.5 px-4 text-[13px] align-middle first:pl-5 last:pr-5", align === "right" ? "text-right" : "text-left", className)}>
       {children}
     </td>
   );

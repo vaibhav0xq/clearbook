@@ -24,16 +24,64 @@ container holds a sticky viewport with `Story` (src/components/three/story.tsx)
 and seven short copy overlays. Scroll progress is a framer `MotionValue` passed
 into the scene and read in `useFrame`, so nothing on the landing animates on a
 timer except the first headline. Every visual state is a pure function of
-progress in `src/components/three/story-data.ts` (`split`, `reliefStory`,
-`dividendWave`, `colorize`, `scan`, `copyVisibility`) and both the scene and
-the DOM copy call the same functions. Chapters: Balance (one grey block per
-position), Lots (the block splits into dated layers), Relief (the same sale
-walked through FIFO, LIFO and HIFO with the realized figure), Income (the
-multiplier change as an amber band), Marks (P/L colours flood in, net value
-counts up), Proof (a beam sweeps the columns while the statement hash reveals)
-and Open (address input, demo ledgers, wallet). Copy budget is about a hundred
-words in total. Keep it that way: one eyebrow, one headline, at most one
-sentence and one live figure per chapter.
+progress in `src/components/three/story-data.ts` and both the scene and the
+DOM copy call the same functions. Copy budget is about a hundred words in
+total: one eyebrow, one headline, at most one sentence and one live figure per
+chapter.
+
+Chapters alternate sides. Each `Chapter` takes `side` ("left", "right",
+"bottom" or "center") and `CHAPTER_SIDE` in
+`src/components/three/story-scene.tsx` must mirror those props (1 for copy on
+the right, -1 for copy on the left, 0 for bottom and center) because the camera
+shifts the ledger to the free side. Headlines are `Headline lines={[...]}`:
+each line rises out of its own mask when the chapter becomes active, so keep
+lines short enough to fit the copy column at 84px. The final chapter dims the
+ledger and hides column labels so the centred form reads. Scrolling runs
+through Lenis except under reduced motion, where native scrolling and snapped
+camera moves are used.
+
+## Ledger pages (src/pages/*.tsx under /w/:address)
+
+Every wallet page renders inside one `Shell` (src/components/layout/shell.tsx),
+mounted once by the router for the whole `/w/:address/*` tree. The shell is a
+split view: a reading panel on the left (about 60vw) and the stage on the
+right (`clamp(360px, 40vw, 720px)`, full height, sticky). On small screens the
+stage is a 42vh band at the top and the panel scrolls under it. The stage is
+the one WebGL view of the ledger (`Strata` in mode "stage") and it stays
+mounted while pages change, so the camera moves between pages instead of the
+scene reloading.
+
+Pages never render their own `Strata`, `Shell`, header, nav, method control or
+wallet strip. A page describes what the stage should show with the `useStage`
+hook from `@/components/layout/stage`:
+
+```tsx
+const { hoverMint, setHoverMint, columns } = useStage({
+  focusMint,          // string | null: the camera closes on this column
+  highlightLayerId,   // string | null: draw this lot as hovered (table row hover)
+  preview,            // { mint, quantity } | null: lift the layers a sale would relieve
+  caption,            // string | null: one short sentence printed under the scene
+});
+```
+
+Pass plain values (strings, numbers, null), never objects created inline
+except `preview`, which is compared by its fields. `hoverMint` is shared: a
+row under the pointer should call `setHoverMint(mint)` on enter and
+`setHoverMint(null)` on leave, and rows whose mint equals `hoverMint` should
+render active, because hovering a column in the stage sets the same value.
+`columns` are the built `StrataColumn`s (mint, symbol, layers with `id`,
+`quantity`, `costPerShare`, `value`) if a page needs to map rows to layers.
+`lotDetail` says whether those layers are real lots ("ready") or one aggregate
+layer per position while lots load or fail; only pass a `preview` when it is
+"ready". Pages exit with an animation, so the stage keeps the state of the
+latest page to publish and ignores the exiting page's cleanup.
+
+The reading panel is narrow. Design for about 800px: single column sections,
+tables of at most five columns, secondary detail as 11px sub lines inside
+cells, panels stacked rather than side by side below `xl`. Page titles use
+`PageHeader` at the top of the content with a one line description. Keep the
+identity strip, the method control and the wallet button out of pages; the
+shell owns them.
 
 ## Tokens (already defined in src/index.css, do not redefine)
 
@@ -72,8 +120,11 @@ ring), `.ticker` (marquee), `ease-out-expo`, `animate-pulse-dot`,
 - `@/components/motion`: `Reveal`, `Stagger`, `StaggerItem`, `EASE_OUT`,
   `AnimatedNumber`, `ScrambleText`, `Magnetic`, `TiltCard`, `PageTransition`.
 - `@/components/three/strata`: `Strata` (props: columns, method, mode
-  "hero" | "portfolio" | "trade", highlightMint, preview {mint, quantity},
-  onHoverColumn, onSelectColumn, className). Give it an explicit height.
+  "hero" | "portfolio" | "trade" | "stage", highlightMint, highlightLayerId,
+  focusMint, preview {mint, quantity}, onHoverColumn, onSelectColumn,
+  className). Ledger pages must not mount it; the shell's stage does.
+- `@/components/layout/stage`: `useStage(state)` (see Ledger pages),
+  `useStageContext`, `StageView` (shell only).
 - `@/components/three/strata-data`: `buildStrata(positions, lots)`,
   `reliefOrder(column, method)`, `reliefPreview(column, method, quantity)`,
   `reliefRank(column, method)`.
@@ -86,9 +137,8 @@ ring), `.ticker` (marquee), `ease-out-expo`, `animate-pulse-dot`,
 - `@/lib/format`: `formatUSD`, `formatQuantity`, `formatPercent`,
   `truncateAddress`, `formatAge`, `issuerLabel`.
 
-Wallet pages render inside `Shell`, which already provides the header, nav,
-method control, wallet status strip and page transition. Pages start directly
-with their content. Use `PageHeader` for the page title.
+Wallet pages are rendered by the router inside `Shell`; a page component
+returns its content directly (a fragment or a div), never a `Shell`.
 
 ## Motion
 

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Lenis from "lenis";
 import { Link, useLocation } from "wouter";
 import {
   motion,
@@ -49,17 +50,31 @@ import { cn } from "@/lib/utils";
 const DEMO = "demo-holder";
 
 /** Copy for one chapter. Fades and drifts with scroll, never with time. */
+type ChapterSide = "left" | "right" | "bottom" | "center";
+
+const SIDE_CLASS: Record<ChapterSide, string> = {
+  left: "md:left-10 md:top-1/2 md:-translate-y-1/2 md:w-[min(48vw,700px)] lg:left-14",
+  right: "md:left-auto md:right-10 md:top-1/2 md:-translate-y-1/2 md:w-[min(48vw,700px)] lg:right-14",
+  bottom: "md:left-10 md:right-10 md:bottom-[7.5rem] md:top-auto lg:left-14 lg:right-14",
+  center: "md:left-1/2 md:top-1/2 md:w-[min(80vw,760px)] md:-translate-x-1/2 md:-translate-y-1/2 md:text-center",
+};
+
+/** Whether the chapter that owns the copy is the one in view. Drives the masked headline reveals. */
+const ChapterActive = createContext(true);
+
 function Chapter({
   progress,
   index,
   children,
   className,
+  side = "left",
   interactive = false,
 }: {
   progress: MotionValue<number>;
   index: number;
   children: ReactNode;
   className?: string;
+  side?: ChapterSide;
   interactive?: boolean;
 }) {
   const opacity = useTransform(progress, (p) => copyVisibility(p, index));
@@ -84,14 +99,33 @@ function Chapter({
       aria-hidden={!active}
       inert={!active}
       className={cn(
-        "absolute inset-x-5 bottom-[max(6.5rem,14svh)] md:inset-x-auto md:left-10 md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:w-[min(46vw,560px)]",
+        "absolute inset-x-5 bottom-[max(6.5rem,14svh)] md:inset-x-auto md:bottom-auto",
+        SIDE_CLASS[side],
         active && interactive ? "pointer-events-auto" : "pointer-events-none",
         shown ? "" : "invisible",
         className,
       )}
     >
-      {children}
+      <ChapterActive.Provider value={active}>{children}</ChapterActive.Provider>
     </motion.div>
+  );
+}
+
+/** A headline that rises out of a line mask when its chapter comes into view. */
+function Masked({ children, className, delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
+  const active = useContext(ChapterActive);
+  const reduce = useReducedMotion();
+  return (
+    <span className={cn("block overflow-hidden pb-[0.12em] -mb-[0.12em]", className)}>
+      <motion.span
+        className="block"
+        initial={false}
+        animate={reduce ? { y: 0 } : { y: active ? "0%" : "110%" }}
+        transition={{ duration: 0.9, ease: EASE_OUT, delay: active ? delay : 0 }}
+      >
+        {children}
+      </motion.span>
+    </span>
   );
 }
 
@@ -104,8 +138,16 @@ function Eyebrow({ index, children }: { index?: number; children: ReactNode }) {
   );
 }
 
-function Headline({ children, className }: { children: ReactNode; className?: string }) {
-  return <h2 className={cn("display-wide mt-5 text-[42px] sm:text-[52px] lg:text-[64px] text-foreground text-balance", className)}>{children}</h2>;
+function Headline({ lines, className }: { lines: string[]; className?: string }) {
+  return (
+    <h2 className={cn("display-wide mt-5 text-[44px] leading-[0.98] sm:text-[56px] lg:text-[72px] xl:text-[84px] text-foreground", className)}>
+      {lines.map((line, i) => (
+        <Masked key={line} delay={0.08 * i}>
+          {line}
+        </Masked>
+      ))}
+    </h2>
+  );
 }
 
 function Lede({ children }: { children: ReactNode }) {
@@ -209,12 +251,32 @@ export default function Home() {
     if (wallet.connected && wallet.publicKey) setLocation(`/w/${wallet.publicKey}`);
   }, [wallet.connected, wallet.publicKey, setLocation]);
 
+  // Smooth scrolling ties the scene to the wheel. Reduced motion keeps native scrolling.
+  const lenisRef = useRef<Lenis | null>(null);
+  useEffect(() => {
+    if (reduce) return;
+    const lenis = new Lenis({ lerp: 0.085, smoothWheel: true, wheelMultiplier: 0.9 });
+    lenisRef.current = lenis;
+    let raf = 0;
+    const loop = (time: number) => {
+      lenis.raf(time);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      lenis.destroy();
+      lenisRef.current = null;
+    };
+  }, [reduce]);
+
   const scrollToChapter = useCallback(
     (i: number) => {
       const el = storyRef.current;
       if (!el) return;
       const top = el.offsetTop + chapterAnchor(i) * (el.offsetHeight - window.innerHeight);
-      window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+      if (lenisRef.current) lenisRef.current.scrollTo(top, { duration: 1.4 });
+      else window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
     },
     [reduce],
   );
@@ -223,7 +285,7 @@ export default function Home() {
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip">
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 grain" />
+      <div aria-hidden className="grain-overlay" />
 
       {/* Header */}
       <motion.header
@@ -310,16 +372,15 @@ export default function Home() {
               incomeMint={incomeColumn?.mint ?? null}
               onSelectColumn={() => setLocation(`/w/${DEMO}`)}
             />
-            <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-[60] hidden w-[58%] bg-gradient-to-r from-background via-background/70 to-transparent md:block" />
-            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[60] h-[46svh] bg-gradient-to-t from-background via-background/85 to-transparent md:h-40 md:via-transparent" />
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[60] h-[46svh] bg-gradient-to-t from-background via-background/85 to-transparent md:h-48 md:via-background/40" />
             <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[60] h-28 bg-gradient-to-b from-background/90 to-transparent" />
           </div>
 
           <div className="pointer-events-none absolute inset-0 z-10 mx-auto max-w-[1400px]">
             {/* 00 Balance */}
-            <Chapter progress={progress} index={0} className="md:w-[min(58vw,800px)]">
+            <Chapter progress={progress} index={0} className="md:w-[min(56vw,880px)]">
               <Eyebrow>Brokerage statements for tokenized stocks on Solana</Eyebrow>
-              <h1 className="display-wide mt-6 text-[52px] sm:text-[68px] lg:text-[84px] text-foreground">
+              <h1 className="display-wide mt-6 text-[56px] leading-[0.96] sm:text-[76px] lg:text-[96px] xl:text-[108px] text-foreground">
                 {["A", "balance", "is", "not", "a", "statement."].map((word, i) => (
                   <motion.span
                     key={word + i}
@@ -352,9 +413,9 @@ export default function Home() {
             </Chapter>
 
             {/* 01 Lots */}
-            <Chapter progress={progress} index={1}>
+            <Chapter progress={progress} index={1} side="right">
               <Eyebrow index={1}>Lots</Eyebrow>
-              <Headline>Every buy becomes a lot.</Headline>
+              <Headline lines={["Every buy", "becomes a lot."]} />
               <Lede>Rebuilt from public Solana history. Oldest at the bottom.</Lede>
               {lotsError ? (
                 <p className="mt-8 text-[13px] text-destructive/90">Open lots could not be loaded. {lotsError.message}</p>
@@ -366,9 +427,9 @@ export default function Home() {
             </Chapter>
 
             {/* 02 Relief */}
-            <Chapter progress={progress} index={2}>
+            <Chapter progress={progress} index={2} side="left">
               <Eyebrow index={2}>Relief</Eyebrow>
-              <Headline>The same sale books a different gain.</Headline>
+              <Headline lines={["The same sale", "books a", "different gain."]} />
               <div className="mt-8 flex items-end gap-6 md:gap-8">
                 {RELIEF_METHODS.map((m, i) => {
                   const active = i === methodIndex;
@@ -405,9 +466,9 @@ export default function Home() {
             </Chapter>
 
             {/* 03 Income */}
-            <Chapter progress={progress} index={3}>
+            <Chapter progress={progress} index={3} side="right">
               <Eyebrow index={3}>Income</Eyebrow>
-              <Headline>Dividends arrive as multiplier changes.</Headline>
+              <Headline lines={["Dividends arrive", "as multiplier", "changes."]} />
               <Lede>Read from the mint itself and booked as reinvested income.</Lede>
               {incomeEvent && (
                 <div className="mt-8 flex flex-wrap items-end gap-x-10 gap-y-5">
@@ -425,24 +486,28 @@ export default function Home() {
             </Chapter>
 
             {/* 04 Marks */}
-            <Chapter progress={progress} index={4}>
-              <Eyebrow index={4}>Marks</Eyebrow>
-              <Headline>Marked to market.</Headline>
-              <Lede>Pyth, Jupiter or the issuer, with the source and age beside every price.</Lede>
-              <div className="mt-8 flex flex-wrap items-end gap-x-10 gap-y-5">
-                <Figure label="Net value">
-                  <motion.span>{netText}</motion.span>
-                </Figure>
-                <Figure label={`Unrealized, ${method.toUpperCase()}`}>
-                  <motion.span className="text-success">{unrealizedText}</motion.span>
-                </Figure>
+            <Chapter progress={progress} index={4} side="bottom">
+              <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between md:gap-12">
+                <div className="md:max-w-[560px]">
+                  <Eyebrow index={4}>Marks</Eyebrow>
+                  <Headline lines={["Marked", "to market."]} />
+                  <Lede>Pyth, Jupiter or the issuer, with the source and age beside every price.</Lede>
+                </div>
+                <div className="flex flex-wrap items-end gap-x-12 gap-y-6 md:justify-end md:border-l md:hairline md:pl-12">
+                  <Figure label="Net value">
+                    <motion.span>{netText}</motion.span>
+                  </Figure>
+                  <Figure label={`Unrealized, ${method.toUpperCase()}`}>
+                    <motion.span className="text-success">{unrealizedText}</motion.span>
+                  </Figure>
+                </div>
               </div>
             </Chapter>
 
             {/* 05 Proof */}
-            <Chapter progress={progress} index={5}>
+            <Chapter progress={progress} index={5} side="left">
               <Eyebrow index={5}>Proof</Eyebrow>
-              <Headline>One period. One method. One hash.</Headline>
+              <Headline lines={["One period.", "One method.", "One hash."]} />
               <Lede>Written to Solana in a memo so anyone can check it.</Lede>
               <div className="mt-8 flex flex-col gap-2">
                 <span className="label">{latestStatement ? `SHA-256 of ${latestStatement.title}` : "SHA-256"}</span>
@@ -457,13 +522,16 @@ export default function Home() {
             </Chapter>
 
             {/* 06 Open */}
-            <Chapter progress={progress} index={6} interactive>
-              <Eyebrow index={6}>Open</Eyebrow>
-              <Headline>Open a ledger.</Headline>
-              <form onSubmit={handleAddressSubmit} className="mt-8 max-w-[520px]">
+            <Chapter progress={progress} index={6} side="center" interactive>
+              <div aria-hidden className="pointer-events-none absolute -inset-x-[30%] -inset-y-[45%] -z-10 bg-[radial-gradient(ellipse_at_center,rgba(10,10,11,0.82)_0%,rgba(10,10,11,0.45)_45%,transparent_72%)]" />
+              <div className="md:flex md:justify-center">
+                <Eyebrow index={6}>Open</Eyebrow>
+              </div>
+              <Headline lines={["Open a ledger."]} />
+              <form onSubmit={handleAddressSubmit} className="mt-10 max-w-[640px] md:mx-auto">
                 <div
                   className={cn(
-                    "glass-strong flex h-14 items-center rounded-full pl-5 pr-1.5 transition-shadow duration-500 focus-within:ring-glow",
+                    "glass-strong flex h-14 items-center rounded-full pl-5 pr-1.5 transition-shadow duration-500 focus-within:ring-glow md:h-[68px] md:pl-7 md:pr-2",
                     addressError && "ring-1 ring-destructive/60",
                   )}
                 >
@@ -477,7 +545,7 @@ export default function Home() {
                       setAddressInput(e.target.value);
                       if (addressError) setAddressError(null);
                     }}
-                    className="num flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-foreground/40"
+                    className="num min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-foreground/40 md:text-[16px]"
                     spellCheck={false}
                     autoComplete="off"
                   />
@@ -485,14 +553,14 @@ export default function Home() {
                     <button
                       type="submit"
                       aria-label="Open ledger"
-                      className="group flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform duration-500 ease-out-expo hover:scale-105"
+                      className="group flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform duration-500 ease-out-expo hover:scale-105 md:h-[52px] md:w-[52px]"
                     >
                       <ArrowRight className="h-4.5 w-4.5 transition-transform duration-500 ease-out-expo group-hover:translate-x-0.5" />
                     </button>
                   </Magnetic>
                 </div>
-                {addressError && <p className="mt-2 text-[12px] text-destructive">{addressError}</p>}
-                <div className="mt-5 flex flex-wrap items-center gap-2">
+                {addressError && <p className="mt-2 text-[12px] text-destructive md:text-center">{addressError}</p>}
+                <div className="mt-5 flex flex-wrap items-center gap-2 md:justify-center">
                   <span className="mr-1 text-[12px] text-foreground/55">Or start with a demo ledger</span>
                   {isLoading && !config && (
                     <>

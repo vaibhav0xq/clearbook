@@ -3,8 +3,8 @@ import { format } from "date-fns";
 import { ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
 
 import { useListActivity } from "@workspace/api-client-react";
-import { Shell } from "@/components/layout/shell";
 import { useCostMethod } from "@/hooks/use-cost-method";
+import { useStageContext, useStage } from "@/components/layout/stage";
 import { formatUSD, formatQuantity } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Pill, Skeleton, EmptyState, ErrorState, PageHeader } from "@/components/surface";
@@ -23,6 +23,19 @@ export default function Activity() {
 
   const { data: activityPage, isLoading, error } = useListActivity(address, { method, cursor, limit: 50 });
 
+  const { hoverMint, setHoverMint } = useStageContext();
+  // The caption describes the page in view, so its count and its date range come from the same items.
+  const shown = activityPage?.items.length ?? 0;
+  const first = activityPage?.items[activityPage.items.length - 1]?.blockTime;
+  const last = activityPage?.items[0]?.blockTime;
+  useStage({
+    focusMint: hoverMint,
+    caption:
+      activityPage && shown > 0 && first && last
+        ? `${shown} of ${activityPage.total} ${activityPage.total === 1 ? "event" : "events"}, ${format(new Date(first), "MMM d, yyyy")} to ${format(new Date(last), "MMM d, yyyy")}.`
+        : null,
+  });
+
   const handleNextPage = () => {
     if (activityPage?.nextCursor) {
       const newParams = new URLSearchParams(search);
@@ -38,7 +51,7 @@ export default function Activity() {
   };
 
   return (
-    <Shell address={address}>
+    <>
       <PageHeader
         title="Ledger activity"
         description="All on-chain events and resolved transfers."
@@ -79,7 +92,13 @@ export default function Activity() {
             </TableHeader>
             <TableBody>
               {activityPage!.items.map((event, i) => (
-                <TableRow key={event.id} index={i}>
+                <TableRow 
+                  key={event.id} 
+                  index={i}
+                  active={hoverMint === event.mint}
+                  onMouseEnter={() => event.mint && setHoverMint(event.mint)}
+                  onMouseLeave={() => event.mint && setHoverMint(null)}
+                >
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       <span className="text-[14px] text-foreground">{event.kindLabel}</span>
@@ -175,6 +194,6 @@ export default function Activity() {
           </div>
         </Reveal>
       )}
-    </Shell>
+    </>
   );
 }

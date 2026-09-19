@@ -1,9 +1,9 @@
 import { useRoute } from "wouter";
-import { Shell } from "@/components/layout/shell";
 import { useGetStatement, usePrepareNotarization, useSubmitNotarization, getGetStatementQueryKey, getPrepareNotarizationQueryKey } from "@workspace/api-client-react";
 import { formatUSD, formatQuantity } from "@/lib/format";
 import { ExternalLink, ShieldCheck, Download, Clock, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
+import { useStageContext, useStage } from "@/components/layout/stage";
 import { NotarizeButton } from "@/components/notarize-button";
 import { useWalletSession } from "@/lib/wallet";
 import { Figure } from "@/components/figure";
@@ -20,6 +20,12 @@ export default function StatementDetail() {
 
   const { data: statement, isLoading, error, refetch: refetchStatement } = useGetStatement(statementId, {
     query: { queryKey: getGetStatementQueryKey(statementId), enabled: !!statementId }
+  });
+
+  const { hoverMint, setHoverMint } = useStageContext();
+  useStage({
+    focusMint: hoverMint,
+    caption: statement ? `Statement for ${format(new Date(statement.periodStart), "MMM d, yyyy")} to ${format(new Date(statement.periodEnd), "MMM d, yyyy")}` : null
   });
   
   const wallet = useWalletSession();
@@ -48,7 +54,7 @@ export default function StatementDetail() {
   };
 
   return (
-    <Shell address={address}>
+    <>
       <div className="flex flex-col gap-12 md:gap-16 pb-16">
         {isLoading ? (
           <div className="flex flex-col gap-10">
@@ -163,10 +169,10 @@ export default function StatementDetail() {
 
             {/* Totals */}
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-              <Reveal delay={0.15}><Figure label="Opening value" value={statement.totals.openingValue} size="lg" /></Reveal>
-              <Reveal delay={0.2}><Figure label="Closing value" value={statement.totals.closingValue} size="lg" /></Reveal>
-              <Reveal delay={0.25}><Figure label="Realized P/L" value={statement.totals.realizedPnl} tone size="lg" /></Reveal>
-              <Reveal delay={0.3}><Figure label="Income estimate" value={statement.totals.incomeEstimate} tone size="lg" /></Reveal>
+              <Reveal delay={0.15}><Figure label="Opening value" value={statement.totals.openingValue} size="md" /></Reveal>
+              <Reveal delay={0.2}><Figure label="Closing value" value={statement.totals.closingValue} size="md" /></Reveal>
+              <Reveal delay={0.25}><Figure label="Realized P/L" value={statement.totals.realizedPnl} tone size="md" /></Reveal>
+              <Reveal delay={0.3}><Figure label="Income estimate" value={statement.totals.incomeEstimate} tone size="md" /></Reveal>
             </section>
 
             {/* Positions */}
@@ -188,7 +194,13 @@ export default function StatementDetail() {
                   </TableHeader>
                   <TableBody>
                     {statement.positions.map((pos, i) => (
-                      <TableRow key={pos.mint} index={i}>
+                      <TableRow 
+                        key={pos.mint} 
+                        index={i}
+                        active={hoverMint === pos.mint}
+                        onMouseEnter={() => setHoverMint(pos.mint)}
+                        onMouseLeave={() => setHoverMint(null)}
+                      >
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <span className="num text-[15px] tracking-[0.08em] text-foreground">{pos.symbol}</span>
@@ -266,6 +278,6 @@ export default function StatementDetail() {
           </>
         ) : null}
       </div>
-    </Shell>
+    </>
   );
 }

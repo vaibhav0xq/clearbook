@@ -12,7 +12,7 @@ interface FigureProps {
   subTone?: number | null;
   /** Colours the main value by sign. */
   tone?: boolean;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "xxl";
   align?: "left" | "right";
   className?: string;
 }
@@ -22,6 +22,7 @@ const SIZE: Record<NonNullable<FigureProps["size"]>, string> = {
   md: "text-[22px]",
   lg: "text-[30px] md:text-[34px]",
   xl: "text-[44px] md:text-[64px] leading-[0.95] tracking-[-0.03em]",
+  xxl: "text-[56px] md:text-[84px] xl:text-[96px] leading-[0.92] tracking-[-0.04em]",
 };
 
 export function Figure({ label, value, format = formatUSD, sub, subTone, tone = false, size = "md", align = "left", className }: FigureProps) {
@@ -41,7 +42,7 @@ export function Figure({ label, value, format = formatUSD, sub, subTone, tone = 
       {label && <span className="label">{label}</span>}
       <span className={cn("text-foreground leading-none tracking-tight", SIZE[size])}>
         {isNumeric ? (
-          <AnimatedNumber value={value as number | null | undefined} format={format} tone={tone} className={size === "xl" ? "font-sans font-light" : "font-sans"} />
+          <AnimatedNumber value={value as number | null | undefined} format={format} tone={tone} className={size === "xl" || size === "xxl" ? "font-sans font-light" : "font-sans"} />
         ) : (
           <span className="num">{value}</span>
         )}
