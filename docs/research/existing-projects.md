@@ -1,0 +1,128 @@
+# Stocklana competitive scan
+
+Research date: September 19, 2026.
+
+## Coverage note
+
+- The official [Stocklana page](https://hackathons.solana.com/hackathons/stocklana) was accessible. At research time it showed 695 registered, 121 submissions, five bounty tracks, a $126,000 pool, and a September 25 deadline.
+- The official [projects route](https://hackathons.solana.com/hackathons/stocklana/projects) says: "No public projects yet. Projects become visible after the submission period ends." The 121 official submissions therefore cannot yet be enumerated.
+- `/showcase` could not be fetched. The [leaderboard](https://hackathons.solana.com/leaderboard) showed zero ranked builders because results are not final. `/hackathons/stocklana/submissions` returned 404.
+- I also tried `/api/hackathons/stocklana`, `/api/hackathons/stocklana/projects`, `/api/hackathons/stocklana/submissions`, and `/api/projects?hackathon=stocklana`. All returned the site's 404 page. No useful public JSON route was exposed by the fetched page.
+- GitHub repository search was accessible without authentication. I paged through all 34 results for `stocklana`, then ran all requested adjacent queries. GitHub code search returned HTTP 401 and was not pursued.
+- GitHub rows below are public repositories, not proof of official submission. Track labels are marked "likely" when inferred from the public description or README. Creation date and star count are API snapshots from September 19.
+- General web search found event announcements and X snippets, but no additional named submissions. X pages were not relied on for details. Search snippets did confirm the official deadline extension and sponsor list.
+- Strengths and weaknesses are desk judgments from public metadata and selected READMEs. I did not run the projects or audit their contracts.
+
+## Public projects found
+
+| Project | Team or user | Link | What they are building | Track or bounty targeted | Strengths | Weaknesses | Duplicate risk for us |
+|---|---|---|---|---|---|---|---|
+| STOCKNINE | manuelfeb056-max | [GitHub](https://github.com/manuelfeb056-max/stocknine-terminal) | 24/7 tokenized-stock trading terminal. Created Sep 18, 0 stars. | Main, likely Pyth | Clear trading use case | Generic terminal category; no public proof reviewed | High |
+| Canopy | David-glitc | [GitHub](https://github.com/David-glitc/canopy) | Collectible claims on tokenized equity, described as a Solana fork of Sherhood. Created Sep 16, 0 stars. | Main | Distinct collectible and social framing | Fork positioning may weaken originality | Medium |
+| Noctis | Shaurya-M002 | [GitHub](https://github.com/Shaurya-M002/noctis) | Estimates fair value during the 135 weekly hours US equities are not priced and attaches an error bar that can be insured. Created Sep 14, 0 stars. | Main, likely Pyth | Sharp after-hours problem; risk product is differentiated | Forecast and insurance credibility are hard to prove quickly | High |
+| Stocklana Fantasy | ritesh59697 | [GitHub](https://github.com/ritesh59697/stocklana-fantasy) | Zero-loss fantasy stock league. Users stake USDC, draft a virtual xStock portfolio, and compete for Kamino yield using Pyth prices. Created Sep 16, 0 stars. | Main, Pyth likely | Gamified consumer wedge; README claims Anchor devnet program and end-to-end flow | "Principal safe" claim depends on DeFi risk; virtual trading is less direct stock utility | High |
+| Closing Bell | GuTS805 | [GitHub](https://github.com/GuTS805/Stocklana) | Shows wrapper premium plus pool impact, then brackets a Jupiter swap with an atomic Pyth-based fill guard. Created Sep 18, 0 stars. | Main, Pyth likely | Measured market finding; narrow product; README shows devnet guard evidence | Premium mechanism remains unresolved; guard adoption is an extra integration step | High |
+| Henar | aramzcrypto | [GitHub](https://github.com/aramzcrypto/henar) | Cross-issuer market and intelligence layer for 1,339 verified companies, with research, calendar, trading, and yield. Created Sep 12, 0 stars. | Main, likely Pyth | Broad issuer normalization and discovery | Very wide scope for a short hackathon | High |
+| AfterHours | norbert351 | [GitHub](https://github.com/norbert351/afterhours) | Cross-chain equity intelligence, dislocation engine, and plain-English strategy alerts. Created Sep 18, 0 stars. | Main, likely Pyth | Timely intelligence wedge; sponsor data claim | Cross-chain scope may dilute Solana execution | High |
+| bozBasket | elaris-xyz | [GitHub](https://github.com/elaris-xyz/bozBasket) | Recurring tokenized-stock baskets that buy only when the reference price is trusted. Created Sep 13, 0 stars. | Main, likely Pyth | Combines DCA with execution safety | Basket and DCA field is crowded | High |
+| Divergent | JasmeetSingh7314 | [GitHub](https://github.com/JasmeetSingh7314/Divergent) | Public description only says "bare project backbone for stocklana." Created Sep 18, 0 stars. | Unknown | Stocklana intent is explicit | No public product description | Low |
+| stocklana | m-faran | [GitHub](https://github.com/m-faran/stocklana) | No public description. Created Sep 16, 0 stars. | Unknown | Public work exists | Cannot assess idea or execution | Low |
+| Corpus | meex-works | [GitHub](https://github.com/meex-works/corpus-stocklana) | A Mag 7 basket with manager powers removed, plus a public transaction and keeper trail. Created Sep 18, 2 stars. | Main | Trust-minimized basket manager; strongest star signal in this sample | Single basket and keeper design may limit audience | High |
+| DividendX | notorious-d-e-v | [GitHub](https://github.com/notorious-d-e-v/dividendx-stocklana) | Splits tokenized stock exposure from dividend rights. Created Sep 16, 0 stars. | Main | Novel structured-product primitive | Legal, pricing, and dividend-source complexity | Medium |
+| STOCK.sh | NathanOyewole | [GitHub](https://github.com/NathanOyewole/stocksh) | Keyboard-only terminal UI for Jupiter xStock trades. Created Sep 14, 0 stars. | Main | Memorable interface; executable trading focus | Narrow technical audience; terminal category is crowded | High |
+| Custom stock baskets | mpotter2002 | [GitHub](https://github.com/mpotter2002/stocklana) | Custom tokenized-stock baskets with Anchor and Next.js foundations. Created Sep 16, 0 stars. | Main | Onchain basket primitive | Public description says foundation, not finished product | High |
+| Sentinel Finance | dren712 | [GitHub](https://github.com/dren712/sentinel_finance) | Public description only says "stocklana." Created Sep 15, 0 stars. | Unknown | Stocklana intent is explicit | No assessable public concept | Low |
+| Afterbell | Zulubae | [GitHub](https://github.com/Zulubae/afterbell) | Session-aware 24/7 brokerage layer for tokenized stocks. Created Sep 16, 0 stars. | Main, likely Pyth | Addresses market-open versus after-hours behavior | Competes with several after-hours tools | High |
+| Harpoon | nagumo-dawnlabs | [GitHub](https://github.com/nagumo-dawnlabs/harpoon) | Finds large perp positions on Phoenix and Hyperliquid, with one-click ride or counter actions. Created Sep 14, 0 stars. | Main | Social signal plus action loop | Description is more crypto-perp than tokenized-stock specific | Medium |
+| After Hours | martymedia | [GitHub](https://github.com/martymedia/after-hours) | Tokenized-stock trading while Wall Street is closed. Created Sep 13, 0 stars. | Main, likely Pyth | Simple value proposition | Little differentiation visible from the description | High |
+| Multiplier | GODGRACE07 | [GitHub](https://github.com/GODGRACE07/multiplier) | Corporate-actions oracle for xStocks. Created Sep 15, 0 stars. | Main, likely Pyth | Important infrastructure gap | Corporate-action data provenance is difficult | High |
+| GapGuard | angelraph | [GitHub](https://github.com/angelraph/gapguard) | Gap-risk radar for tokenized stocks. Created Sep 17, 0 stars. | Main, likely Pyth | Clear risk-management wedge | Radar alone may not complete a user action | High |
+| Erodoro Stocklana | PoulavBhowmick03 | [GitHub](https://github.com/PoulavBhowmick03/Erodoro_Stocklana) | No public description. Created Sep 12, 0 stars. | Unknown | Stocklana naming is explicit | Cannot assess product | Low |
+| StockCurve | ExpertVagabond | [GitHub](https://github.com/ExpertVagabond/stockcurve) | Pyth-anchored Meteora DBC launcher for stock-quoted pairs; description claims a live mainnet sGME/AAPLx pool. Created Sep 15, 0 stars. | Meteora, Pyth, Main | Mainnet claim and two central sponsor integrations | Tokenized-stock legitimacy and sustainable demand need proof | High |
+| Stocklana | shafiankhan | [GitHub](https://github.com/shafiankhan/Stocklana) | No public description. Created Sep 14, 0 stars. | Unknown | Public work exists | Cannot assess product | Low |
+| Stocklana Baskets | MallorcaBCDays | [GitHub](https://github.com/MallorcaBCDays/stocklana-baskets) | Programmatic ETF-like index exposure. Created Sep 11, 0 stars. | Main | Familiar user need with an onchain primitive | Baskets are one of the most crowded ideas | High |
+| Hanko | cryptoduke01 | [GitHub](https://github.com/cryptoduke01/hanko) | Described as a "tokenized stock refraction mechanism." Created Jul 17, 0 stars. | Possibly Main | Potentially novel mechanism | Predates the event and public description is unclear | Low |
+| EquityCurve Studio | AutoClawGPT | [GitHub](https://github.com/AutoClawGPT/equitycurve-studio) | Meteora DBC equity-launch tooling plus Clawpump stock-paired agent launches. Created Sep 15, 0 stars. | Meteora, Clawpump, Main | Explicit dual-bounty fit | Two products may reduce focus; launch tooling is crowded | High |
+| stocklana | luckysitara | [GitHub](https://github.com/luckysitara/stocklana) | No public description. Created Sep 15, 0 stars. | Unknown | Public work exists | Cannot assess product | Low |
+| Stocklane | KvngJamesII | [GitHub](https://github.com/KvngJamesII/stocklane) | xStock DCA and portfolio app. Created Sep 13, 0 stars. | Main | Understandable retail use case | Plain DCA and portfolio tracking are easy to duplicate | High |
+| FairFill | khalydmaina | [GitHub](https://github.com/khalydmaina/fairfill) | Chooses the best issuer and price for a tokenized US stock, including after NASDAQ closes. Created Sep 13, 0 stars. | Main, likely Pyth | Cross-issuer execution is a real problem | Needs reliable issuer normalization and deep routing | High |
+| Stax | Bsh54 | [GitHub](https://github.com/Bsh54/stax) | Yield-bearing tokenized stocks. Created Sep 12, 0 stars. | Main | Direct capital-efficiency benefit | Yield source and risk are not stated publicly | Medium |
+| ShareLens | bellabaelfire | [GitHub](https://github.com/bellabaelfire/stocklana-sharelens) | Read-only xStock unit inspector with source evidence and exact decimal calculations. Created Sep 12, 0 stars. | Main, infrastructure | Narrow and verifiable data-quality wedge | Read-only tool may feel too small | Medium |
+| TAPE | criptocbas | [GitHub](https://github.com/criptocbas/tape-stocklana) | Issuer-aware tokenized-equity terminal. Created Sep 11, 0 stars. | Main | Handles issuer fragmentation | Another terminal; public differentiation is thin | High |
+| Stocklana Meme | Kelsay849 | [GitHub](https://github.com/Kelsay849/Stocklana-Meme) | Memecoin website themed around Stocklana. Created Sep 10, 0 stars. | Unknown, possibly Meteora | Simple and shippable | Weak fit with the utility-focused judging prompt | Low |
+| Coorwa | Vicape7 | [GitHub](https://github.com/Vicape7/coorwa) | Cookie Chain launchpad and terminal where tokens are paired with one of 16 Solana xStocks and fees buy stock for holders. Created Sep 9, 0 stars. | Adjacent; possible Main | Unusual stock-denominated market and fee distribution | Cross-chain complexity; not explicitly Stocklana | Medium |
+| FolioX / Basalt | umutyesildal | [GitHub](https://github.com/umutyesildal/basalt) | Onchain strategy baskets powered by xStocks. Created Sep 3, 1 star. | Adjacent; likely Main | Strategy packaging and one star | Basket overlap is severe; not explicitly Stocklana | High |
+| Basis Terminal | nikolas-sapa | [GitHub](https://github.com/nikolas-sapa/basis-terminal) | Live price-gap terminal comparing an xStock with the real equity and only offering a trade when one exists. Created Sep 16, 1 star. | Main, likely Pyth | Precise execution-aware gap product | Direct overlap with Closing Bell, PegLens, FairFill, and AfterHours | High |
+| EquityGuard | Dolaporr | [GitHub](https://github.com/Dolaporr/equityguard) | Pre-trade check for tokenized stocks. Created Sep 18, 0 stars. | Likely Main and Pyth | Useful point-of-action guard | Public description is too thin to show differentiation | High |
+| ValueRange | cody-fight | [GitHub](https://github.com/cody-fight/valuerange-demo) | Valuation-driven liquidity strategy demo with reproducible calculations and dated evidence. Created Sep 18, 0 stars. | Main, possibly Meteora or Pyth | Evidence-oriented liquidity strategy | Described as a demo, not a full user product | Medium |
+| Confide | psyto | [GitHub](https://github.com/psyto/confide) | Private tokenized-stock holdings with selective proofs. Created Sep 12, 0 stars. | Main | Privacy and proof wedge is uncommon | Privacy implementation and compliance are hard | Medium |
+| Stockalyst | MRDYOR | [GitHub](https://github.com/MRDYOR/stockalyst) | Trust scores, portfolio risk monitoring, and push alerts. Created Sep 18, 1 star. | Main, likely Pyth | Consumer risk layer; one star | Trust-score methodology must be credible | High |
+| Slyz | Cryptojigi | [GitHub](https://github.com/Cryptojigi/slyz) | Non-custodial thematic baskets with drift tracking and sequential Jupiter rebalancing. Created Sep 14, 0 stars. | Main | Concrete execution and rebalancing flow | Sequential execution adds slippage and partial-fill risk | High |
+| xStocks Terminal | DOCKPORT | [GitHub](https://github.com/DOCKPORT/xStocks-Terminal) | Repository title indicates an xStocks terminal; no API description was present. Created Sep 12, 0 stars. | Likely Main | Direct category fit | No public differentiation | High |
+| StockSplit | london160771 | [GitHub](https://github.com/london160771/StockSplit) | Invite-only collaborative xStock portfolios where members pool USDC and withdraw proportional assets independently. Created Sep 15, 0 stars. | Main | Social investing plus independent exits | Pool accounting and trust model add complexity | Medium |
+| xStocks allocation feed | mtommasi-glitch | [GitHub](https://github.com/mtommasi-glitch/xstocks-allocation-data) | Twice-daily xStocks vault idle-balance feed for automation. Created Sep 14, 0 stars. | Adjacent infrastructure | Narrow machine-readable utility | Looks like a component, not a complete entry | Low |
+| PreStocks ActionKit | abhigyan1102 | [GitHub](https://github.com/abhigyan1102/PreStocks) | Wallet SDK and API for trusted PreStocks discovery, balances, corporate-event actions, and lifecycle continuity. Created Sep 17, 0 stars. | PreStocks, Main | Strong lifecycle and integration wedge; careful provenance boundaries | README says only one reviewed event and no executable migration yet | High |
+| PreStocks Pulse | aralroca | [GitHub](https://github.com/aralroca/prestocks-pulse) | Open data layer with premium radar, PRE8 index, creation/redemption flows, split-aware Jupiter quotes, and MCP server. Created Sep 17, 0 stars. | PreStocks, Pyth likely, Main | Useful shared infrastructure and agent interface | Broad feature set; many claims to validate | High |
+| VeriQ Foundation | PinnacleCryptNG | [GitHub](https://github.com/PinnacleCryptNG/veriq-foundation) | Evidence-based private and pre-IPO review workspace with a read-only PreStocks catalog. Created Sep 17, 0 stars. | PreStocks | Research and evidence focus | Read-only catalog may lack an end-to-end action | Medium |
+| PreLendd | emmyCode4495 | [GitHub](https://github.com/emmyCode4495/PreLendd) | Isolated lending market for Token-2022 PreStocks. Created Sep 16, 0 stars. | PreStocks, Main | Direct DeFi utility and isolated risk | Oracle, liquidation, and thin-liquidity risk are substantial | High |
+| OmniCurve | Beluba | [GitHub](https://github.com/Beluba/omnicurve) | Multi-asset launchpad SDK for Meteora DBC and DAMM v2, including tokenized stocks and RWAs. Created Sep 16, 0 stars. | Meteora | Reusable issuer tooling | Generic multi-asset SDK may not prove a stock-specific user | High |
+| Wallie DBC | fskroes | [GitHub](https://github.com/fskroes/wallie-dbc) | Downside-first tokenized-stock launches on Meteora DBC watched by an allowance-controlled agent. Created Sep 15, 0 stars. | Meteora, possibly Clawpump | Risk-aware launch mechanics | Agent and x402 pieces may distract from core DBC value | High |
+| stockcurve launch desk | abilashblnair | [GitHub](https://github.com/abilashblnair/stockcurve) | Launch desk for Meteora DBC pools quoted in tokenized stocks. Created Sep 15, 0 stars. | Meteora | Exact sponsor fit | Direct overlap with ExpertVagabond and EquityCurve Studio | High |
+| Clawdesk | xElvolution | [GitHub](https://github.com/xElvolution/clawdesk) | Agent that prices belief daily and exposes a public paper PnL tape for Clawrena or Clawpump. Created Sep 15, 0 stars. | Clawpump adjacent | Transparent PnL narrative | Public description says paper loop, not stock-paired live execution | Medium |
+| Redline | Yonkoo11 | [GitHub](https://github.com/Yonkoo11/redline) | Signed-policy kill switch for a Clawpump trading agent, with refusals posted on Solana. Created Sep 18, 0 stars. | Clawpump adjacent | Strong agent safety wedge | Topics identify another hackathon; stock-paired requirement is not evident | Low |
+| PegLens | mpotter2002 | [GitHub](https://github.com/mpotter2002/peglens) | Broker-versus-chain tokenized-stock price board using Pyth and Raydium-first routing. Created Sep 16, 0 stars. | Pyth, Main | Simple price-comparison surface | Price-gap analytics are crowded | High |
+| PixStock | PixStock | [GitHub](https://github.com/PixStock/pixstock) | Air-gapped spare-phone signer. Orders move by animated QR and prices are checked offline before signing. Created Sep 12, 0 stars. | Pyth, Main | Distinct security and self-custody wedge | Two-device flow hurts mainstream usability | Medium |
+
+### Excluded false positive
+
+`xElvolution/shadowbook` appeared in the `stocklana` GitHub query, but its own description says it is for Bitget AI Hackathon S2 and is "Not Solana. Not Stocklana." It is not counted as a competitor.
+
+## Incumbent products already live
+
+| Product | What it already does | Competitive implication |
+|---|---|---|
+| [Kraken xStocks](https://support.kraken.com/ca/articles/xstocks-faq) | Issues or distributes 1:1-backed tokenized US stocks and ETFs across Solana and other chains, with 24/7 access for eligible users and DeFi portability. | A basic catalog, buy flow, or 24/7 pitch is not new. |
+| [Jupiter Stocks](https://docs.jup.ag/user-docs/trade/spot/tokenized-stocks) | Screens and swaps tokenized stocks from multiple issuers using aggregated Solana liquidity, with market-cap, volume, liquidity, and performance data. | A generic terminal or best-route swap needs a sharper edge. |
+| [Phantom tokenized equities](https://help.phantom.com/hc/en-us/articles/44063915243283-Trade-tokenized-equities-in-Phantom) | Lets wallet users discover, hold, and trade third-party tokenized equities and explains issuer differences. | Wallet-native portfolio and swap UX already exists. |
+| [Ondo Global Markets](https://solana.com/news/ondo-global-markets-tokenized-stocks-etfs-solana) | Provides 200-plus tokenized US stocks and ETFs on Solana with atomic token or stablecoin settlement and fractional access. | Broad asset coverage is an incumbent advantage, not a hackathon differentiator. |
+| [PreStocks](https://prestocks.com/products) | Offers 24/7 Solana tokens tracking private companies, backed by SPV exposure, including OpenAI, Anthropic, and SpaceX. | New work should add discovery, lifecycle, credit, or utility rather than recreate issuance. |
+| [Tessera](https://docs.tessera.pe/overview/how-do-tessera-token-work) | Offers T-Tokens for private-company economic exposure through dedicated loan-participation issuer entities, including SpaceX, OpenAI, and Kalshi. | A second private-stock storefront is weak unless it creates a new use case. |
+| [Kamino xStocks market](https://gov.kamino.finance/t/kamino-is-integrating-xstocks-powered-by-the-chainlink-data-standard-to-enable-tokenized-equities-lending/792) | Accepts major xStocks as collateral and lets users borrow stablecoins against them. | Simple stock-backed borrowing is already live; risk or new collateral needs differentiation. |
+| [Drift](https://www.drift.trade/) | Runs Solana perpetual futures, borrow/lend, and structured-product vaults. It is an incumbent venue for leveraged and managed strategies, though this scan did not verify a dedicated live xStock spot product. | A leverage or vault idea must beat mature execution and risk systems. |
+| [Remora Markets](https://jup.ag/terminal/stocks) | Issues tokenized securities as whole or fractional SPL tokens that can trade through Solana venues such as Jupiter and compose with DeFi. | Issuance and basic fractional access are established. |
+| [Superstate Opening Bell](https://superstate.com/opening-bell) | Tokenizes SEC-registered public shares with issuer involvement and a registered transfer agent, and supports direct onchain issuance on Solana and Ethereum. | Compliance-first issuance is already served by a strong institutional product. |
+
+## Crowded areas
+
+- **Trading terminals and screeners.** STOCKNINE, STOCK.sh, TAPE, xStocks Terminal, Henar, Basis Terminal, AfterHours, Jupiter, and Phantom already cover much of this surface.
+- **Baskets, indexes, DCA, and portfolio wrappers.** bozBasket, Corpus, FolioX, Slyz, custom baskets, Stocklane, and Stocklana Baskets all overlap.
+- **After-hours fair value and price gaps.** Noctis, Closing Bell, Afterbell, After Hours, FairFill, Basis Terminal, PegLens, GapGuard, and AfterHours target the same market-closure problem.
+- **Meteora DBC launch tooling.** Two StockCurve repos, EquityCurve Studio, OmniCurve, and Wallie DBC make a plain launch form a high-duplication entry.
+- **Risk dashboards and pre-trade warnings.** Closing Bell, EquityGuard, Stockalyst, GapGuard, ShareLens, and ValueRange already claim pieces of this.
+- **PreStocks data and research.** ActionKit, Pulse, VeriQ, and PreLendd cover lifecycle, data, research, and lending. Another catalog is unlikely to stand out.
+
+## Underserved areas
+
+- **Corporate actions with a verified action path.** Multiplier and ActionKit see the problem, but ActionKit explicitly says its current migration is not executable. A sourced, testable dividend, split, merger, or symbol-change workflow remains open.
+- **Cash-flow accounting across issuers.** DividendX splits dividend rights, but the field lacks a neutral ledger showing dividends, withholding, fees, reinvestment, and total return across xStocks, Ondo, Remora, PreStocks, Tessera, and Superstate.
+- **Post-trade reconciliation and tax lots.** No discovered project clearly turns wallet activity into issuer-aware cost basis, realized gains, income events, and exportable records.
+- **Programmable spending from stock collateral.** Kamino offers borrowing, but no discovered project clearly provides guarded credit limits, bill payment, or automatic repayment tied to volatile stock collateral.
+- **Treasury and DAO controls.** Closing Bell has a fill guard, but there is little visible work on policy-based stock allocation, signer roles, exposure limits, audit trails, and rebalancing for organizations.
+- **Liquidity provisioning with explicit inventory risk.** ValueRange and DBC projects touch liquidity, but a clear LP product for market-hours gaps, oracle divergence, and corporate events is not yet crowded.
+- **Accessibility and localized consumer flows.** Most projects are terminals. Few visibly address first-time investors, recurring income goals, language/local-market context, or mobile constraints without copying a brokerage.
+- **Issuer-quality and legal-rights comparison at trade time.** FairFill and Henar are closest, but a compact, sourced comparison of redemption rights, geography, dividends, fees, custody, transfer limits, and counterparty structure still appears underbuilt.
+
+## Bottom line
+
+The public repository sample is much larger than the official project gallery suggests because submissions remain hidden. Avoid a generic terminal, basket, DCA app, after-hours price board, or basic DBC launcher. The clearest gaps are verified corporate-action execution, issuer-aware accounting, organizational controls, and useful products built on top of collateral rather than another collateral market.
+
+## Key sources
+
+- [Official Stocklana page](https://hackathons.solana.com/hackathons/stocklana)
+- [Official hidden-until-close projects page](https://hackathons.solana.com/hackathons/stocklana/projects)
+- [Official leaderboard](https://hackathons.solana.com/leaderboard)
+- [Solana Compass event expansion report](https://solanacompass.com/news/stocklana-hackathon-expands-to-121000-with-five-ecosystem-partner-tracks)
+- [Solana xStocks case study](https://solana.com/en/news/case-study-xstocks)
+- [Jupiter tokenized-stock documentation](https://docs.jup.ag/user-docs/trade/spot/tokenized-stocks)
+- [Ondo on Solana](https://solana.com/news/ondo-global-markets-tokenized-stocks-etfs-solana)
+- [Superstate Opening Bell](https://superstate.com/opening-bell)
