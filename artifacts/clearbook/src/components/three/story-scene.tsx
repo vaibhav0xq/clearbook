@@ -35,6 +35,7 @@ import {
   split,
   storyWindow,
 } from "./story-data";
+import { CAPTURE, CaptureFrame, useDiagnosticStep, type DiagConfig } from "./capture-probe";
 import { DimensionLine, FloorType, Horizon, Torch, writeDimensionLine } from "./story-set";
 
 export interface StorySceneProps {
@@ -291,7 +292,8 @@ function StoryLayers({
   onHoverColumn,
   onSelectColumn,
   reduced = false,
-}: Omit<StorySceneProps, "lowPower" | "frameloop">) {
+  diag,
+}: Omit<StorySceneProps, "lowPower" | "frameloop"> & { diag: DiagConfig }) {
   const { placements, totalWidth, tallest } = useLayout(columns);
   const meshes = useRef(new Map<string, THREE.Mesh>());
   const materials = useRef(new Map<string, THREE.MeshPhysicalMaterial>());
@@ -476,10 +478,10 @@ function StoryLayers({
 
   return (
     <group>
-      <StoryRig progress={progress} totalWidth={totalWidth} tallest={tallest} focusX={focusX} focusHeights={focusHeights} reduced={reduced} wide={wide} />
-      <FloorType progress={progress} />
-      <Horizon progress={progress} />
-      <Torch enabled={!reduced} />
+      <StoryRig progress={progress} totalWidth={totalWidth} tallest={tallest} focusX={focusX} focusHeights={focusHeights} reduced={reduced} wide={wide || !diag.offset} />
+      {diag.floorType && <FloorType progress={progress} />}
+      {diag.horizon && <Horizon progress={progress} />}
+      <Torch enabled={!reduced && diag.torch} />
       <group ref={dimension}>
         <DimensionLine />
       </group>
@@ -593,21 +595,23 @@ function StoryLayers({
 }
 
 export default function StoryScene({ lowPower = false, reduced = false, frameloop = "always", ...props }: StorySceneProps) {
+  const diag = useDiagnosticStep();
   return (
     <Canvas
       dpr={lowPower ? [1, 1.25] : [1, 1.75]}
       frameloop={frameloop}
       camera={{ position: [0, 3.4, 12], fov: 30, near: 0.1, far: 120 }}
-      gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
+      gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, preserveDrawingBuffer: CAPTURE }}
       style={{ background: "transparent" }}
     >
+      {CAPTURE && <CaptureFrame lowPower={lowPower} reduced={reduced} diag={diag} />}
       <SceneLights />
       <group position={[0, -0.02, 0]}>
-        <StoryLayers {...props} reduced={reduced} />
-        <Ground lowPower={lowPower} />
-        {!reduced && <Dust />}
+        <StoryLayers {...props} reduced={reduced} diag={diag} />
+        <Ground lowPower={lowPower || !diag.reflect} />
+        {!reduced && diag.dust && <Dust />}
       </group>
-      <SceneEffects lowPower={lowPower} />
+      <SceneEffects lowPower={lowPower || !diag.fx} />
     </Canvas>
   );
 }

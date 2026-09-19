@@ -127,8 +127,12 @@ const HORIZON_FRAG = /* glsl */ `
   varying vec2 vUv;
   void main() {
     // Brightest along the ground line, gone two thirds of the way up, softened toward both ends.
-    float band = exp(-pow(vUv.y * 4.2, 1.35));
-    float ends = smoothstep(0.0, 0.32, vUv.x) * smoothstep(1.0, 0.68, vUv.x);
+    // Multisampled edge pixels are shaded slightly outside the quad, so the coordinates are clamped
+    // before pow: a negative base is NaN on desktop GPUs, and one NaN pixel added to the scene turns
+    // the whole bloom pass, and with it the frame, black.
+    vec2 uv = clamp(vUv, 0.0, 1.0);
+    float band = exp(-pow(uv.y * 4.2 + 1e-4, 1.35));
+    float ends = smoothstep(0.0, 0.32, uv.x) * (1.0 - smoothstep(0.68, 1.0, uv.x));
     float a = band * ends * uStrength;
     gl_FragColor = vec4(uColor * a, a);
   }
