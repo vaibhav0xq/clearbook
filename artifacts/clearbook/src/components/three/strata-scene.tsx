@@ -745,7 +745,7 @@ export function Ground({ lowPower }: { lowPower: boolean }) {
       {lowPower ? (
         <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
           <planeGeometry args={[80, 80]} />
-          <meshStandardMaterial color="#0c0c0d" roughness={1} metalness={0} envMapIntensity={0.12} />
+          <meshStandardMaterial color="#0c0c0d" roughness={1} metalness={0} />
         </mesh>
       ) : (
         <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
@@ -762,7 +762,6 @@ export function Ground({ lowPower }: { lowPower: boolean }) {
             color="#0c0c0e"
             metalness={0.42}
             mirror={0.55}
-            envMapIntensity={0.12}
           />
         </mesh>
       )}
@@ -785,34 +784,16 @@ export function Ground({ lowPower }: { lowPower: boolean }) {
   );
 }
 
-/**
- * A warm key and a cool rim, both flagged to the ledger. Spot lights rather than directional ones
- * because a directional light also rakes the whole floor, and at the low camera angles the story
- * uses that read as a grey sheen across the slab. The cones cover the columns and fall off before
- * the foreground, so the floor stays black where nothing stands on it.
- */
-function KeyLights() {
-  const focus = useMemo(() => {
-    const o = new THREE.Object3D();
-    o.position.set(0, 1.4, 0);
-    return o;
-  }, []);
-  // Candela chosen so the columns receive the same irradiance the old directional lights gave.
-  return (
-    <>
-      <primitive object={focus} />
-      <spotLight position={[6, 12, 7]} target={focus} intensity={415} angle={0.54} penumbra={0.55} decay={2} color="#fff1dc" />
-      <spotLight position={[-9, 7, -9]} target={focus} intensity={330} angle={0.6} penumbra={0.5} decay={2} color="#dfe6ff" />
-    </>
-  );
-}
-
 export function SceneLights() {
   return (
     <>
       <fog attach="fog" args={[COLOR_BG, 14, 34]} />
       <ambientLight intensity={0.22} />
-      <KeyLights />
+      {/* Directional key and rim. They also rake the floor, and that faint sheen is what makes the
+          slab read as a surface on real displays; flagged spot lights left the lower half of the
+          landing page black. */}
+      <directionalLight position={[6, 12, 7]} intensity={2.1} color="#fff1dc" />
+      <directionalLight position={[-9, 7, -9]} intensity={1.7} color="#dfe6ff" />
       <pointLight position={[-7, 3, 4]} intensity={28} distance={22} color="#ffa733" />
       <pointLight position={[9, 2, -4]} intensity={14} distance={24} color="#7f8cb0" />
       <Environment resolution={256} frames={1}>
