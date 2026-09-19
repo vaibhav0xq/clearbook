@@ -205,7 +205,7 @@ export function Shell({ address, children }: ShellProps) {
       <div className="relative min-h-screen lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(360px,40vw,720px)]">
 
         {/* Stage. First in the DOM so it sits at the top on small screens and on the right on large ones. */}
-        <aside className="sticky top-0 z-0 h-[42vh] min-h-[300px] lg:order-2 lg:h-screen lg:min-h-0 lg:self-start lg:border-l lg:hairline">
+        <aside className="sticky top-0 z-0 h-[46vh] min-h-[320px] lg:order-2 lg:h-screen lg:min-h-0 lg:self-start lg:border-l lg:hairline">
           <StageView address={address} />
           {/* Small screens: brand and wallet float over the scene. Large screens: the ledger identity does. */}
           <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 px-5 pt-4 md:px-8 md:pt-5">

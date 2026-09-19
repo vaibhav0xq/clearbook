@@ -21,7 +21,20 @@ import {
   useLayout,
   type LayerPlacement,
 } from "./strata-scene";
-import { CHAPTER_COUNT, chapterAt, colorize, copyVisibility, dividendWave, local, reliefStory, scan, seg, split } from "./story-data";
+import {
+  CHAPTER_COUNT,
+  chapterAt,
+  colorize,
+  copyVisibility,
+  dividendWave,
+  WIDE_STORY_QUERY,
+  local,
+  reliefStory,
+  scan,
+  seg,
+  split,
+  storyWindow,
+} from "./story-data";
 import { DimensionLine, FloorType, Horizon, Torch, writeDimensionLine } from "./story-set";
 
 export interface StorySceneProps {
@@ -62,6 +75,19 @@ interface Keyframe {
   target: THREE.Vector3;
 }
 
+/** Whether the landing copy sits beside the scene, from the same media query the CSS uses. */
+function useWideStory(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE_STORY_QUERY).matches);
+  useEffect(() => {
+    const query = window.matchMedia(WIDE_STORY_QUERY);
+    const update = () => setWide(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
+
 function StoryRig({
   progress,
   totalWidth,
@@ -69,6 +95,7 @@ function StoryRig({
   focusX,
   focusHeights,
   reduced,
+  wide,
 }: {
   progress: MotionValue<number>;
   totalWidth: number;
@@ -76,6 +103,7 @@ function StoryRig({
   focusX: { relief: number; income: number };
   focusHeights: { relief: number; income: number };
   reduced: boolean;
+  wide: boolean;
 }) {
   const { camera, size, scene } = useThree();
   const lookAt = useMemo(() => new THREE.Vector3(), []);
@@ -87,11 +115,17 @@ function StoryRig({
 
   useFrame((state, delta) => {
     const persp = camera as THREE.PerspectiveCamera;
-    const aspect = size.width / Math.max(1, size.height);
-    const wide = aspect > 1.15;
     const fov = wide ? 30 : 44;
-    if (persp.fov !== fov) {
+    // On stacked layouts the copy sits under the scene, so the camera composes into the band between
+    // the header and the copy, and the projection is offset so that band lands at the top of the
+    // viewport. Everything below the band is the same frustum continued: floor, not a second view.
+    const win = storyWindow(size.height, wide);
+    const aspect = size.width / win.height;
+    if (persp.fov !== fov || persp.aspect !== aspect || (persp.view?.enabled ?? false) !== !wide) {
       persp.fov = fov;
+      persp.aspect = aspect;
+      if (wide) persp.clearViewOffset();
+      else persp.setViewOffset(size.width, win.height, 0, -win.top, size.width, size.height);
       persp.updateProjectionMatrix();
     }
     const halfFov = THREE.MathUtils.degToRad(fov / 2);
@@ -107,49 +141,48 @@ function StoryRig({
     const visW = 2 * fitZ * tanH * aspect;
     const shiftFor = (side: number) => (wide ? -visW * 0.24 * side : 0);
     const shift = shiftFor(sideNow);
-    // On narrow screens the copy sits under the scene, so the columns are raised.
-    const vshift = wide ? 0 : -tallest * 0.55;
-    // Close ups frame one column at roughly two thirds of the viewport height.
-    const closeZFor = (h: number) => Math.max(6.5, (h * 0.8 + 1.3) / tanH) * (wide ? 1 : 1.5);
-    const closeShift = vshift * 0.75;
+    // Close ups frame one column at roughly two thirds of the band height.
+    const closeZFor = (h: number) => Math.max(6.5, (h * 0.8 + 1.3) / tanH);
     const closeOffFor = (z: number, side: number) => (wide ? 2 * z * tanH * aspect * 0.2 * side : 0);
 
     const [f0, f1, f2, f3, f4, f5, f6] = frames;
     // Balance: low and frontal, the row reads as a skyline.
-    f0.position.set(shift + fitZ * 0.22, tallest * 0.42 + 1.1 + vshift, fitZ * 0.96);
-    f0.target.set(shift, tallest * 0.36 + vshift, 0);
+    f0.position.set(shift + fitZ * 0.22, tallest * 0.42 + 1.1, fitZ * 0.96);
+    f0.target.set(shift, tallest * 0.36, 0);
 
-    // Lots: a raking three quarter view that tracks along the row as the chapter scrolls.
-    const track = (seg(l, 0.05, 0.95) - 0.5) * totalWidth * 0.55;
-    f1.position.set(shift + fitZ * 0.55 + track * 0.6, tallest * 0.9 + 0.6 + vshift, fitZ * 0.72);
-    f1.target.set(shift + track, tallest * 0.36 + vshift, 0);
+    // Lots: a raking three quarter view that tracks along the row as the chapter scrolls. The move
+    // starts on the row's centre and runs towards its near end, so the far end never drifts under
+    // the copy on wide screens.
+    const track = seg(l, 0.05, 0.95) * totalWidth * 0.3;
+    f1.position.set(shift + fitZ * 0.55 + track * 0.6, tallest * 0.9 + 0.6, fitZ * 0.72);
+    f1.target.set(shift + track, tallest * 0.36, 0);
 
     const hr = focusHeights.relief;
     const zr = closeZFor(hr);
     const offR = closeOffFor(zr, CHAPTER_SIDE[2]);
-    f2.position.set(focusX.relief - offR + zr * 0.46, hr * 0.5 + 0.9 + closeShift, zr * 0.88);
-    f2.target.set(focusX.relief - offR, hr * 0.42 + closeShift, 0);
+    f2.position.set(focusX.relief - offR + zr * 0.46, hr * 0.5 + 0.9, zr * 0.88);
+    f2.target.set(focusX.relief - offR, hr * 0.42, 0);
 
     // Income: a high three quarter view from further back, so the band is seen travelling up the
     // column while its neighbours stay low in the frame instead of towering into the copy.
     const hi = focusHeights.income;
     const zi = Math.max(closeZFor(hi), fitZ * 0.66);
     const offI = closeOffFor(zi, CHAPTER_SIDE[3]);
-    f3.position.set(focusX.income - offI - zi * 0.3, hi + zi * 0.62 + closeShift, zi * 0.74);
-    f3.target.set(focusX.income - offI, hi * 0.4 + closeShift, 0);
+    f3.position.set(focusX.income - offI - zi * 0.3, hi + zi * 0.62, zi * 0.74);
+    f3.target.set(focusX.income - offI, hi * 0.4, 0);
 
     // Marks: high and centred so every column and its colour is in frame above the strip.
-    f4.position.set(0, tallest * 1.4 + 0.5 + vshift, fitZ * 1.02);
-    f4.target.set(0, tallest * 0.24 + vshift, 0);
+    f4.position.set(0, tallest * 1.4 + 0.5, fitZ * 1.02);
+    f4.target.set(0, tallest * 0.24, 0);
 
     // Proof: low and slightly off axis, the beam crosses the frame.
-    f5.position.set(-1.4, tallest * 0.3 + 0.4 + vshift, fitZ * 0.9);
-    f5.target.set(0, tallest * 0.42 + vshift, 0);
+    f5.position.set(-1.4, tallest * 0.3 + 0.4, fitZ * 0.9);
+    f5.target.set(0, tallest * 0.42, 0);
 
     // Open: a slow turntable around the whole ledger.
     const turn = reduced ? 0.35 : 0.35 + Math.sin(state.clock.elapsedTime * 0.11) * 0.5;
-    f6.position.set(Math.sin(turn) * fitZ * 1.1, tallest * 0.8 + 2 + vshift, Math.cos(turn) * fitZ * 1.1);
-    f6.target.set(0, tallest * 0.3 + vshift, 0);
+    f6.position.set(Math.sin(turn) * fitZ * 1.1, tallest * 0.8 + 2, Math.cos(turn) * fitZ * 1.1);
+    f6.target.set(0, tallest * 0.3, 0);
 
     const a = frames[i];
     const b = frames[Math.min(CHAPTER_COUNT - 1, i + 1)];
@@ -429,9 +462,9 @@ function StoryLayers({
 
   const focusMint = chapter === 2 ? featuredMint : chapter === 3 ? incomeMint : null;
   const showValues = chapter >= 4;
-  const viewport = useThree((state) => state.size);
+  const wide = useWideStory();
   // Lot tags sit left of the column, which only fits beside the copy on wide screens.
-  const showTags = (chapter === 1 || chapter === 2) && viewport.width / Math.max(1, viewport.height) > 1.15;
+  const showTags = (chapter === 1 || chapter === 2) && wide;
   const focusHeights = {
     relief: featured ? (fullHeights.get(featured.mint) ?? tallest) : tallest,
     income: incomeColumn ? (fullHeights.get(incomeColumn.mint) ?? tallest) : tallest,
@@ -443,7 +476,7 @@ function StoryLayers({
 
   return (
     <group>
-      <StoryRig progress={progress} totalWidth={totalWidth} tallest={tallest} focusX={focusX} focusHeights={focusHeights} reduced={reduced} />
+      <StoryRig progress={progress} totalWidth={totalWidth} tallest={tallest} focusX={focusX} focusHeights={focusHeights} reduced={reduced} wide={wide} />
       <FloorType progress={progress} />
       <Horizon progress={progress} />
       <Torch enabled={!reduced} />

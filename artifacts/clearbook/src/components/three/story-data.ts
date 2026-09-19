@@ -152,3 +152,24 @@ export function revealDigest(digest: string, t: number, tick: number): string {
   }
   return out;
 }
+
+/** Pixel height of the fixed landing header, which the stacked composition keeps clear. */
+export const STORY_HEADER_PX = 64;
+
+/**
+ * Copy and scene sit side by side when the viewport is at least 48rem wide and wider than 23:20.
+ * Below that the copy is anchored to the bottom of the viewport and the scene composes into the
+ * band above it. The DOM uses the same query through the `wide` variant in index.css, so both
+ * sides always make the same decision.
+ */
+export const WIDE_STORY_QUERY = "(min-width: 48rem) and (min-aspect-ratio: 23/20)";
+
+/**
+ * The band the scene composes into: the whole viewport when wide, otherwise from under the header
+ * to the top of the copy, which sits in the lower half of the viewport.
+ */
+export function storyWindow(height: number, wide: boolean): { top: number; height: number } {
+  if (wide) return { top: 0, height };
+  const top = STORY_HEADER_PX + 12;
+  return { top, height: Math.max(120, height * 0.5 - top) };
+}

@@ -194,12 +194,13 @@ export function StageView({ address, className }: { address: string; className?:
               )}
             </motion.div>
           </AnimatePresence>
+          {/* The method note only fits beside a tall stage. Small screens keep the figures and lose the sentence. */}
           {rewound ? (
-            <span className="max-w-[46ch] text-[12px] leading-relaxed text-foreground/50">
+            <span className="hidden max-w-[46ch] text-[12px] leading-relaxed text-foreground/50 lg:inline">
               As of {format(asOf, "MMM d, yyyy")}. Height is cost basis. Approximate: partial sales are undated.
             </span>
           ) : (
-            caption && <span className="max-w-[46ch] text-[12px] leading-relaxed text-foreground/50">{caption}</span>
+            caption && <span className="hidden max-w-[46ch] text-[12px] leading-relaxed text-foreground/50 lg:inline">{caption}</span>
           )}
         </div>
         <span className="hidden shrink-0 text-right text-[11px] leading-relaxed text-foreground/40 md:block">

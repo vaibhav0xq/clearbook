@@ -57,10 +57,10 @@ const onStoryHover = (mint: string | null) => setCursorLabel(mint ? "Open lots" 
 type ChapterSide = "left" | "right" | "bottom" | "center";
 
 const SIDE_CLASS: Record<ChapterSide, string> = {
-  left: "md:left-10 md:top-1/2 md:-translate-y-1/2 md:w-[min(48vw,700px)] lg:left-14",
-  right: "md:left-auto md:right-10 md:top-1/2 md:-translate-y-1/2 md:w-[min(48vw,700px)] lg:right-14",
-  bottom: "md:left-10 md:right-10 md:bottom-[7.5rem] md:top-auto lg:left-14 lg:right-14",
-  center: "md:left-1/2 md:top-1/2 md:w-[min(80vw,760px)] md:-translate-x-1/2 md:-translate-y-1/2 md:text-center",
+  left: "wide:left-10 wide:top-1/2 wide:-translate-y-1/2 wide:w-[min(48vw,700px)] wide:lg:left-14",
+  right: "wide:left-auto wide:right-10 wide:top-1/2 wide:-translate-y-1/2 wide:w-[min(48vw,700px)] wide:lg:right-14",
+  bottom: "wide:left-10 wide:right-10 wide:bottom-[7.5rem] wide:top-auto wide:lg:left-14 wide:lg:right-14",
+  center: "wide:left-1/2 wide:top-1/2 wide:w-[min(80vw,760px)] wide:-translate-x-1/2 wide:-translate-y-1/2 wide:text-center",
 };
 
 /** Whether the chapter that owns the copy is the one in view. Drives the masked headline reveals. */
@@ -103,7 +103,7 @@ function Chapter({
       aria-hidden={!active}
       inert={!active}
       className={cn(
-        "absolute inset-x-5 bottom-[max(6.5rem,14svh)] md:inset-x-auto md:bottom-auto",
+        "absolute inset-x-5 bottom-[max(6.5rem,14svh)] md:inset-x-10 wide:inset-x-auto wide:bottom-auto",
         SIDE_CLASS[side],
         active && interactive ? "pointer-events-auto" : "pointer-events-none",
         shown ? "" : "invisible",
@@ -144,7 +144,7 @@ function Eyebrow({ index, children }: { index?: number; children: ReactNode }) {
 
 function Headline({ lines, className }: { lines: string[]; className?: string }) {
   return (
-    <h2 className={cn("display-wide mt-5 text-[44px] leading-[0.98] sm:text-[56px] lg:text-[72px] xl:text-[84px] text-foreground", className)}>
+    <h2 className={cn("display-wide mt-5 text-[44px] leading-[0.98] sm:text-[56px] wide:lg:text-[72px] wide:xl:text-[84px] text-foreground", className)}>
       {lines.map((line, i) => (
         <Masked key={line} delay={0.08 * i}>
           {line}
@@ -335,7 +335,7 @@ export default function Home() {
       {/* Chapter rail */}
       <nav
         aria-label="Chapters"
-        className="fixed right-6 top-1/2 z-[70] hidden -translate-y-1/2 flex-col gap-4 lg:flex"
+        className="fixed right-6 top-1/2 z-[70] hidden -translate-y-1/2 flex-col gap-4 wide:lg:flex"
       >
         {CHAPTERS.map((c, i) => {
           const active = i === chapter;
@@ -380,15 +380,15 @@ export default function Home() {
               onSelectColumn={() => setLocation(`/w/${DEMO}`)}
               onHoverColumn={onStoryHover}
             />
-            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[60] h-[46svh] bg-gradient-to-t from-background via-background/85 to-transparent md:h-48 md:via-background/40" />
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[60] h-[52svh] bg-gradient-to-t from-background via-background/85 to-transparent wide:h-48 wide:via-background/40" />
             <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[60] h-28 bg-gradient-to-b from-background/90 to-transparent" />
           </div>
 
           <div className="pointer-events-none absolute inset-0 z-10 mx-auto max-w-[1400px]">
             {/* 00 Balance */}
-            <Chapter progress={progress} index={0} className="md:w-[min(56vw,880px)]">
+            <Chapter progress={progress} index={0} className="wide:w-[min(56vw,880px)]">
               <Eyebrow>Brokerage statements for tokenized stocks on Solana</Eyebrow>
-              <h1 className="display-wide mt-6 text-[56px] leading-[0.96] sm:text-[76px] lg:text-[96px] xl:text-[108px] text-foreground">
+              <h1 className="display-wide mt-6 text-[56px] leading-[0.96] sm:text-[72px] wide:lg:text-[96px] wide:xl:text-[108px] text-foreground">
                 {["A", "balance", "is", "not", "a", "statement."].map((word, i) => (
                   <motion.span
                     key={word + i}
@@ -532,11 +532,11 @@ export default function Home() {
             {/* 06 Open */}
             <Chapter progress={progress} index={6} side="center" interactive>
               <div aria-hidden className="pointer-events-none absolute -inset-x-[30%] -inset-y-[45%] -z-10 bg-[radial-gradient(ellipse_at_center,rgba(10,10,11,0.82)_0%,rgba(10,10,11,0.45)_45%,transparent_72%)]" />
-              <div className="md:flex md:justify-center">
+              <div className="wide:flex wide:justify-center">
                 <Eyebrow index={6}>Open</Eyebrow>
               </div>
               <Headline lines={["Open a ledger."]} />
-              <form onSubmit={handleAddressSubmit} className="mt-10 max-w-[640px] md:mx-auto">
+              <form onSubmit={handleAddressSubmit} className="mt-10 max-w-[640px] wide:mx-auto">
                 <div
                   className={cn(
                     "glass-strong flex h-14 items-center rounded-full pl-5 pr-1.5 transition-shadow duration-500 focus-within:ring-glow md:h-[68px] md:pl-7 md:pr-2",
@@ -568,8 +568,8 @@ export default function Home() {
                     </button>
                   </Magnetic>
                 </div>
-                {addressError && <p className="mt-2 text-[12px] text-destructive md:text-center">{addressError}</p>}
-                <div className="mt-5 flex flex-wrap items-center gap-2 md:justify-center">
+                {addressError && <p className="mt-2 text-[12px] text-destructive wide:text-center">{addressError}</p>}
+                <div className="mt-5 flex flex-wrap items-center gap-2 wide:justify-center">
                   <span className="mr-1 text-[12px] text-foreground/55">Or start with a demo ledger</span>
                   {isLoading && !config && (
                     <>

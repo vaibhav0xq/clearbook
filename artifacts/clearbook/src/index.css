@@ -3,6 +3,9 @@
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
+/* Landing story: copy and scene sit side by side only on viewports that are clearly wider than tall. Mirrors isWideStory in story-data.ts. */
+/* Landing copy beside the scene. Keep in step with WIDE_STORY_QUERY in components/three/story-data.ts. */
+@custom-variant wide (@media (min-width: 48rem) and (min-aspect-ratio: 23/20));
 
 @theme inline {
   --color-background: hsl(var(--background));
