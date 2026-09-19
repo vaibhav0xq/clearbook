@@ -9,6 +9,7 @@ import { useCostMethod } from "@/hooks/use-cost-method";
 import { formatUSD, formatQuantity } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Panel, Pill, Skeleton, EmptyState, ErrorState, PageHeader, SectionTitle } from "@/components/surface";
+import { Figure } from "@/components/figure";
 import { Reveal, EASE_OUT } from "@/components/motion/reveal";
 import { buildStrata, reliefRank, reliefOrder, type StrataLayer } from "@/components/three/strata-data";
 import { useStage, useStageContext } from "@/components/layout/stage";
@@ -29,7 +30,7 @@ const METHOD_HINT: Record<string, string> = {
 function Strip({ order, totalValue }: { order: StrataLayer[]; totalValue: number }) {
   if (totalValue <= 0 || order.length === 0) return null;
   return (
-    <div className="mt-4 mb-2 flex h-2 w-full overflow-hidden rounded-full bg-white/[0.03] border hairline">
+    <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-white/[0.03] border hairline">
       {order.map((layer, i) => {
         const width = Math.max(0, (layer.value / totalValue) * 100);
         let bgColor = "bg-foreground/40";
@@ -130,6 +131,52 @@ export default function Lots() {
       .sort((a, b) => (b.col?.value || 0) - (a.col?.value || 0));
   }, [lots, portfolio, method]);
 
+  // Ledger wide totals for the current filter. Realized P/L accrues on partially relieved lots too, so it
+  // is summed over every lot. Lots without a readable cost stay out of the cost and unrealized sums.
+  const summary = useMemo(() => {
+    if (!lots || lots.length === 0) return null;
+    let open = 0;
+    let closed = 0;
+    let closedIncomplete = 0;
+    let long = 0;
+    let cost = 0;
+    let unrealized = 0;
+    let realized = 0;
+    let unknown = 0;
+    let estimated = 0;
+    for (const lot of lots) {
+      realized += lot.realizedPnl ?? 0;
+      if (lot.status === "closed") {
+        closed += 1;
+        if (lot.basisStatus !== "complete") closedIncomplete += 1;
+        continue;
+      }
+      open += 1;
+      if (lot.term === "long") long += 1;
+      if (lot.remainingCostBasis === null) {
+        unknown += 1;
+        continue;
+      }
+      if (lot.basisStatus === "estimated") estimated += 1;
+      cost += lot.remainingCostBasis;
+      unrealized += lot.unrealizedPnl ?? 0;
+    }
+    const costNotes: string[] = [];
+    if (unknown > 0) costNotes.push(`${unknown} unknown excluded`);
+    if (estimated > 0) costNotes.push(`${estimated} estimated included`);
+    return {
+      open,
+      closed,
+      closedIncomplete,
+      long,
+      short: open - long,
+      cost,
+      unrealized,
+      realized,
+      costNote: costNotes.length > 0 ? costNotes.join(", ") : "Complete basis on every lot",
+    };
+  }, [lots]);
+
   const ctx = useStageContext();
   const sharedHoverMint = ctx.hoverMint;
   const [hoverLayerId, setHoverLayerId] = useState<string | null>(null);
@@ -214,9 +261,59 @@ export default function Lots() {
       ) : error ? (
         <ErrorState title="Unable to load lots" message={error.data?.message ?? error.message} />
       ) : grouped.length === 0 ? (
-        <EmptyState title="No lots found" description="No tax lots match the selected filters." />
+        <EmptyState
+          title={statusFilter === "closed" ? "No closed lots" : statusFilter === "open" ? "No open lots" : "No lots"}
+          description={
+            mintFilter
+              ? "No lots match this asset and filter. Clear the asset filter to see the whole ledger."
+              : statusFilter === "closed"
+                ? "This wallet has not sold any shares yet. A sale relieves lots and they appear here with their realized result."
+                : statusFilter === "open"
+                  ? "Every lot in this wallet has been relieved. Closed lots keep their history under the closed filter."
+                  : "Acquisitions open a lot with the shares, cost and date. None have been indexed for this wallet."
+          }
+        />
       ) : (
         <div className="flex flex-col gap-14">
+          {summary && (
+            <Reveal>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-8 border-t hairline pt-6 md:grid-cols-4">
+                {statusFilter === "closed" ? (
+                  <>
+                    <Figure
+                      label="Closed lots"
+                      value={String(summary.closed)}
+                      size="md"
+                      sub={summary.closedIncomplete > 0 ? `${summary.closedIncomplete} without a complete cost` : "Complete basis on every lot"}
+                    />
+                    <Figure label="Realized" value={summary.realized} tone size="md" sub="Proceeds net of fees, less cost" />
+                  </>
+                ) : (
+                  <>
+                    <Figure
+                      label="Open lots"
+                      value={String(summary.open)}
+                      size="md"
+                      sub={`${summary.long} long, ${summary.short} short`}
+                    />
+                    <Figure label="Open cost basis" value={summary.cost} size="md" sub={summary.costNote} />
+                    <Figure label="Unrealized" value={summary.unrealized} tone size="md" sub="At the current mark" />
+                    {statusFilter === "all" && (summary.closed > 0 || summary.realized !== 0) ? (
+                      <Figure
+                        label="Realized"
+                        value={summary.realized}
+                        tone
+                        size="md"
+                        sub={summary.closed > 0 ? `${summary.closed} closed ${summary.closed === 1 ? "lot" : "lots"}, partial relief included` : "From partially relieved lots"}
+                      />
+                    ) : (
+                      <Figure label="Positions" value={String(grouped.length)} size="md" sub={mintFilter ? "Filtered to one asset" : "With open lots"} />
+                    )}
+                  </>
+                )}
+              </div>
+            </Reveal>
+          )}
           {grouped.map((group) => (
             <Reveal key={group.mint} as="section">
               <div 
@@ -239,7 +336,15 @@ export default function Lots() {
                   </div>
 
                   {group.col && group.order.length > 0 && (statusFilter === "open" || statusFilter === "all") && (
-                    <Strip order={group.order} totalValue={group.col.value} />
+                    <div className="flex flex-col gap-2">
+                      <Strip order={group.order} totalValue={group.col.value} />
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Open lots in relief order. Width is market value, color is unrealized gain or loss.</span>
+                        <span className="num">
+                          {group.order.length} {group.order.length === 1 ? "lot" : "lots"}
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </div>
 

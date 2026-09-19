@@ -236,10 +236,13 @@ function serializeStatementData(data: StatementData): Record<string, unknown> {
 }
 
 function defaultTitle(start: Date, end: Date): string {
-  const sameMonth = start.getUTCFullYear() === end.getUTCFullYear() && start.getUTCMonth() === end.getUTCMonth();
-  const fmt = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-  if (sameMonth) return `Statement for ${fmt.format(start)}`;
-  return `Statement ${dateOnly(start)} to ${dateOnly(end)}`;
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
+  const monthYear = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+  if (sameMonth) return `Statement for ${monthYear.format(start)}`;
+  const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const dayYear = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  return `Statement ${sameYear ? day.format(start) : dayYear.format(start)} to ${dayYear.format(end)}`;
 }
 
 export function statementView(row: StatementRow) {

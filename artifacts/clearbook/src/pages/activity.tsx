@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
 import { useListActivity } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { useStageContext, useStage } from "@/components/layout/stage";
-import { formatUSD, formatQuantity } from "@/lib/format";
+import { formatUSD, formatQuantity, issuerLabel } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Pill, Skeleton, EmptyState, ErrorState, PageHeader } from "@/components/surface";
 import { Reveal } from "@/components/motion/reveal";
@@ -112,7 +112,7 @@ export default function Activity() {
                             </span>
                           </>
                         )}
-                        {event.source !== 'live' && (
+                        {event.source !== "live" && event.source !== "demo" && (
                           <Pill className="text-[9px] px-1.5 py-[1px] ml-1">{event.source}</Pill>
                         )}
                       </div>
@@ -121,7 +121,7 @@ export default function Activity() {
                   <TableCell>
                     <div className="flex flex-col gap-1">
                        <span className="num text-[14px] tracking-[0.08em] text-foreground">{event.symbol}</span>
-                       <span className="text-[11px] text-muted-foreground">{event.issuer}</span>
+                       <span className="text-[11px] text-muted-foreground">{issuerLabel(event.issuer)}</span>
                     </div>
                   </TableCell>
                   <TableCell align="right">

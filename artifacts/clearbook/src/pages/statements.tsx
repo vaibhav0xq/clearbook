@@ -28,7 +28,10 @@ export default function Statements() {
       : "Statements record holdings and realized gains for a chosen period."
   });
 
-  const [showForm, setShowForm] = useState(true);
+  // The list reads first. The form opens on request, or by itself when there is nothing to list yet.
+  const [formOpen, setFormOpen] = useState<boolean | null>(null);
+  const showForm = formOpen ?? (statements !== undefined && statements.length === 0);
+  const setShowForm = setFormOpen;
   const [newStart, setNewStart] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [newEnd, setNewEnd] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"));
   const [newTitle, setNewTitle] = useState("Monthly statement");
@@ -87,7 +90,7 @@ export default function Statements() {
             <Reveal>
               <button
                 onClick={() => setShowForm(true)}
-                className="group flex items-center gap-2 rounded-full border hairline bg-white/[0.03] px-4 py-2 text-[13px] text-foreground transition-colors hover:bg-white/[0.06] hover:border-white/20"
+                className="group flex items-center gap-2 whitespace-nowrap rounded-full border hairline bg-white/[0.03] px-4 py-2 text-[13px] text-foreground transition-colors hover:bg-white/[0.06] hover:border-white/20"
               >
                 <Plus className="h-4 w-4 text-primary" />
                 Generate statement
@@ -224,9 +227,8 @@ export default function Statements() {
             <DataTable>
               <TableHeader>
                 <TableHead>Statement</TableHead>
-                <TableHead>Method</TableHead>
                 <TableHead>Document hash</TableHead>
-                <TableHead>Proof status</TableHead>
+                <TableHead>Proof</TableHead>
                 <TableHead align="right">Closing value</TableHead>
               </TableHeader>
               <TableBody>
@@ -239,17 +241,19 @@ export default function Statements() {
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <Link href={`/w/${address}/statements/${stmt.id}`} className="text-[15px] text-foreground hover:text-primary transition-colors focus:outline-none focus-visible:underline" onClick={(e) => e.stopPropagation()}>{stmt.title}</Link>
-                        <span className="text-[12px] text-muted-foreground">
-                          {formatDateString(stmt.periodStart)} to {formatDateString(stmt.periodEnd)}
+                        <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                          <span className="num">
+                            {formatDateString(stmt.periodStart)} to {formatDateString(stmt.periodEnd)}
+                          </span>
+                          <Pill className="text-[9px] px-1.5 py-[2px]">{stmt.method}</Pill>
                         </span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Pill>{stmt.method}</Pill>
-                    </TableCell>
-                    <TableCell>
-                      <span className="num text-[13px] text-muted-foreground">
-                        {stmt.hash.substring(0, 16)}...
+                      <span className="num text-[12px] text-muted-foreground" title={stmt.hash}>
+                        {stmt.hash.substring(0, 10)}
+                        <span className="text-muted-foreground/50">&hellip;</span>
+                        {stmt.hash.slice(-4)}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -287,7 +291,36 @@ export default function Statements() {
             </DataTable>
           )
         ) : null}
+
+        {statements && statements.length > 0 && (
+          <Reveal delay={0.1}>
+            <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              {STEPS.map((step, i) => (
+                <Panel key={step.title} className="flex flex-col gap-3 p-6">
+                  <span className="num text-[11px] tracking-[0.14em] text-primary">0{i + 1}</span>
+                  <span className="text-[15px] text-foreground">{step.title}</span>
+                  <p className="text-[13px] leading-relaxed text-muted-foreground">{step.body}</p>
+                </Panel>
+              ))}
+            </section>
+          </Reveal>
+        )}
       </div>
     </>
   );
 }
+
+const STEPS = [
+  {
+    title: "Pick a period",
+    body: "A statement records opening and closing holdings, realized gains and income for the dates you choose, under the cost method active at the time.",
+  },
+  {
+    title: "Hash the document",
+    body: "The CSV and PDF exports are built from the same rows. A SHA-256 hash of the statement identifies that exact version.",
+  },
+  {
+    title: "Notarize on Solana",
+    body: "Post the hash in a memo transaction from your wallet. Anyone can later check the statement against the memo without trusting this site.",
+  },
+];

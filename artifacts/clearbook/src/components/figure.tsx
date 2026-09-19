@@ -18,11 +18,11 @@ interface FigureProps {
 }
 
 const SIZE: Record<NonNullable<FigureProps["size"]>, string> = {
-  sm: "text-[17px]",
-  md: "text-[22px]",
-  lg: "text-[30px] md:text-[34px]",
-  xl: "text-[44px] md:text-[64px] leading-[0.95] tracking-[-0.03em]",
-  xxl: "text-[56px] md:text-[84px] xl:text-[96px] leading-[0.92] tracking-[-0.04em]",
+  sm: "text-[17px] desk:text-[18px]",
+  md: "text-[22px] desk:text-[26px]",
+  lg: "text-[30px] md:text-[34px] desk:text-[38px]",
+  xl: "text-[44px] md:text-[64px] desk:text-[72px] leading-[0.95] tracking-[-0.03em]",
+  xxl: "text-[56px] md:text-[84px] xl:text-[96px] desk:text-[116px] leading-[0.92] tracking-[-0.04em]",
 };
 
 export function Figure({ label, value, format = formatUSD, sub, subTone, tone = false, size = "md", align = "left", className }: FigureProps) {
@@ -47,7 +47,7 @@ export function Figure({ label, value, format = formatUSD, sub, subTone, tone = 
           <span className="num">{value}</span>
         )}
       </span>
-      {sub && <span className={cn("num text-[12px]", subColor)}>{sub}</span>}
+      {sub && <span className={cn("num text-[12px] desk:text-[13px]", subColor)}>{sub}</span>}
     </div>
   );
 }

@@ -174,10 +174,17 @@ export function Shell({ address, children }: ShellProps) {
     </div>
   );
 
+  // The demo description reads once, on the portfolio page. Warnings follow the reader to every page.
+  const demoNote = status?.isDemo && status.message && location === `/w/${address}` ? status.message.replace(/^Demo ledger loaded\.\s*/, "") : null;
   const notices =
-    status && !statusError && (status.warnings?.length > 0 || status.state === "error" || status.state === "partial" || (status.isDemo && status.message)) ? (
-      <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-        {status.isDemo && status.message && <span>{status.message}</span>}
+    status && !statusError && (status.warnings?.length > 0 || status.state === "error" || status.state === "partial" || demoNote) ? (
+      <div className="flex flex-col gap-2 text-[13px] text-muted-foreground">
+        {demoNote && (
+          <span className="flex items-start gap-2.5 leading-relaxed">
+            <span className="label mt-[3px] shrink-0 text-primary">Demo</span>
+            <span>{demoNote}</span>
+          </span>
+        )}
         {(status.state === "error" || status.state === "partial") && !status.isDemo && <span className="text-destructive">{status.message}</span>}
         {status.warnings?.map((w, i) => (
           <span key={i} className="flex items-center gap-1.5 text-destructive">
@@ -190,13 +197,14 @@ export function Shell({ address, children }: ShellProps) {
   return (
     <StageProvider address={address}>
       <div aria-hidden className="grain-overlay" />
-      <div className="relative min-h-screen lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(360px,40vw,720px)]">
+      {/* The stage takes a larger share on wide monitors so the reading panel keeps a sensible measure. */}
+      <div className="relative min-h-screen lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(360px,40vw,720px)] desk:grid-cols-[minmax(0,1fr)_clamp(720px,44vw,1160px)]">
 
         {/* Stage. First in the DOM so it sits at the top on small screens and on the right on large ones. */}
         <aside className="sticky top-0 z-0 h-[46vh] min-h-[320px] lg:order-2 lg:h-screen lg:min-h-0 lg:self-start lg:border-l lg:hairline">
           <StageView address={address} />
           {/* Small screens: brand and wallet float over the scene. Large screens: the ledger identity does. */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 px-5 pt-4 md:px-8 md:pt-5">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 px-5 pt-4 md:px-8 md:pt-5 desk:px-10 desk:pt-6">
             <div className="pointer-events-auto lg:hidden">
               <Brand />
             </div>
@@ -213,7 +221,7 @@ export function Shell({ address, children }: ShellProps) {
         {/* Reading panel */}
         <div className="relative z-10 flex min-h-screen flex-col bg-background lg:order-1 lg:min-h-screen">
           <header className="sticky top-0 z-40 border-b hairline bg-background/80 backdrop-blur-xl">
-            <div className="hidden items-center gap-8 px-6 md:px-10 lg:flex">
+            <div className="hidden items-center gap-8 px-6 md:px-10 lg:flex desk:px-14">
               <Brand />
               <SectionTabs address={address} layoutId="nav-active" className="min-w-0 overflow-x-auto scrollbar-none" />
             </div>
@@ -232,7 +240,7 @@ export function Shell({ address, children }: ShellProps) {
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, ease: EASE_OUT, delay: 0.15 }}
-                className={cn("flex flex-col gap-3 px-6 pt-6 md:px-10", !notices && "lg:hidden")}
+                className={cn("flex flex-col gap-3 px-6 pt-6 md:px-10 desk:px-14", !notices && "lg:hidden")}
               >
                 <div className="lg:hidden">{identity}</div>
                 {notices}
@@ -240,7 +248,7 @@ export function Shell({ address, children }: ShellProps) {
             )}
           </AnimatePresence>
 
-          <main className="flex flex-1 flex-col px-6 py-8 md:px-10 md:py-10">
+          <main className="flex flex-1 flex-col px-6 py-8 md:px-10 md:py-10 desk:px-14 desk:py-12">
             {statusError ? (
               <PageTransition className="mx-auto my-16 w-full max-w-xl">
                 <div className="flex flex-col items-center gap-4 rounded-2xl border hairline p-10 text-center">
@@ -261,7 +269,7 @@ export function Shell({ address, children }: ShellProps) {
             )}
           </main>
 
-          <footer className="flex flex-col justify-between gap-3 px-6 pb-8 pt-4 text-[12px] text-muted-foreground md:flex-row md:items-center md:px-10">
+          <footer className="flex flex-col justify-between gap-3 px-6 pb-8 pt-4 text-[12px] text-muted-foreground md:flex-row md:items-center md:px-10 desk:px-14">
             <span>Figures are rebuilt from public Solana history. Estimates are labeled. Nothing here is tax advice.</span>
             <Link href="/methodology" className="transition-colors hover:text-foreground">
               Methodology

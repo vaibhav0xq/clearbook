@@ -77,7 +77,10 @@ export default function StatementDetail() {
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
                   <div className="flex flex-col gap-3">
                     <span className="label text-primary">Statement</span>
-                    <h1 className="display text-[40px] md:text-[56px] text-foreground leading-none">{statement.title}</h1>
+                    <h1 className="display text-[40px] md:text-[56px] desk:text-[64px] text-foreground leading-none">
+                      {/* Older statements carry an ISO date title. The period line below already states the dates. */}
+                      {/^Statement \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/.test(statement.title) ? "Statement" : statement.title}
+                    </h1>
                     <div className="flex flex-col gap-1.5 mt-2 text-[15px] text-muted-foreground">
                       <span>{formatDateString(statement.periodStart)} to {formatDateString(statement.periodEnd)}</span>
                       <span>Account <span className="num">{statement.displayAddress}</span></span>

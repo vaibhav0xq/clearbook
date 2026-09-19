@@ -25,7 +25,7 @@ import { Figure } from "@/components/figure";
 import { Reveal, EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
-import { reliefPreview } from "@/components/three/strata-data";
+import { reliefPreview, reliefOrder } from "@/components/three/strata-data";
 
 export default function Trade() {
   const [, params] = useRoute("/w/:address/trade");
@@ -49,7 +49,11 @@ export default function Trade() {
   const confirmMutation = useConfirmTrade();
   const simulateMutation = useSimulateTrade();
 
-  const [quote, setQuote] = useState<TradeQuote | null>(null);
+  // A quote is only valid for the asset, quantity and method it was requested with. Keying it this way
+  // drops a quote the moment any of those change, including one that resolves after the change.
+  const [quoteState, setQuoteState] = useState<{ key: string; quote: TradeQuote } | null>(null);
+  const quoteKey = `${selectedMint}|${quantity}|${method}`;
+  const quote = quoteState && quoteState.key === quoteKey ? quoteState.quote : null;
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -64,6 +68,8 @@ export default function Trade() {
   const previewMap = hasLotDetail && selectedColumn && numQuantity > 0 && !quote
     ? reliefPreview(selectedColumn, method, numQuantity)
     : null;
+  // The queue reads before any quantity is typed, so the reader sees what a sale would touch first.
+  const queue = hasLotDetail && selectedColumn && !quote ? reliefOrder(selectedColumn, method) : [];
 
   let caption = "Select a position and quantity to preview the sale.";
   if (quote) {
@@ -88,12 +94,13 @@ export default function Trade() {
   const handleGetQuote = async () => {
     if (!selectedMint || !quantity || isNaN(numQuantity) || numQuantity <= 0) return;
     setExecutionResult(null);
+    const key = quoteKey;
     try {
       const result = await quoteQuery.mutateAsync({
         address,
         data: { mint: selectedMint, quantity: numQuantity, method }
       });
-      setQuote(result);
+      setQuoteState({ key, quote: result });
     } catch (e) {
       // Handled by query state
     }
@@ -182,7 +189,7 @@ export default function Trade() {
                   key={p.mint}
                   type="button"
                   aria-pressed={selectedMint === p.mint}
-                  onClick={() => { setSelectedMint(p.mint); setQuote(null); setExecutionResult(null); }}
+                  onClick={() => { setSelectedMint(p.mint); setQuoteState(null); setExecutionResult(null); }}
                   className={cn(
                     "flex items-center gap-3 px-4 py-2.5 rounded-xl border hairline transition-all",
                     selectedMint === p.mint 
@@ -205,15 +212,22 @@ export default function Trade() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 12 }}
                 transition={{ duration: 0.5, ease: EASE_OUT }}
-                className="grid grid-cols-1 xl:grid-cols-12 gap-6"
+                className="flex flex-col gap-8"
               >
+              <div className="grid grid-cols-2 gap-x-8 gap-y-8 border-t hairline pt-6 md:grid-cols-4">
+                <Figure label="Holding" value={`${formatQuantity(selectedPosition.quantity)} sh`} size="md" sub={`${selectedPosition.openLots} open ${selectedPosition.openLots === 1 ? "lot" : "lots"}`} />
+                <Figure label="Mark" value={selectedPosition.mark.price} size="md" sub={selectedPosition.mark.sourceLabel} />
+                <Figure label="Market value" value={selectedPosition.marketValue} size="md" sub={`${formatUSD(selectedPosition.costBasis)} cost`} />
+                <Figure label="Unrealized" value={selectedPosition.unrealizedPnl} tone size="md" sub={formatPercent(selectedPosition.unrealizedPnlPct)} subTone={selectedPosition.unrealizedPnl} />
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
                 <div className="xl:col-span-5 flex flex-col gap-6">
                   <Panel className="p-6 md:p-8 flex flex-col gap-6 h-full border hairline bg-white/[0.02]">
                     <div className="flex items-center justify-between">
                       <span className="label text-muted-foreground">Quantity</span>
                       <button 
                         type="button" 
-                        onClick={() => { setQuantity(selectedPosition.quantity.toString()); setQuote(null); }}
+                        onClick={() => { setQuantity(selectedPosition.quantity.toString()); setQuoteState(null); }}
                         className="text-[10px] uppercase tracking-[0.12em] text-primary hover:text-foreground transition-colors"
                       >
                         Max: {formatQuantity(selectedPosition.quantity)}
@@ -226,7 +240,7 @@ export default function Trade() {
                         min="0"
                         step="any"
                         value={quantity}
-                        onChange={e => { setQuantity(e.target.value); setQuote(null); }}
+                        onChange={e => { setQuantity(e.target.value); setQuoteState(null); }}
                         placeholder="0.00"
                         className="glass-strong h-16 w-full rounded-2xl pl-5 pr-20 text-[24px] num text-foreground outline-none transition-shadow focus:ring-1 focus:ring-primary/50"
                       />
@@ -376,23 +390,34 @@ export default function Trade() {
                     )}
                   </Panel>
                 </div>
+              </div>
               </motion.section>
             )}
           </AnimatePresence>
 
-          {(quote?.reliefs.length || (previewMap && previewMap.size > 0)) ? (
+          {(quote?.reliefs.length || queue.length > 0) ? (
             <Reveal delay={0.1}>
               <section>
-                <SectionTitle aside={!quote && <Pill tone="amber">Preview</Pill>}>
-                  {quote ? "Relieved lots" : "Estimated relief preview"}
+                <SectionTitle
+                  aside={
+                    quote ? null : previewMap ? (
+                      <Pill tone="amber">Preview</Pill>
+                    ) : (
+                      <span>
+                        {method.toUpperCase()} order, {queue.length} {queue.length === 1 ? "lot" : "lots"}
+                      </span>
+                    )
+                  }
+                >
+                  {quote ? "Relieved lots" : previewMap ? "Estimated relief" : "Relief queue"}
                 </SectionTitle>
                 <DataTable>
                   <TableHeader>
                     <TableHead>Lot</TableHead>
-                    <TableHead align="right">Quantity relieved</TableHead>
+                    <TableHead align="right">{quote || previewMap ? "Quantity relieved" : "Quantity"}</TableHead>
                     <TableHead align="right">Cost basis</TableHead>
                     {quote && <TableHead align="right">Proceeds</TableHead>}
-                    {quote && <TableHead align="right">Realized P/L</TableHead>}
+                    {quote ? <TableHead align="right">Realized P/L</TableHead> : <TableHead align="right">Unrealized</TableHead>}
                   </TableHeader>
                   <TableBody>
                     {quote ? (
@@ -424,40 +449,53 @@ export default function Trade() {
                         );
                       })
                     ) : (
-                      Array.from(previewMap!.entries())
-                        .filter(([, fraction]) => fraction > 0)
-                        .map(([lotId, fraction], i) => {
-                          const lot = selectedColumn?.layers.find(l => l.id === lotId);
-                          if (!lot) return null;
-                          const take = lot.quantity * fraction;
-                          
-                          return (
-                            <TableRow key={lot.id} index={i}>
-                              <TableCell>
+                      queue.map((lot, i) => {
+                        const fraction = previewMap ? (previewMap.get(lot.id) ?? 0) : 1;
+                        const take = lot.quantity * fraction;
+                        const untouched = !!previewMap && fraction <= 0;
+                        const pnl = lot.unrealizedPnl;
+                        return (
+                          <TableRow key={lot.id} index={i} className={cn("transition-opacity duration-500", untouched && "opacity-40")}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <span className="num w-5 text-[11px] text-muted-foreground">{i + 1}</span>
                                 <div className="flex flex-col gap-1">
                                   <span className="text-[14px] text-foreground">{lot.openedAt ? format(new Date(lot.openedAt), "MMM d, yyyy") : "Opening balance"}</span>
                                   {lot.term && <span className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground">{lot.term}</span>}
                                 </div>
-                              </TableCell>
-                              <TableCell align="right">
-                                <div className="flex flex-col items-end gap-1">
-                                  <span className="num text-foreground">{formatQuantity(take, 4)} sh</span>
-                                  {fraction < 1 && <span className="num text-[11px] text-muted-foreground">{formatPercent(fraction * 100)} of lot</span>}
-                                </div>
-                              </TableCell>
-                              <TableCell align="right">
-                                {lot.basisUnknown || lot.costBasis === null ? (
-                                  <Pill tone="loss">Unknown</Pill>
-                                ) : (
-                                  <div className="flex flex-col items-end gap-1">
-                                    <span className="num text-foreground">{formatUSD(lot.costBasis * fraction)}</span>
-                                    {lot.costPerShare !== null && <span className="num text-[11px] text-muted-foreground">{formatUSD(lot.costPerShare)} / sh</span>}
-                                  </div>
+                              </div>
+                            </TableCell>
+                            <TableCell align="right">
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="num text-foreground">{formatQuantity(take, 4)} sh</span>
+                                {previewMap && fraction > 0 && fraction < 1 && (
+                                  <span className="num text-[11px] text-muted-foreground">{formatPercent(fraction * 100).replace("+", "")} of {formatQuantity(lot.quantity, 4)}</span>
                                 )}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
+                              </div>
+                            </TableCell>
+                            <TableCell align="right">
+                              {lot.basisUnknown || lot.costBasis === null ? (
+                                <Pill tone="loss">Unknown</Pill>
+                              ) : (
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="num text-foreground">{formatUSD(lot.costBasis * fraction)}</span>
+                                  {lot.costPerShare !== null && <span className="num text-[11px] text-muted-foreground">{formatUSD(lot.costPerShare)} / sh</span>}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              {pnl === null ? (
+                                <span className="text-[12px] text-muted-foreground">Unknown</span>
+                              ) : (
+                                <span className={cn("num", pnl > 0 ? "text-success" : pnl < 0 ? "text-destructive" : "text-muted-foreground")}>
+                                  {pnl > 0 ? "+" : ""}
+                                  {formatUSD(pnl * fraction)}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </DataTable>

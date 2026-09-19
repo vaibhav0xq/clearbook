@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { AlertTriangle, ArrowUpRight } from "lucide-react";
@@ -25,6 +26,16 @@ export default function Portfolio() {
   const { hoverMint, setHoverMint } = useStage({ caption: METHOD_HINT[method] });
 
   const { data: portfolio, isLoading, error } = useGetPortfolio(address, { method });
+
+  const concentration = useMemo(() => {
+    if (!portfolio || portfolio.positions.length === 0) return null;
+    const byWeight = [...portfolio.positions].sort((a, b) => (b.weightPct ?? 0) - (a.weightPct ?? 0));
+    if ((byWeight[0].weightPct ?? 0) <= 0) return null;
+    return {
+      top: byWeight[0],
+      topThreePct: byWeight.slice(0, 3).reduce((sum, p) => sum + (p.weightPct ?? 0), 0),
+    };
+  }, [portfolio]);
 
   return (
     <>
@@ -107,6 +118,9 @@ export default function Portfolio() {
                   <TableHead align="right">Quantity</TableHead>
                   <TableHead align="right">Mark</TableHead>
                   <TableHead align="right">Value</TableHead>
+                  <TableHead align="right" className="hidden desk:table-cell">
+                    Cost basis
+                  </TableHead>
                   <TableHead align="right">Unrealized</TableHead>
                 </TableHeader>
                 <TableBody>
@@ -152,7 +166,7 @@ export default function Portfolio() {
                             {pos.mark.status !== "live" && <span className="text-destructive">{pos.mark.statusLabel}</span>}
                             <span>
                               {pos.mark.sourceLabel}
-                              {pos.mark.ageSeconds ? `, ${formatAge(pos.mark.ageSeconds)}` : ""}
+                              {pos.mark.ageSeconds !== null && pos.mark.ageSeconds !== undefined ? `, ${formatAge(pos.mark.ageSeconds)}` : ""}
                             </span>
                           </span>
                           {pos.premiumDiscount.differencePct !== null && (
@@ -165,9 +179,17 @@ export default function Portfolio() {
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
                           <span className="num text-foreground">{formatUSD(pos.marketValue)}</span>
-                          <span className="num text-[11px] text-muted-foreground">{formatPercent(pos.weightPct)} of value</span>
-                          <span className="num text-[11px] text-muted-foreground" title={pos.basisStatus === "complete" ? `${formatUSD(pos.averageCost)} average cost` : undefined}>
+                          <span className="num text-[11px] text-muted-foreground">{formatPercent(pos.weightPct).replace("+", "")} of value</span>
+                          <span className="num text-[11px] text-muted-foreground desk:hidden" title={pos.basisStatus === "complete" ? `${formatUSD(pos.averageCost)} average cost` : undefined}>
                             {formatUSD(pos.costBasis)} cost
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell align="right" className="hidden desk:table-cell">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="num text-foreground">{formatUSD(pos.costBasis)}</span>
+                          <span className="num text-[11px] text-muted-foreground">
+                            {pos.basisStatus === "complete" ? `${formatUSD(pos.averageCost)} average` : pos.basisStatus === "unknown" ? "Unknown" : "Partial"}
                           </span>
                         </div>
                       </TableCell>
@@ -211,7 +233,7 @@ export default function Portfolio() {
                 </div>
                 <ul className="mt-5 flex flex-col divide-y divide-white/[0.06]">
                   {portfolio.allocation.map((a, i) => (
-                    <li key={a.issuer} className="flex items-center justify-between py-2.5 text-[13px]">
+                    <li key={a.issuer} className="flex items-center justify-between py-3 text-[13px]">
                       <span className="flex items-center gap-2.5">
                         <span className={cn("h-2 w-2 rounded-sm", i % 3 === 0 ? "bg-primary" : i % 3 === 1 ? "bg-foreground/70" : "bg-foreground/35")} />
                         <span className="text-foreground">{a.label}</span>
@@ -226,6 +248,29 @@ export default function Portfolio() {
                     </li>
                   ))}
                 </ul>
+                <ul className="mt-2 flex flex-col divide-y divide-white/[0.06] border-t hairline text-[13px]">
+                  {concentration && (
+                    <>
+                      <li className="flex items-center justify-between py-3">
+                        <span className="text-muted-foreground">Largest position</span>
+                        <span className="num text-foreground">
+                          {concentration.top.symbol} <span className="text-muted-foreground">{formatPercent(concentration.top.weightPct).replace("+", "")}</span>
+                        </span>
+                      </li>
+                      <li className="flex items-center justify-between py-3">
+                        <span className="text-muted-foreground">Top three positions</span>
+                        <span className="num text-foreground">{formatPercent(concentration.topThreePct).replace("+", "")}</span>
+                      </li>
+                    </>
+                  )}
+                  <li className="flex items-center justify-between py-3">
+                    <span className="text-muted-foreground">Positions with complete basis</span>
+                    <span className="num text-foreground">
+                      {portfolio.totals.positionsCount - portfolio.totals.unknownBasisCount} of {portfolio.totals.positionsCount}
+                    </span>
+                  </li>
+                </ul>
+                <p className="mt-5 text-[12px] leading-relaxed text-muted-foreground">Weights use marked value. Positions with an unknown cost still count toward value.</p>
               </Panel>
             </Reveal>
             <Reveal delay={0.08}>

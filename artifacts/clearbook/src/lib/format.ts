@@ -29,7 +29,8 @@ export function truncateAddress(address: string, chars = 4): string {
 
 export function formatAge(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "";
-  if (seconds < 60) return `${seconds} sec ago`;
+  if (seconds < 1) return "just now";
+  if (seconds < 60) return `${Math.round(seconds)} sec ago`;
   const mins = Math.floor(seconds / 60);
   if (mins < 60) return `${mins} min ago`;
   const hours = Math.floor(mins / 60);

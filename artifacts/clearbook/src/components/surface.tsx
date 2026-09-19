@@ -27,8 +27,8 @@ export function PageHeader({
     <div className={cn("flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-8 md:mb-10", className)}>
       <div className="flex flex-col gap-3">
         {eyebrow && <span className="label text-primary">{eyebrow}</span>}
-        <h1 className="display text-[40px] md:text-[56px] text-foreground">{title}</h1>
-        {description && <p className="text-[15px] text-muted-foreground max-w-2xl leading-relaxed">{description}</p>}
+        <h1 className="display text-[40px] md:text-[56px] desk:text-[64px] text-foreground">{title}</h1>
+        {description && <p className="text-[15px] desk:text-[16px] text-muted-foreground max-w-2xl leading-relaxed">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-3">{actions}</div>}
     </div>
@@ -38,8 +38,8 @@ export function PageHeader({
 export function SectionTitle({ children, aside, className }: { children: ReactNode; aside?: ReactNode; className?: string }) {
   return (
     <div className={cn("flex items-baseline justify-between gap-4 mb-4", className)}>
-      <h2 className="display text-[26px] md:text-[30px] text-foreground">{children}</h2>
-      {aside && <div className="text-[12px] text-muted-foreground">{aside}</div>}
+      <h2 className="display text-[26px] md:text-[30px] desk:text-[34px] text-foreground">{children}</h2>
+      {aside && <div className="text-[12px] desk:text-[13px] text-muted-foreground">{aside}</div>}
     </div>
   );
 }
@@ -52,7 +52,7 @@ export function Pill({ children, tone = "neutral", className }: { children: Reac
     loss: "border-destructive/30 text-destructive bg-destructive/10",
   } as const;
   return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-[3px] text-[10px] uppercase tracking-[0.12em] leading-none", tones[tone], className)}>
+    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-[3px] text-[10px] uppercase tracking-[0.12em] leading-none", tones[tone], className)}>
       {children}
     </span>
   );
