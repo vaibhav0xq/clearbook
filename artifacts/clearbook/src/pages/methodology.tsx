@@ -17,21 +17,23 @@ export default function Methodology() {
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 grain" />
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[520px] grid-lines opacity-40" />
 
-      <header className="sticky top-0 z-50 px-5 md:px-10 pt-5">
-        <div className="glass-strong mx-auto flex h-14 max-w-[1400px] items-center justify-between rounded-2xl px-4">
-          <Brand />
-          <nav className="flex items-center gap-5">
-            <Link href={`/w/${DEMO}`} className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
-              Demo ledger
-            </Link>
-            <Link href="/" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
-              Lookup
-            </Link>
-          </nav>
+      <header className="sticky top-0 z-50 pt-5">
+        <div className="shell">
+          <div className="glass-strong flex h-14 items-center justify-between rounded-2xl px-4">
+            <Brand />
+            <nav className="flex items-center gap-5">
+              <Link href={`/w/${DEMO}`} className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
+                Demo ledger
+              </Link>
+              <Link href="/" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
+                Lookup
+              </Link>
+            </nav>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1400px] px-5 md:px-10 py-16 md:py-24">
+      <main className="shell py-16 md:py-24">
         <Reveal>
           <h1 className="display text-[56px] md:text-[80px] text-foreground mb-6">Methodology</h1>
           <p className="text-[17px] text-muted-foreground max-w-2xl leading-relaxed">
@@ -39,7 +41,8 @@ export default function Methodology() {
           </p>
         </Reveal>
         
-        <div className="mt-20 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-20 items-start">
+        {/* Capped on wide monitors so two column prose keeps a readable measure. Left aligned, not centred. */}
+        <div className="mt-20 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-20 items-start desk:max-w-[1760px]">
           <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-32">
             <ul className="flex flex-col gap-4 text-[13px]">
               <li><a href="#quantities" className="text-muted-foreground hover:text-foreground transition-colors">Quantities and multipliers</a></li>

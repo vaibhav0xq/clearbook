@@ -7,6 +7,8 @@
 /* Landing story: copy and scene sit side by side only on viewports that are clearly wider than tall. Mirrors isWideStory in story-data.ts. */
 /* Landing copy beside the scene. Keep in step with WIDE_STORY_QUERY in components/three/story-data.ts. */
 @custom-variant wide (@media (min-width: 48rem) and (min-aspect-ratio: 23/20));
+/* Wide monitors (1920px and up). Declared after wide so desk: styles override the breakpoint variants. */
+@custom-variant desk (@media (min-width: 120rem));
 
 @theme inline {
   --color-background: hsl(var(--background));
@@ -187,7 +189,86 @@
   }
 }
 
+/*
+ * Page frame. Content sits in a 1400px column on laptops and opens up to fluid gutters on wide
+ * monitors, so a 2560px display is used edge to edge instead of showing a centred strip.
+ * The gutter also positions the landing copy, keeping it aligned with the header.
+ */
+:root {
+  --shell-gutter: 1.25rem;
+}
+@media (min-width: 48rem) {
+  :root {
+    --shell-gutter: 2.5rem;
+  }
+}
+@media (min-width: 64rem) {
+  :root {
+    --shell-gutter: 3.5rem;
+  }
+}
+@media (min-width: 100rem) {
+  :root {
+    --shell-gutter: clamp(3.5rem, 5vw, 9rem);
+  }
+}
+
 @layer utilities {
+  .shell {
+    width: 100%;
+    max-width: 1400px;
+    margin-inline: auto;
+    padding-inline: var(--shell-gutter);
+  }
+  @media (min-width: 100rem) {
+    .shell {
+      max-width: none;
+    }
+  }
+  /*
+   * Landing type scale. Written as plain media queries because stacked breakpoint variants are
+   * emitted in an order that lets the laptop sizes override the wide monitor step.
+   */
+  .hero-title {
+    font-size: 56px;
+    line-height: 0.96;
+  }
+  .chapter-title {
+    font-size: 44px;
+    line-height: 0.98;
+  }
+  @media (min-width: 40rem) {
+    .hero-title {
+      font-size: 72px;
+    }
+    .chapter-title {
+      font-size: 56px;
+    }
+  }
+  @media (min-width: 64rem) and (min-aspect-ratio: 23/20) {
+    .hero-title {
+      font-size: 96px;
+    }
+    .chapter-title {
+      font-size: 72px;
+    }
+  }
+  @media (min-width: 80rem) and (min-aspect-ratio: 23/20) {
+    .hero-title {
+      font-size: 108px;
+    }
+    .chapter-title {
+      font-size: 84px;
+    }
+  }
+  @media (min-width: 120rem) and (min-aspect-ratio: 23/20) {
+    .hero-title {
+      font-size: clamp(108px, 5vw, 132px);
+    }
+    .chapter-title {
+      font-size: clamp(84px, 3.9vw, 104px);
+    }
+  }
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }

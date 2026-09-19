@@ -56,10 +56,12 @@ const onStoryHover = (mint: string | null) => setCursorLabel(mint ? "Open lots" 
 /** Copy for one chapter. Fades and drifts with scroll, never with time. */
 type ChapterSide = "left" | "right" | "bottom" | "center";
 
+/** Copy placement per chapter. The gutter variable keeps the copy on the same line as the header. */
 const SIDE_CLASS: Record<ChapterSide, string> = {
-  left: "wide:left-10 wide:top-1/2 wide:-translate-y-1/2 wide:w-[min(48vw,700px)] wide:lg:left-14",
-  right: "wide:left-auto wide:right-10 wide:top-1/2 wide:-translate-y-1/2 wide:w-[min(48vw,700px)] wide:lg:right-14",
-  bottom: "wide:left-10 wide:right-10 wide:bottom-[7.5rem] wide:top-auto wide:lg:left-14 wide:lg:right-14",
+  left: "wide:left-[var(--shell-gutter)] wide:top-1/2 wide:-translate-y-1/2 wide:w-[min(48vw,700px)] wide:desk:w-[min(42vw,900px)]",
+  right:
+    "wide:left-auto wide:right-[var(--shell-gutter)] wide:top-1/2 wide:-translate-y-1/2 wide:w-[min(48vw,700px)] wide:desk:w-[min(42vw,900px)]",
+  bottom: "wide:left-[var(--shell-gutter)] wide:right-[var(--shell-gutter)] wide:bottom-[7.5rem] wide:top-auto",
   center: "wide:left-1/2 wide:top-1/2 wide:w-[min(80vw,760px)] wide:-translate-x-1/2 wide:-translate-y-1/2 wide:text-center",
 };
 
@@ -103,7 +105,7 @@ function Chapter({
       aria-hidden={!active}
       inert={!active}
       className={cn(
-        "absolute inset-x-5 bottom-[max(6.5rem,14svh)] md:inset-x-10 wide:inset-x-auto wide:bottom-auto",
+        "absolute inset-x-[var(--shell-gutter)] bottom-[max(6.5rem,14svh)] wide:inset-x-auto wide:bottom-auto",
         SIDE_CLASS[side],
         active && interactive ? "pointer-events-auto" : "pointer-events-none",
         shown ? "" : "invisible",
@@ -144,7 +146,12 @@ function Eyebrow({ index, children }: { index?: number; children: ReactNode }) {
 
 function Headline({ lines, className }: { lines: string[]; className?: string }) {
   return (
-    <h2 className={cn("display-wide mt-5 text-[44px] leading-[0.98] sm:text-[56px] wide:lg:text-[72px] wide:xl:text-[84px] text-foreground", className)}>
+    <h2
+      className={cn(
+        "display-wide chapter-title mt-5 text-foreground",
+        className,
+      )}
+    >
       {lines.map((line, i) => (
         <Masked key={line} delay={0.08 * i}>
           {line}
@@ -155,14 +162,14 @@ function Headline({ lines, className }: { lines: string[]; className?: string })
 }
 
 function Lede({ children }: { children: ReactNode }) {
-  return <p className="mt-5 max-w-[440px] text-[15px] md:text-[17px] leading-relaxed text-foreground/70">{children}</p>;
+  return <p className="mt-5 max-w-[440px] text-[15px] leading-relaxed text-foreground/70 md:text-[17px] desk:max-w-[520px] desk:text-[19px]">{children}</p>;
 }
 
 function Figure({ label, children, className, caps = true }: { label: string; children: ReactNode; className?: string; caps?: boolean }) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <span className={cn("label", !caps && "normal-case tracking-[0.02em] text-[12px]")}>{label}</span>
-      <span className="num text-[30px] md:text-[40px] font-light leading-none tracking-[-0.03em] text-foreground">{children}</span>
+      <span className="num text-[30px] font-light leading-none tracking-[-0.03em] text-foreground md:text-[40px] desk:text-[48px]">{children}</span>
     </div>
   );
 }
@@ -313,7 +320,7 @@ export default function Home() {
       >
         <div
           className={cn(
-            "mx-auto flex max-w-[1400px] items-center justify-between px-5 py-4 transition-all duration-500 md:px-10",
+            "shell flex items-center justify-between py-4 transition-all duration-500",
             scrolled && "py-3",
           )}
         >
@@ -396,11 +403,11 @@ export default function Home() {
             <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[60] h-28 bg-gradient-to-b from-background/90 to-transparent" />
           </div>
 
-          <div className="pointer-events-none absolute inset-0 z-10 mx-auto max-w-[1400px]">
+          <div className="pointer-events-none absolute inset-0 z-10">
             {/* 00 Balance */}
-            <Chapter progress={progress} index={0} className="wide:w-[min(56vw,880px)]">
+            <Chapter progress={progress} index={0} className="wide:w-[min(56vw,880px)] wide:desk:w-[min(38vw,980px)]">
               <Eyebrow>Brokerage statements for tokenized stocks on Solana</Eyebrow>
-              <h1 className="display-wide mt-6 text-[56px] leading-[0.96] sm:text-[72px] wide:lg:text-[96px] wide:xl:text-[108px] text-foreground">
+              <h1 className="display-wide hero-title mt-6 text-foreground">
                 {["A", "balance", "is", "not", "a", "statement."].map((word, i) => (
                   <motion.span
                     key={word + i}
@@ -417,7 +424,7 @@ export default function Home() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.9, ease: EASE_OUT, delay: 0.9 }}
-                className="mt-7 max-w-[420px] text-[16px] leading-relaxed text-foreground/70 md:text-[18px]"
+                className="mt-7 max-w-[420px] text-[16px] leading-relaxed text-foreground/70 md:text-[18px] desk:max-w-[520px] desk:text-[20px]"
               >
                 Wallets count tokens. Clearbook keeps the books.
               </motion.p>
@@ -626,7 +633,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t hairline bg-background">
-        <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-8 px-5 py-10 md:flex-row md:items-center md:justify-between md:px-10">
+        <div className="shell flex flex-col gap-8 py-10 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-col gap-3">
             <Brand />
             <p className="max-w-sm text-[13px] leading-relaxed text-foreground/55">
