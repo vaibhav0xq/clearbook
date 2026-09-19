@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useWalletSession } from "@/lib/wallet";
 import { NotarizationPayload } from "@workspace/api-client-react";
 import { Loader2, FileSignature, CheckCircle2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface NotarizeButtonProps {
   payload: NotarizationPayload;
@@ -34,7 +35,7 @@ export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
       }
       setSuccess(true);
     } catch (e) {
-      setFailure(e instanceof Error ? e.message : "Notarization failed.");
+      setFailure(e instanceof Error ? e.message : "Notarization failed");
     } finally {
       setIsProcessing(false);
     }
@@ -42,10 +43,12 @@ export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
 
   if (success) {
     return (
-      <div className="flex items-center justify-end gap-2 text-success text-[11px] font-sans uppercase tracking-[0.08em]">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        {isSimulated ? "Simulated" : "Confirmed"}
-      </div>
+      <span className="inline-flex items-center gap-2">
+        <CheckCircle2 className="h-4 w-4 text-success" />
+        <span className="num text-[12px] text-success">
+          {isSimulated ? "Simulated" : "Confirmed"}
+        </span>
+      </span>
     );
   }
 
@@ -54,16 +57,24 @@ export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
       <button 
         onClick={handleNotarize} 
         disabled={isProcessing} 
-        className="flex items-center gap-2 bg-foreground text-background hover:bg-foreground/90 px-4 py-2 text-[11px] font-sans uppercase tracking-[0.08em] transition-colors disabled:opacity-50"
-      >
-        {isProcessing ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <FileSignature className="h-3.5 w-3.5" />
+        className={cn(
+          "group relative inline-flex items-center justify-center gap-2.5 rounded-full border hairline bg-white/[0.03] px-4 py-2 num text-[12px] text-foreground transition-colors hover:bg-white/[0.06] hover:border-white/20",
+          isProcessing && "opacity-50 pointer-events-none"
         )}
-        {isSimulated ? "Create simulated proof" : "Sign on-chain proof"}
+      >
+        <span className="relative flex h-4 w-4 items-center justify-center overflow-hidden">
+          {isProcessing ? (
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          ) : (
+            <>
+              <FileSignature className="absolute h-4 w-4 text-primary transition-transform duration-500 ease-out-expo group-hover:translate-x-4 group-hover:-translate-y-4" />
+              <FileSignature className="absolute h-4 w-4 text-primary transition-transform duration-500 ease-out-expo -translate-x-4 translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0" />
+            </>
+          )}
+        </span>
+        {isSimulated ? "Simulate proof" : "Sign on chain"}
       </button>
-      {failure && <span className="text-xs font-sans text-destructive max-w-xs text-right break-words">{failure}</span>}
+      {failure && <span className="text-[12px] text-destructive max-w-[240px] text-right break-words">{failure}</span>}
     </div>
   );
 }

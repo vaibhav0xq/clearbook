@@ -1,30 +1,52 @@
 import { ReactNode } from "react";
+import { AnimatedNumber } from "@/components/motion/animated-number";
+import { formatUSD } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 interface FigureProps {
-  label: string;
-  value: ReactNode;
+  label?: string;
+  /** Numeric values animate. Strings and nodes render as they are. */
+  value: number | null | undefined | ReactNode;
+  format?: (value: number | null | undefined) => string;
   sub?: ReactNode;
   subTone?: number | null;
-  size?: "md" | "lg" | "xl";
+  /** Colours the main value by sign. */
+  tone?: boolean;
+  size?: "sm" | "md" | "lg" | "xl";
+  align?: "left" | "right";
   className?: string;
 }
 
-export function Figure({ label, value, sub, subTone, size = "md", className = "" }: FigureProps) {
-  const subColorClass = subTone !== undefined && subTone !== null 
-    ? (subTone > 0 ? "text-success" : subTone < 0 ? "text-destructive" : "text-muted-foreground") 
-    : "text-muted-foreground";
-    
-  const valClass = size === "xl" ? "font-serif text-[40px] md:text-[44px] font-medium" 
-    : size === "lg" ? "font-sans text-[26px]" 
-    : "font-sans text-lg";
+const SIZE: Record<NonNullable<FigureProps["size"]>, string> = {
+  sm: "text-[17px]",
+  md: "text-[22px]",
+  lg: "text-[30px] md:text-[34px]",
+  xl: "text-[44px] md:text-[64px] leading-[0.95] tracking-[-0.03em]",
+};
+
+export function Figure({ label, value, format = formatUSD, sub, subTone, tone = false, size = "md", align = "left", className }: FigureProps) {
+  const subColor =
+    subTone !== undefined && subTone !== null
+      ? subTone > 0
+        ? "text-success"
+        : subTone < 0
+          ? "text-destructive"
+          : "text-muted-foreground"
+      : "text-muted-foreground";
+
+  const isNumeric = typeof value === "number" || value === null || value === undefined;
 
   return (
-    <div className={`flex flex-col ${className}`}>
-       <span className="text-[11px] uppercase tracking-[0.08em] font-sans text-muted-foreground mb-1.5">{label}</span>
-       <span className={`${valClass} tracking-tight tabular-nums text-foreground leading-none`}>
-         {value ?? "-"}
-       </span>
-       {sub && <span className={`text-xs font-sans mt-2 tabular-nums ${subColorClass}`}>{sub}</span>}
+    <div className={cn("flex flex-col gap-2", align === "right" && "items-end text-right", className)}>
+      {label && <span className="label">{label}</span>}
+      <span className={cn("text-foreground leading-none tracking-tight", SIZE[size])}>
+        {isNumeric ? (
+          <AnimatedNumber value={value as number | null | undefined} format={format} tone={tone} className={size === "xl" ? "font-sans font-light" : "font-sans"} />
+        ) : (
+          <span className="num">{value}</span>
+        )}
+      </span>
+      {sub && <span className={cn("num text-[12px]", subColor)}>{sub}</span>}
     </div>
   );
 }

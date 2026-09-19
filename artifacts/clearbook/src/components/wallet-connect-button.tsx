@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useWalletSession } from "@/lib/wallet";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export function WalletConnectButton() {
+export function WalletConnectButton({ className }: { className?: string }) {
   const wallet = useWalletSession();
   const [isConnecting, setIsConnecting] = useState(false);
 
@@ -27,24 +28,34 @@ export function WalletConnectButton() {
 
   if (wallet.connected) {
     return (
-      <button 
+      <button
         type="button"
-        onClick={handleDisconnect} 
-        className="font-mono text-xs border border-border px-3 py-1.5 hover:bg-muted transition-colors text-foreground uppercase tracking-widest"
+        onClick={handleDisconnect}
+        title="Disconnect wallet"
+        className={cn(
+          "group inline-flex h-9 items-center gap-2 rounded-full border hairline bg-white/[0.03] px-3.5 num text-[12px] text-foreground transition-colors hover:border-white/20",
+          className,
+        )}
       >
+        <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_10px_hsl(var(--success))]" />
         {wallet.publicKey ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}` : "Disconnect"}
       </button>
     );
   }
 
+  const busy = isConnecting || wallet.connecting;
   return (
-    <button 
+    <button
       type="button"
-      onClick={handleConnect} 
-      disabled={isConnecting || wallet.connecting} 
-      className="font-mono text-xs bg-foreground text-background border border-foreground px-4 py-1.5 hover:bg-foreground/90 transition-colors flex items-center gap-2 uppercase tracking-widest disabled:opacity-50"
+      onClick={handleConnect}
+      disabled={busy}
+      className={cn(
+        "relative inline-flex h-9 items-center gap-2 overflow-hidden rounded-full bg-foreground px-4 text-[12px] font-medium text-background transition-transform duration-500 ease-out-expo hover:scale-[1.03] disabled:opacity-60",
+        className,
+      )}
     >
-      {(isConnecting || wallet.connecting) && <Loader2 className="h-3 w-3 animate-spin" />}
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-sweep" />
+      {busy && <Loader2 className="h-3 w-3 animate-spin" />}
       Connect wallet
     </button>
   );

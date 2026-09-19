@@ -122,7 +122,8 @@ export async function quoteTrade(address: string, input: QuoteInput) {
   }));
   if (reliefs.some((r) => r.costBasis === null)) warnings.push("Some lots being sold have no known cost, so the realized P/L estimate is partial.");
   if (bundle && (bundle.session.state === "closed" || bundle.session.state === "overnight")) {
-    warnings.push(`${bundle.session.venue} is ${bundle.session.label.toLowerCase()}. The token still trades on Solana, expect wider spreads.`);
+    const state = bundle.session.state === "closed" ? "closed" : "in its overnight session";
+    warnings.push(`${bundle.session.venue} is ${state}. The token still trades on Solana. Expect wider spreads.`);
   }
   if (bundle && bundle.premiumDiscount.differencePct !== null && Math.abs(bundle.premiumDiscount.differencePct) > 1) {
     warnings.push(`Token trades at a ${bundle.premiumDiscount.differencePct.toFixed(2)}% ${bundle.premiumDiscount.direction} to the reference market.`);

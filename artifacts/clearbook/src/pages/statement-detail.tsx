@@ -2,12 +2,16 @@ import { useRoute } from "wouter";
 import { Shell } from "@/components/layout/shell";
 import { useGetStatement, usePrepareNotarization, useSubmitNotarization, getGetStatementQueryKey, getPrepareNotarizationQueryKey } from "@workspace/api-client-react";
 import { formatUSD, formatQuantity } from "@/lib/format";
-import { AlertCircle, ExternalLink, ShieldCheck } from "lucide-react";
+import { ExternalLink, ShieldCheck, Download, Clock, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { NotarizeButton } from "@/components/notarize-button";
 import { useWalletSession } from "@/lib/wallet";
 import { Figure } from "@/components/figure";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
+import { Panel, Skeleton, ErrorState, Pill, SectionTitle } from "@/components/surface";
+import { Reveal, EASE_OUT } from "@/components/motion/reveal";
+import { ScrambleText } from "@/components/motion/scramble-text";
+import { cn } from "@/lib/utils";
 
 export default function StatementDetail() {
   const [, params] = useRoute("/w/:address/statements/:statementId");
@@ -39,191 +43,227 @@ export default function StatementDetail() {
   const csvUrl = `${apiBase}/statements/${statementId}/export.csv`;
   const pdfUrl = `${apiBase}/statements/${statementId}/export.pdf`;
 
+  const formatDateString = (dateString: string) => {
+    return format(new Date(dateString), "MMM d, yyyy");
+  };
+
   return (
     <Shell address={address}>
-      <div className="flex flex-col items-center animate-in fade-in duration-700 pb-16">
+      <div className="flex flex-col gap-12 md:gap-16 pb-16">
         {isLoading ? (
-          <div className="w-full max-w-5xl space-y-12 opacity-50 my-8">
-            <div className="h-24 w-full bg-muted animate-pulse rounded"></div>
-            <div className="h-64 w-full bg-muted animate-pulse rounded"></div>
+          <div className="flex flex-col gap-10">
+            <Skeleton className="h-40 w-full rounded-2xl" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+            </div>
+            <Skeleton className="h-96 w-full rounded-2xl" />
           </div>
         ) : error ? (
-          <div className="p-12 border border-border bg-card flex flex-col items-center justify-center text-center max-w-2xl w-full my-12">
-            <AlertCircle className="h-8 w-8 mb-4 text-destructive" />
-            <h3 className="font-serif text-2xl mb-2 text-foreground">Unable to load statement</h3>
-            <p className="text-muted-foreground font-sans">{error.message}</p>
-          </div>
+          <ErrorState title="Unable to load statement" message={error.message} />
         ) : statement ? (
-          <div className="bg-card border border-border w-full max-w-5xl mt-6 p-8 md:p-14 lg:p-20 shadow-sm relative">
-            {/* Top decorative line */}
-            <div className="absolute top-0 left-0 w-full h-1 bg-primary"></div>
-            
-            {/* Document Header */}
-            <div className="flex flex-col lg:flex-row justify-between items-start gap-12 border-b-2 border-foreground pb-10 mb-10">
-              <div className="flex flex-col w-full">
-                <div className="text-[11px] font-sans uppercase tracking-[0.08em] text-primary font-semibold mb-2">Statement</div>
-                <h1 className="font-serif text-4xl md:text-5xl tracking-tight text-foreground leading-none">{statement.title}</h1>
-                
-                {/* Definition List for Metadata */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-6 text-sm mt-10 w-full max-w-2xl">
-                   <div className="flex flex-col">
-                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Account</span>
-                     <span className="font-mono mt-1 text-xs">{statement.displayAddress}</span>
-                   </div>
-                   <div className="flex flex-col">
-                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Period</span>
-                     <span className="font-sans mt-1">
-                       {format(new Date(statement.periodStart), "MMM d, yyyy")} to {format(new Date(statement.periodEnd), "MMM d, yyyy")}
-                     </span>
-                   </div>
-                   <div className="flex flex-col">
-                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Cost method</span>
-                     <span className="font-sans mt-1">{statement.method.toUpperCase()}</span>
-                   </div>
-                   <div className="flex flex-col">
-                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Generated</span>
-                     <span className="font-sans mt-1">{format(new Date(statement.generatedAt), "MMM d, yyyy")}</span>
-                   </div>
-                </div>
-              </div>
-              
-              <div className="flex flex-col items-start lg:items-end gap-6 w-full lg:w-auto shrink-0">
-                <div className="flex gap-3 w-full lg:w-auto">
-                  <a href={csvUrl} download className="flex-1 lg:flex-none text-center text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground border border-border px-5 py-2 hover:border-foreground transition-colors">
-                    Export CSV
-                  </a>
-                  <a href={pdfUrl} download className="flex-1 lg:flex-none text-center text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground border border-border px-5 py-2 hover:border-foreground transition-colors">
-                    Export PDF
-                  </a>
-                </div>
-                
-                <div className="flex flex-col gap-1 items-start lg:items-end">
-                   <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Document hash</span>
-                   <span className="text-[11px] text-muted-foreground font-mono max-w-[220px] break-all text-left lg:text-right bg-muted/30 p-2 border border-border">{statement.hash}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Proof Block */}
-            <div className={`mb-12 border p-5 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm ${
-              statement.proof.status === 'confirmed' ? 'bg-success/5 border-success/20' :
-              statement.proof.status === 'simulated' ? 'bg-primary/5 border-primary/20' :
-              statement.proof.status === 'failed' ? 'bg-destructive/5 border-destructive/20' :
-              'bg-muted/10 border-border/60'
-            }`}>
-              <div className="flex items-start gap-4">
-                <ShieldCheck className={`w-6 h-6 mt-0.5 ${
-                  statement.proof.status === 'confirmed' ? 'text-success' : 
-                  statement.proof.status === 'simulated' ? 'text-primary' :
-                  statement.proof.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'
-                }`} />
-                <div className="flex flex-col gap-1">
-                  <span className="font-serif text-lg text-foreground">
-                    {statement.proof.status === 'none' ? 'Not notarized' :
-                     statement.proof.status === 'confirmed' ? 'On-chain proof confirmed' :
-                     statement.proof.status === 'simulated' ? 'Simulated proof recorded' :
-                     statement.proof.status === 'failed' ? 'Proof failed' :
-                     'Proof pending'}
-                  </span>
-                  <span className="text-sm font-sans text-muted-foreground leading-relaxed max-w-lg">{statement.proof.message}</span>
+          <>
+            <Reveal>
+              <div className="flex flex-col gap-8 md:gap-12">
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
+                  <div className="flex flex-col gap-3">
+                    <span className="label text-primary">Statement</span>
+                    <h1 className="display text-[40px] md:text-[56px] text-foreground leading-none">{statement.title}</h1>
+                    <div className="flex flex-col gap-1.5 mt-2 text-[15px] text-muted-foreground">
+                      <span>{formatDateString(statement.periodStart)} to {formatDateString(statement.periodEnd)}</span>
+                      <span>Account <span className="num">{statement.displayAddress}</span></span>
+                    </div>
+                  </div>
                   
+                  <div className="flex flex-col md:items-end gap-5">
+                    <div className="flex items-center gap-3">
+                      <Pill tone="amber">{statement.method}</Pill>
+                      <Pill>Generated {formatDateString(statement.generatedAt)}</Pill>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <a href={csvUrl} download className="group flex items-center gap-2 rounded-full border hairline bg-white/[0.03] px-4 py-1.5 text-[12px] text-foreground transition-colors hover:bg-white/[0.06] hover:border-white/20">
+                        <Download className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                        CSV
+                      </a>
+                      <a href={pdfUrl} download className="group flex items-center gap-2 rounded-full border hairline bg-white/[0.03] px-4 py-1.5 text-[12px] text-foreground transition-colors hover:bg-white/[0.06] hover:border-white/20">
+                        <Download className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                        PDF
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hero Hash */}
+                <Panel className="p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 overflow-hidden relative">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
+                  <div className="flex flex-col gap-2 w-full">
+                    <span className="label">Document hash (SHA-256)</span>
+                    <ScrambleText text={statement.hash} className="text-[16px] md:text-[20px] text-foreground tracking-[0.1em] break-all" />
+                  </div>
+                </Panel>
+              </div>
+            </Reveal>
+
+            {/* Proof Status */}
+            <Reveal delay={0.1}>
+              <Panel className={cn(
+                "p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-8 border",
+                statement.proof.status === 'confirmed' ? 'border-success/30 bg-success/[0.03]' :
+                statement.proof.status === 'simulated' ? 'border-primary/30 bg-primary/[0.03]' :
+                statement.proof.status === 'failed' ? 'border-destructive/30 bg-destructive/[0.03]' :
+                'hairline'
+              )}>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2.5">
+                    {statement.proof.status === 'confirmed' ? <ShieldCheck className="h-5 w-5 text-success" /> :
+                     statement.proof.status === 'simulated' ? <ShieldCheck className="h-5 w-5 text-primary" /> :
+                     statement.proof.status === 'failed' ? <AlertTriangle className="h-5 w-5 text-destructive" /> :
+                     <Clock className="h-5 w-5 text-muted-foreground" />}
+                    <h3 className="display text-[22px] md:text-[26px] text-foreground">
+                      {statement.proof.status === 'none' ? 'Not notarized' :
+                       statement.proof.status === 'confirmed' ? 'On-chain proof confirmed' :
+                       statement.proof.status === 'simulated' ? 'Simulated proof recorded' :
+                       statement.proof.status === 'failed' ? 'Proof failed' :
+                       'Proof pending'}
+                    </h3>
+                  </div>
+                  <p className="text-[14px] text-muted-foreground max-w-xl leading-relaxed">
+                    {statement.proof.message}
+                  </p>
                   {statement.proof.explorerUrl && (
-                    <a href={statement.proof.explorerUrl} target="_blank" className="text-[11px] font-sans uppercase tracking-[0.08em] text-primary hover:underline flex items-center gap-1 mt-2 w-fit">
-                      View on explorer <ExternalLink className="w-3 h-3" />
+                    <a href={statement.proof.explorerUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[12px] text-primary hover:text-foreground transition-colors w-fit underline-offset-4 hover:underline">
+                      View on explorer <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
                 </div>
-              </div>
-              <div className="flex flex-col items-start md:items-end gap-2">
-                {canNotarize && notarizationPayload && (
-                  <NotarizeButton payload={notarizationPayload} onSubmit={handleNotarizeSubmit} />
-                )}
-                {canNotarize && !notarizationPayload && isPayloadLoading && (
-                  <span className="text-xs font-sans text-muted-foreground">Preparing notarization...</span>
-                )}
-                {canNotarize && !notarizationPayload && notarizationError && (
-                  <div className="flex flex-col items-start md:items-end gap-1">
-                    <span className="text-xs font-sans text-destructive">Could not prepare notarization. {notarizationError.message}</span>
-                    <button type="button" onClick={() => refetchPayload()} className="text-[11px] font-sans uppercase tracking-[0.08em] text-foreground border-b border-foreground pb-0.5 hover:text-primary hover:border-primary transition-colors">
-                      Try again
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Totals Section */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-14">
-              <Figure label="Opening value" value={formatUSD(statement.totals.openingValue)} size="lg" />
-              <Figure label="Closing value" value={formatUSD(statement.totals.closingValue)} size="lg" />
-              <Figure label="Realized P/L" value={formatUSD(statement.totals.realizedPnl)} subTone={statement.totals.realizedPnl} size="lg" />
-              <Figure label="Income est." value={formatUSD(statement.totals.incomeEstimate)} subTone={statement.totals.incomeEstimate} size="lg" />
-            </div>
+                <div className="flex flex-col md:items-end gap-2 shrink-0">
+                  {canNotarize && notarizationPayload && (
+                    <NotarizeButton payload={notarizationPayload} onSubmit={handleNotarizeSubmit} />
+                  )}
+                  {canNotarize && !notarizationPayload && isPayloadLoading && (
+                    <span className="text-[12px] text-muted-foreground flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 animate-spin" /> Preparing payload...
+                    </span>
+                  )}
+                  {canNotarize && !notarizationPayload && notarizationError && (
+                    <div className="flex flex-col md:items-end gap-1.5">
+                      <span className="text-[12px] text-destructive max-w-[240px] text-right break-words">{notarizationError.message}</span>
+                      <button onClick={() => refetchPayload()} className="text-[12px] text-foreground hover:text-primary transition-colors underline underline-offset-4">
+                        Try again
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </Panel>
+            </Reveal>
 
-            {/* Holdings Section */}
-            <div className="mb-20">
-              <h2 className="font-serif text-2xl mb-4 pb-2 border-b border-border text-foreground">Holdings</h2>
+            {/* Totals */}
+            <section className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+              <Reveal delay={0.15}><Figure label="Opening value" value={statement.totals.openingValue} size="lg" /></Reveal>
+              <Reveal delay={0.2}><Figure label="Closing value" value={statement.totals.closingValue} size="lg" /></Reveal>
+              <Reveal delay={0.25}><Figure label="Realized P/L" value={statement.totals.realizedPnl} tone size="lg" /></Reveal>
+              <Reveal delay={0.3}><Figure label="Income estimate" value={statement.totals.incomeEstimate} tone size="lg" /></Reveal>
+            </section>
+
+            {/* Positions */}
+            <section>
+              <SectionTitle>Positions at period end</SectionTitle>
               {statement.positions.length === 0 ? (
-                <div className="text-muted-foreground font-sans italic bg-muted/20 p-8 border border-border text-center text-sm">No holdings in this period.</div>
+                <Panel className="p-10 text-center text-[14px] text-muted-foreground">
+                  No positions held at the end of this period.
+                </Panel>
               ) : (
                 <DataTable>
                   <TableHeader>
                     <TableHead>Asset</TableHead>
                     <TableHead align="right">Quantity</TableHead>
-                    <TableHead align="right">Close price</TableHead>
+                    <TableHead align="right">Close mark</TableHead>
                     <TableHead align="right">Value</TableHead>
                     <TableHead align="right">Cost basis</TableHead>
+                    <TableHead align="right">Unrealized P/L</TableHead>
                   </TableHeader>
                   <TableBody>
-                    {statement.positions.map((pos) => (
-                      <TableRow key={pos.mint}>
+                    {statement.positions.map((pos, i) => (
+                      <TableRow key={pos.mint} index={i}>
                         <TableCell>
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-serif text-lg text-foreground">{pos.symbol}</span>
-                            <span className="text-xs text-muted-foreground font-sans">{pos.name}</span>
+                          <div className="flex flex-col gap-1">
+                            <span className="num text-[15px] tracking-[0.08em] text-foreground">{pos.symbol}</span>
+                            <span className="text-[12px] text-muted-foreground">{pos.name}</span>
                           </div>
                         </TableCell>
-                        <TableCell align="right" className="text-[15px]">
-                          {formatQuantity(pos.closingQuantity)}
+                        <TableCell align="right">
+                          <span className="num text-foreground">{formatQuantity(pos.closingQuantity)}</span>
                         </TableCell>
-                        <TableCell align="right" className="text-[15px]">
-                          {formatUSD(pos.closingPrice)}
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="num text-foreground">{formatUSD(pos.closingPrice)}</span>
+                            <span className="text-[11px] text-muted-foreground">{pos.priceSource}</span>
+                          </div>
                         </TableCell>
-                        <TableCell align="right" className="text-[15px] font-medium">
-                          {formatUSD(pos.closingValue)}
+                        <TableCell align="right">
+                          <span className="num text-foreground">{formatUSD(pos.closingValue)}</span>
                         </TableCell>
-                        <TableCell align="right" className="text-[15px]">
-                          {formatUSD(pos.costBasis)}
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="num text-foreground">{formatUSD(pos.costBasis)}</span>
+                            {pos.basisStatus !== 'complete' && (
+                              <Pill tone="loss">{pos.basisStatus === 'unknown' ? 'Unknown' : 'Partial'}</Pill>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          <span className={cn(
+                            "num",
+                            (pos.unrealizedPnl ?? 0) > 0 ? "text-success" : (pos.unrealizedPnl ?? 0) < 0 ? "text-destructive" : "text-foreground"
+                          )}>
+                            {formatUSD(pos.unrealizedPnl)}
+                          </span>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </DataTable>
               )}
-            </div>
+            </section>
 
-            {/* Disclosures Footer */}
-            <div className="border-t border-border pt-10 grid grid-cols-1 md:grid-cols-2 gap-16">
-              <div>
-                <h3 className="text-[11px] font-sans uppercase tracking-[0.08em] text-foreground mb-4 border-b border-border/50 pb-2">Disclosures</h3>
-                <ul className="list-disc list-outside ml-4 text-xs font-sans text-muted-foreground space-y-2.5 leading-relaxed">
-                  {statement.assumptions.map((ass, i) => <li key={i}>{ass}</li>)}
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-[11px] font-sans uppercase tracking-[0.08em] text-foreground mb-4 border-b border-border/50 pb-2">Data sources</h3>
-                <ul className="space-y-2">
-                  {statement.dataSources.map(ds => (
-                    <li key={ds.id} className="flex justify-between items-baseline text-xs font-sans text-muted-foreground border-b border-border/30 pb-1.5">
-                      <span>{ds.label}</span>
-                      <span className="font-sans uppercase text-[10px] tracking-[0.08em] bg-muted px-1.5 py-[1px] rounded-[2px]">{ds.mode}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            
-          </div>
+            {/* Assumptions and sources */}
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 pt-8 border-t hairline">
+              <Reveal>
+                <div className="flex flex-col gap-5">
+                  <span className="label">Disclosures and assumptions</span>
+                  <ul className="flex flex-col gap-3">
+                    {statement.assumptions.map((ass, i) => (
+                      <li key={i} className="flex gap-3 text-[13px] leading-relaxed text-muted-foreground">
+                        <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />
+                        {ass}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Reveal>
+              
+              <Reveal delay={0.1}>
+                <div className="flex flex-col gap-5">
+                  <span className="label">Data sources</span>
+                  <div className="flex flex-col gap-4">
+                    {statement.dataSources.map(ds => (
+                      <div key={ds.id} className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[14px] text-foreground">{ds.label}</span>
+                          <Pill tone={ds.mode === 'live' ? 'gain' : ds.mode === 'demo' ? 'amber' : 'neutral'}>{ds.mode}</Pill>
+                        </div>
+                        <span className="text-[13px] text-muted-foreground">{ds.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Reveal>
+            </section>
+          </>
         ) : null}
       </div>
     </Shell>

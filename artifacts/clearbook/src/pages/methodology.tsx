@@ -1,6 +1,11 @@
 import { Link } from "wouter";
 import { useListIssuers, useListAssets, useGetAppConfig } from "@workspace/api-client-react";
 import { ArrowLeft } from "lucide-react";
+import { Brand } from "@/components/layout/shell";
+import { Reveal } from "@/components/motion/reveal";
+import { Panel, Pill, Skeleton } from "@/components/surface";
+
+const DEMO = "demo-holder";
 
 export default function Methodology() {
   const { data: config, isLoading: isConfigLoading } = useGetAppConfig();
@@ -8,193 +13,191 @@ export default function Methodology() {
   const { data: assets, isLoading: isAssetsLoading } = useListAssets();
 
   return (
-    <div className="min-h-screen bg-background flex flex-col text-foreground font-sans">
-      <header className="px-6 h-14 flex items-center justify-between border-b border-border bg-card">
-        <div className="flex items-center gap-4 max-w-screen-2xl mx-auto w-full">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-2.5 h-2.5 bg-primary rounded-sm rotate-45 group-hover:rotate-90 transition-transform duration-500"></div>
-            <span className="font-serif text-lg tracking-tight text-foreground font-semibold">Clearbook</span>
-          </Link>
-          <div className="h-4 w-px bg-border"></div>
-          <Link href="/" className="text-xs font-sans text-muted-foreground hover:text-foreground transition-colors uppercase tracking-[0.08em] flex items-center gap-1.5">
-            <ArrowLeft className="w-3 h-3" /> Return
-          </Link>
+    <div className="relative min-h-screen flex flex-col">
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 grain" />
+      <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[520px] grid-lines opacity-40" />
+
+      <header className="sticky top-0 z-50 px-5 md:px-10 pt-5">
+        <div className="glass-strong mx-auto flex h-14 max-w-[1400px] items-center justify-between rounded-2xl px-4">
+          <Brand />
+          <nav className="flex items-center gap-5">
+            <Link href={`/w/${DEMO}`} className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
+              Demo ledger
+            </Link>
+            <Link href="/" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
+              Lookup
+            </Link>
+          </nav>
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-4xl mx-auto p-6 md:p-12 lg:p-16 flex flex-col">
-        <div className="bg-card border border-border p-8 md:p-14 lg:p-20 relative shadow-sm animate-in fade-in duration-700">
-          <div className="absolute top-0 left-0 w-full h-1 bg-primary"></div>
+      <main className="mx-auto w-full max-w-[1400px] px-5 md:px-10 py-16 md:py-24">
+        <Reveal>
+          <h1 className="display text-[56px] md:text-[80px] text-foreground mb-6">Methodology</h1>
+          <p className="text-[17px] text-muted-foreground max-w-2xl leading-relaxed">
+            Clearbook rebuilds a brokerage statement from public Solana history. This page describes how each figure is built, what is measured and what is estimated. Nothing here is tax advice.
+          </p>
+        </Reveal>
+        
+        <div className="mt-20 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-20 items-start">
+          <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-32">
+            <ul className="flex flex-col gap-4 text-[13px]">
+              <li><a href="#quantities" className="text-muted-foreground hover:text-foreground transition-colors">Quantities and multipliers</a></li>
+              <li><a href="#basis" className="text-muted-foreground hover:text-foreground transition-colors">Cost basis</a></li>
+              <li><a href="#marks" className="text-muted-foreground hover:text-foreground transition-colors">Marks and income</a></li>
+              <li><a href="#statements" className="text-muted-foreground hover:text-foreground transition-colors">Statements and proofs</a></li>
+              <li><a href="#sources" className="text-muted-foreground hover:text-foreground transition-colors">Data sources</a></li>
+              <li><a href="#assets" className="text-muted-foreground hover:text-foreground transition-colors">Issuers and assets</a></li>
+            </ul>
+          </aside>
           
-          <div className="flex flex-col gap-4 mb-12 border-b-2 border-foreground pb-10">
-            <div className="text-[11px] font-sans uppercase tracking-[0.08em] text-primary font-semibold">Documentation</div>
-            <h1 className="font-serif text-4xl md:text-5xl tracking-tight text-foreground leading-none">Methodology</h1>
-            <p className="text-muted-foreground text-sm font-sans mt-4 max-w-2xl leading-relaxed">
-              Clearbook rebuilds a brokerage statement from public Solana history. This page describes how each figure is built, what is measured and what is estimated. Nothing here is tax advice.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-16 text-sm font-sans">
-            <section className="flex flex-col gap-6">
-              <h2 className="text-2xl font-serif border-b border-border pb-2 text-foreground">Quantities and multipliers</h2>
-              <div className="text-muted-foreground leading-relaxed space-y-4 max-w-3xl">
-                <p>
-                  Balances are kept in raw token units. Shares of exposure are raw units divided by the token decimals and multiplied by the current Token-2022 multiplier of the mint. A multiplier increase therefore grows the shares in a lot without changing what was paid for it.
-                </p>
-                <p>
-                  Multiplier changes are read from the mint and classified by their ratio. An increase of less than five percent is recorded as a reinvested dividend. A change of one and a half times or more is recorded as a split and a change to two thirds or less as a reverse split. Anything else is listed as a multiplier change with its cause marked as not classified. Every classification is best effort and says so.
-                </p>
-              </div>
+          <div className="lg:col-span-9 flex flex-col gap-24">
+            <section id="quantities" className="scroll-mt-32">
+              <Reveal className="flex flex-col gap-6">
+                <h2 className="display text-[32px] text-foreground">Quantities and multipliers</h2>
+                <div className="text-[15px] leading-[1.8] text-muted-foreground max-w-3xl flex flex-col gap-6">
+                  <p>Balances are kept in raw token units. Shares of exposure are raw units divided by the token decimals and multiplied by the current Token-2022 multiplier of the mint. A multiplier increase grows the shares in a lot without changing what was paid for it.</p>
+                  <p>Multiplier changes are read from the mint and classified by their ratio. An increase of less than five percent is recorded as a reinvested dividend. A change of one and a half times or more is recorded as a split and a change to two thirds or less as a reverse split. Anything else is listed as a multiplier change with its cause marked as not classified. Every classification is best effort and says so.</p>
+                </div>
+              </Reveal>
+            </section>
+            
+            <section id="basis" className="scroll-mt-32">
+              <Reveal className="flex flex-col gap-6">
+                <h2 className="display text-[32px] text-foreground">Cost basis</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-[15px] leading-[1.8] text-muted-foreground">
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-foreground font-medium">How lots open</h3>
+                    <p>A buy opens a lot at the cash paid plus the fee, both read from the same transaction. A swap between two wrappers of the same stock closes the lot given up at market value and opens a new one at that value. A transfer in has no cash leg. When a reference price at the time of receipt is known the lot opens with an estimated basis at that price. Otherwise the basis is unknown. Historical prices are not fetched for live wallets yet, so transfers into live wallets open lots with unknown basis.</p>
+                    <p className="flex flex-wrap items-center gap-x-1 gap-y-2">
+                      Lots and positions whose basis is not fully known are marked 
+                      <Pill tone="loss">partial</Pill> or <Pill tone="loss">unknown</Pill> 
+                      wherever they appear, with a note that says why. Unknown cost is excluded from cost basis and P/L totals and the exclusion is listed in the statement assumptions.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-foreground font-medium">How lots are relieved</h3>
+                    <p>A sell relieves open lots of that mint in the order set by the cost method. Realized P/L is proceeds net of fees minus the cost of the relieved lots. A transfer out relieves lots in the same order but recognizes no gain or loss. The method applies to the whole ledger and can be changed at any time.</p>
+                    <ul className="flex flex-col gap-3 list-none mt-2">
+                      <li><strong className="text-foreground font-medium">FIFO:</strong> oldest lots first. This is the default.</li>
+                      <li><strong className="text-foreground font-medium">LIFO:</strong> newest lots first.</li>
+                      <li><strong className="text-foreground font-medium">HIFO:</strong> highest cost per share first.</li>
+                    </ul>
+                  </div>
+                </div>
+              </Reveal>
             </section>
 
-            <section className="flex flex-col gap-6">
-              <h2 className="text-2xl font-serif border-b border-border pb-2 text-foreground">Cost basis</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-muted-foreground leading-relaxed">
-                <div className="space-y-3">
-                  <h3 className="font-medium text-foreground text-[15px]">How lots open</h3>
-                  <p>
-                    A buy opens a lot at the cash paid plus the fee, both read from the same transaction. A swap between two wrappers of the same stock closes the lot given up at market value and opens a new one at that value. A transfer in has no cash leg. When a reference price at the time of receipt is known the lot opens with an estimated basis at that price. Otherwise the basis is unknown. Historical prices are not fetched for live wallets yet, so transfers into a live wallet currently open with an unknown basis.
-                  </p>
-                  <p>
-                    Lots and positions whose basis is not fully known are marked <span className="text-destructive uppercase tracking-[0.08em] text-[10px] px-1 border border-destructive/20 bg-destructive/5 rounded-[2px] mx-1">partial</span> or <span className="text-destructive uppercase tracking-[0.08em] text-[10px] px-1 border border-destructive/20 bg-destructive/5 rounded-[2px] mx-1">unknown</span> wherever they appear, with a note that says why. Unknown cost is excluded from cost basis and P/L totals and the exclusion is listed in the statement assumptions.
-                  </p>
+            <section id="marks" className="scroll-mt-32">
+              <Reveal className="flex flex-col gap-6">
+                <h2 className="display text-[32px] text-foreground">Marks and income</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-[15px] leading-[1.8] text-muted-foreground">
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-foreground font-medium">Marks</h3>
+                    <p>Each position is marked with the first price available in this order: Pyth Pro, Jupiter, PreStocks, demo snapshot. The source and the age of the price are shown next to every mark. Where a reference price for the underlying stock exists, the difference between the token price and that reference and the session state of the underlying market are shown under the mark.</p>
+                    <p>Statement values use the marks available when the statement is generated. Historical marks at period boundaries are not reconstructed.</p>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-foreground font-medium">Income estimate</h3>
+                    <p>The income estimate is the value of exposure gained through multiplier increases on lots still held, priced at the current mark. It is an estimate of reinvested dividends rather than a cash figure and it is labelled as an estimate everywhere it appears. Lots whose multiplier at acquisition could not be reconstructed contribute nothing to it.</p>
+                    <p>Network fees paid in SOL are not converted to USD. Fees shown are those charged in the cash asset of the trade.</p>
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  <h3 className="font-medium text-foreground text-[15px]">How lots are relieved</h3>
-                  <p>
-                    A sell relieves open lots of that mint in the order set by the cost method. Realized P/L is proceeds net of fees minus the cost of the relieved lots. A transfer out relieves lots in the same order but recognizes no gain or loss. The method applies to the whole ledger and can be changed at any time.
-                  </p>
-                  <ul className="space-y-2 list-outside ml-4 list-disc text-foreground/90">
-                    <li><strong className="text-foreground font-medium">FIFO</strong>: oldest lots first. This is the default.</li>
-                    <li><strong className="text-foreground font-medium">LIFO</strong>: newest lots first.</li>
-                    <li><strong className="text-foreground font-medium">HIFO</strong>: highest cost per share first.</li>
-                  </ul>
-                </div>
-              </div>
+              </Reveal>
             </section>
 
-            <section className="flex flex-col gap-6">
-              <h2 className="text-2xl font-serif border-b border-border pb-2 text-foreground">Marks and income</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-muted-foreground leading-relaxed">
-                <div className="space-y-3">
-                  <h3 className="font-medium text-foreground text-[15px]">Marks</h3>
-                  <p>
-                    Each position is marked with the first price available in this order: Pyth Pro, Jupiter, PreStocks, demo snapshot. The source and the age of the price are shown next to every mark. Where a reference price for the underlying stock exists, the difference between the token price and that reference and the session state of the underlying market are shown under the mark.
-                  </p>
-                  <p>
-                    Statement values use the marks available when the statement is generated. Historical marks at period boundaries are not reconstructed.
-                  </p>
+            <section id="statements" className="scroll-mt-32">
+              <Reveal className="flex flex-col gap-6">
+                <h2 className="display text-[32px] text-foreground">Statements and proofs</h2>
+                <div className="text-[15px] leading-[1.8] text-muted-foreground max-w-3xl flex flex-col gap-6">
+                  <p>A statement covers a chosen period and cost method and contains opening and closing values, holdings, activity, closed lots, corporate actions, assumptions and the data sources used. Its SHA-256 hash covers the statement body, including the generation time, without the statement id. Generating a new statement for the same period produces a new document with its own hash. CSV and PDF exports carry the same figures and the same hash.</p>
+                  <p>Notarizing a statement writes its hash to Solana in a memo transaction signed by the connected wallet. Verification checks memo inclusion, not signer identity. It confirms that the transaction succeeded and contains the memo with the hash, then records the signature, the confirmed slot and the signing account. It does not check who that account is, so a proof shows that the hash existed at that slot, not who published it. When no wallet is connected the hash is stored and the proof is labelled simulated. A simulated proof is not evidence of anything on chain.</p>
                 </div>
-                <div className="space-y-3">
-                  <h3 className="font-medium text-foreground text-[15px]">Income estimate</h3>
-                  <p>
-                    The income estimate is the value of exposure gained through multiplier increases on lots still held, priced at the current mark. It is an estimate of reinvested dividends rather than a cash figure and it is labelled as an estimate everywhere it appears. Lots whose multiplier at acquisition could not be reconstructed contribute nothing to it.
-                  </p>
-                  <p>
-                    Network fees paid in SOL are not converted to USD. Fees shown are those charged in the cash asset of the trade.
-                  </p>
-                </div>
-              </div>
+              </Reveal>
             </section>
 
-            <section className="flex flex-col gap-6">
-              <h2 className="text-2xl font-serif border-b border-border pb-2 text-foreground">Statements and proofs</h2>
-              <div className="text-muted-foreground leading-relaxed space-y-4 max-w-3xl">
-                <p>
-                  A statement covers a chosen period and cost method and contains opening and closing values, holdings, activity, closed lots, corporate actions, assumptions and the data sources used. Its SHA-256 hash covers the statement body, including the generation time, without the statement id. Generating a new statement for the same period produces a new document with its own hash. CSV and PDF exports carry the same figures and the same hash.
-                </p>
-                <p>
-                  Notarizing a statement writes its hash to Solana in a memo transaction signed by the connected wallet. Verification confirms that the transaction succeeded and contains the memo with the hash, then records the signature, the confirmed slot and the signing account. It does not check who that account is, so a proof shows that the hash existed at that slot, not who published it. When no wallet is connected the hash is stored and the proof is labelled simulated. A simulated proof is not evidence of anything on chain.
-                </p>
-              </div>
-            </section>
-
-            {/* Data Sources */}
-            <section className="flex flex-col gap-6">
-              <h2 className="text-2xl font-serif border-b border-border pb-2 text-foreground">Data sources</h2>
-              
-              {isConfigLoading ? (
-                <div className="h-48 w-full bg-muted/50 animate-pulse rounded-none"></div>
-              ) : config?.sources ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {config.sources.map(source => (
-                    <div key={source.id} className="border border-border bg-background p-5 flex flex-col gap-2 shadow-sm">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-medium text-[15px] text-foreground">{source.label}</span>
-                        <span className={`text-[10px] font-sans uppercase tracking-[0.08em] ${
-                          source.mode === 'live' ? 'text-success' : 
-                          source.mode === 'demo' ? 'text-primary' : 
-                          'text-destructive'
-                        }`}>
-                          {source.mode}
-                        </span>
-                      </div>
-                      <span className="text-[13px] text-muted-foreground leading-relaxed">{source.detail}</span>
-                      {source.requiredEnv.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-border/50 text-[10px] font-mono text-muted-foreground">
-                          Requires: {source.requiredEnv.join(", ")}
+            <section id="sources" className="scroll-mt-32">
+              <Reveal className="flex flex-col gap-6">
+                <h2 className="display text-[32px] text-foreground">Data sources</h2>
+                {isConfigLoading ? (
+                  <Skeleton className="h-48 rounded-2xl" />
+                ) : config?.sources ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {config.sources.map(source => (
+                      <Panel key={source.id} className="p-6 flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[15px] font-medium text-foreground">{source.label}</span>
+                          <Pill tone={source.mode === "live" ? "gain" : source.mode === "demo" ? "amber" : "loss"}>{source.mode}</Pill>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </section>
-
-            {/* Verified ecosystem */}
-            <section className="flex flex-col gap-6">
-              <h2 className="text-2xl font-serif border-b border-border pb-2 text-foreground">Issuers and assets</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="flex flex-col gap-5">
-                  <h3 className="font-medium text-foreground text-[15px]">Supported issuers</h3>
-                  {isIssuersLoading ? (
-                    <div className="h-32 w-full bg-muted/50 animate-pulse rounded-none"></div>
-                  ) : issuers ? (
-                    <div className="flex flex-col gap-4">
-                      {issuers.map(issuer => (
-                        <div key={issuer.id} className="text-sm border-l-2 border-border pl-4 py-1">
-                          <div className="font-medium text-foreground mb-1">{issuer.name} <span className="text-muted-foreground font-normal">({issuer.shortName})</span></div>
-                          <div className="text-[13px] text-muted-foreground mb-2 leading-relaxed">{issuer.structure}</div>
-                          <div className="text-[10px] font-mono text-muted-foreground bg-muted/30 px-1.5 py-0.5 w-fit border border-border">
-                            {issuer.tokenProgram}
+                        <p className="text-[14px] text-muted-foreground leading-relaxed">{source.detail}</p>
+                        {source.requiredEnv.length > 0 && (
+                          <div className="mt-auto pt-4 border-t hairline num text-[11px] text-muted-foreground/60">
+                            Requires: {source.requiredEnv.join(", ")}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col gap-5">
-                  <h3 className="font-medium text-foreground text-[15px]">Recognized assets</h3>
-                  {isAssetsLoading ? (
-                    <div className="h-64 w-full bg-muted/50 animate-pulse rounded-none"></div>
-                  ) : assets ? (
-                    <div className="border border-border bg-background shadow-sm overflow-hidden">
-                      <table className="w-full text-left">
-                        <thead className="bg-muted/30 border-b border-border">
-                          <tr>
-                            <th className="px-4 py-3 text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground font-normal">Symbol</th>
-                            <th className="px-4 py-3 text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground font-normal">Issuer</th>
-                            <th className="px-4 py-3 text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground font-normal">Class</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/50">
-                          {assets.map(asset => (
-                            <tr key={asset.mint} className="hover:bg-muted/10 transition-colors">
-                              <td className="px-4 py-3 font-serif text-[15px] text-foreground">{asset.symbol}</td>
-                              <td className="px-4 py-3 text-[13px] text-muted-foreground">{asset.issuer}</td>
-                              <td className="px-4 py-3 text-[13px] text-muted-foreground capitalize">{asset.assetClass.replace('_', ' ')}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
+                        )}
+                      </Panel>
+                    ))}
+                  </div>
+                ) : null}
+              </Reveal>
             </section>
 
+            <section id="assets" className="scroll-mt-32">
+              <Reveal className="flex flex-col gap-6">
+                <h2 className="display text-[32px] text-foreground">Issuers and assets</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                  <div className="flex flex-col gap-6">
+                    <h3 className="text-foreground font-medium text-[15px]">Supported issuers</h3>
+                    {isIssuersLoading ? (
+                      <Skeleton className="h-32 rounded-2xl" />
+                    ) : issuers ? (
+                      <div className="flex flex-col gap-6">
+                        {issuers.map(issuer => (
+                          <div key={issuer.id} className="flex flex-col gap-2">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-[15px] font-medium text-foreground">{issuer.name}</span>
+                              <span className="text-[13px] text-muted-foreground">({issuer.shortName})</span>
+                            </div>
+                            <p className="text-[14px] text-muted-foreground leading-relaxed">{issuer.structure}</p>
+                            <span className="num text-[11px] text-muted-foreground/70 bg-white/[0.03] border hairline rounded-[4px] px-2 py-0.5 w-fit">
+                              {issuer.tokenProgram}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-col gap-6">
+                    <h3 className="text-foreground font-medium text-[15px]">Recognized assets</h3>
+                    {isAssetsLoading ? (
+                      <Skeleton className="h-64 rounded-2xl" />
+                    ) : assets ? (
+                      <Panel className="overflow-hidden">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="border-b hairline">
+                              <th className="label py-3.5 px-5 font-normal">Symbol</th>
+                              <th className="label py-3.5 px-5 font-normal">Issuer</th>
+                              <th className="label py-3.5 px-5 font-normal">Class</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/[0.05]">
+                            {assets.map(asset => (
+                              <tr key={asset.mint} className="row-hover">
+                                <td className="py-3.5 px-5 text-[14px]"><span className="num text-foreground tracking-[0.08em]">{asset.symbol}</span></td>
+                                <td className="py-3.5 px-5 text-[14px] text-muted-foreground">{asset.issuer}</td>
+                                <td className="py-3.5 px-5 text-[14px] text-muted-foreground capitalize">{asset.assetClass.replace('_', ' ')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </Panel>
+                    ) : null}
+                  </div>
+                </div>
+              </Reveal>
+            </section>
           </div>
         </div>
       </main>

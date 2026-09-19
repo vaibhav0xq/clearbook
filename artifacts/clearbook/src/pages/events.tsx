@@ -1,10 +1,14 @@
 import { useRoute } from "wouter";
-import { Shell } from "@/components/layout/shell";
-import { useListCorporateActions } from "@workspace/api-client-react";
-import { formatUSD, formatQuantity } from "@/lib/format";
-import { AlertCircle, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
+import { ExternalLink, ArrowRight } from "lucide-react";
+
+import { useListCorporateActions } from "@workspace/api-client-react";
+import { Shell } from "@/components/layout/shell";
+import { formatUSD, formatQuantity } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
+import { Pill, Skeleton, EmptyState, ErrorState, PageHeader } from "@/components/surface";
+import { Reveal } from "@/components/motion/reveal";
+import { cn } from "@/lib/utils";
 
 export default function Events() {
   const [, params] = useRoute("/w/:address/events");
@@ -14,120 +18,98 @@ export default function Events() {
 
   return (
     <Shell address={address}>
-      <div className="flex flex-col animate-in fade-in duration-700 pb-12">
-        
-        {/* Page Header */}
-        <div className="flex flex-col gap-1 mb-8">
-          <h1 className="font-serif text-4xl tracking-tight text-foreground">Corporate actions</h1>
-          <p className="text-muted-foreground text-sm font-sans mt-2">
-            Dividend reinvestments, splits and unclassified multiplier changes read from the token itself.
-          </p>
-        </div>
+      <PageHeader
+        title="Corporate actions"
+        description="Dividend reinvestments, splits and multiplier events read from the token."
+      />
 
-        {isLoading ? (
-          <div className="space-y-12 opacity-50">
-            <div className="flex gap-16 border-y border-border py-10">
-              <div className="h-16 w-full bg-muted animate-pulse rounded"></div>
-            </div>
-          </div>
-        ) : error ? (
-          <div className="p-12 border border-border bg-card flex flex-col items-center justify-center text-center shadow-sm">
-            <AlertCircle className="h-8 w-8 mb-4 text-destructive" />
-            <h3 className="font-serif text-2xl mb-2 text-foreground">Unable to load events</h3>
-            <p className="text-muted-foreground font-sans">{error.message || "An unknown error occurred"}</p>
-          </div>
-        ) : events ? (
-          <div className="flex flex-col gap-5">
-            {events.length === 0 ? (
-              <div className="p-16 text-center border border-border bg-card shadow-sm">
-                <h3 className="font-serif text-2xl mb-3 text-foreground">No corporate actions</h3>
-                <p className="text-muted-foreground text-sm font-sans max-w-md mx-auto leading-relaxed">
-                  No corporate actions found for this portfolio.
-                </p>
-              </div>
-            ) : (
-              <DataTable>
-                <TableHeader>
-                  <TableHead>Event kind</TableHead>
-                  <TableHead>Asset</TableHead>
-                  <TableHead>Effective date</TableHead>
-                  <TableHead align="right">Multiplier change</TableHead>
-                  <TableHead align="right">Quantity effect</TableHead>
-                  <TableHead align="right">Value effect</TableHead>
-                  <TableHead align="right">Confidence</TableHead>
-                </TableHeader>
-                <TableBody>
-                  {events.map((event) => (
-                    <TableRow key={event.id}>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[15px] font-medium text-foreground">{event.kindLabel}</span>
-                          <span className="text-[11px] text-muted-foreground font-sans max-w-[280px] leading-snug">
-                            {event.note}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-serif text-lg text-foreground">{event.symbol}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-[15px] tabular-nums text-foreground">{format(new Date(event.effectiveAt), "MMM d, yyyy")}</span>
-                      </TableCell>
-                      <TableCell align="right">
-                        {event.previousMultiplier !== event.newMultiplier ? (
-                          <div className="flex items-center justify-end gap-1.5 text-[15px] tabular-nums">
-                            <span className="text-muted-foreground">{event.previousMultiplier.toFixed(6)}</span>
-                            <span className="text-muted-foreground/50 font-sans">→</span>
-                            <span className="text-foreground">{event.newMultiplier.toFixed(6)}</span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        {event.quantityBefore !== null && event.quantityAfter !== null ? (
-                          <div className="flex items-center justify-end gap-1.5 text-[15px] tabular-nums">
-                            <span className="text-muted-foreground">{formatQuantity(event.quantityBefore)}</span>
-                            <span className="text-muted-foreground/50 font-sans">→</span>
-                            <span className="text-success">{formatQuantity(event.quantityAfter)}</span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        {event.valueEffect !== null ? (
-                          <span className={`text-[15px] tabular-nums ${event.valueEffect > 0 ? "text-success" : event.valueEffect < 0 ? "text-destructive" : "text-foreground"}`}>
-                            {event.valueEffect > 0 ? "+" : ""}{formatUSD(event.valueEffect)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className={`text-[11px] font-sans uppercase tracking-[0.08em] ${
-                            event.confidence === 'confirmed' ? 'text-success' :
-                            event.confidence === 'inferred' ? 'text-primary' :
-                            'text-muted-foreground'
-                          }`}>
-                            {event.confidence}
-                          </span>
-                          {event.explorerUrl && (
-                            <a href={event.explorerUrl} target="_blank" rel="noopener noreferrer" aria-label="Open transaction in explorer" className="inline-flex text-muted-foreground hover:text-foreground transition-colors">
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </DataTable>
-            )}
-          </div>
-        ) : null}
-      </div>
+      {isLoading ? (
+        <div className="flex flex-col gap-10">
+          <Skeleton className="h-[400px] w-full rounded-2xl" />
+        </div>
+      ) : error ? (
+        <ErrorState title="Unable to load events" message={error.data?.message ?? error.message} />
+      ) : events?.length === 0 ? (
+        <EmptyState
+          title="No corporate actions"
+          description="No corporate actions found for this portfolio."
+        />
+      ) : (
+        <Reveal>
+          <DataTable>
+            <TableHeader>
+              <TableHead>Event and date</TableHead>
+              <TableHead>Asset</TableHead>
+              <TableHead align="right">Multiplier</TableHead>
+              <TableHead align="right">Quantity</TableHead>
+              <TableHead align="right">Value effect</TableHead>
+              <TableHead align="right">Confidence</TableHead>
+              <TableHead align="right" className="w-12"><span className="sr-only">Link</span></TableHead>
+            </TableHeader>
+            <TableBody>
+              {events!.map((event, i) => (
+                <TableRow key={event.id} index={i}>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[14px] text-foreground">{event.kindLabel}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="num text-[11px] text-muted-foreground">{format(new Date(event.effectiveAt), "MMM d, yyyy")}</span>
+                      </div>
+                      {event.note && (
+                        <span className="text-[12px] text-muted-foreground/80 max-w-[340px] whitespace-normal leading-relaxed">
+                          {event.note}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="num text-[14px] tracking-[0.08em] text-foreground">{event.symbol}</span>
+                  </TableCell>
+                  <TableCell align="right">
+                    {event.previousMultiplier !== event.newMultiplier ? (
+                      <div className="flex items-center justify-end gap-2 num text-[14px]">
+                        <span className="text-muted-foreground">{event.previousMultiplier.toFixed(4)}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
+                        <span className="text-foreground">{event.newMultiplier.toFixed(4)}</span>
+                      </div>
+                    ) : null}
+                  </TableCell>
+                  <TableCell align="right">
+                    {event.quantityBefore !== null && event.quantityAfter !== null ? (
+                      <div className="flex items-center justify-end gap-2 num text-[14px]">
+                        <span className="text-muted-foreground">{formatQuantity(event.quantityBefore)}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
+                        <span className="text-success">{formatQuantity(event.quantityAfter)}</span>
+                      </div>
+                    ) : null}
+                  </TableCell>
+                  <TableCell align="right">
+                    {event.valueEffect !== null ? (
+                      <span className={cn("num text-[14px]", event.valueEffect > 0 ? "text-success" : event.valueEffect < 0 ? "text-destructive" : "text-foreground")}>
+                        {event.valueEffect > 0 ? "+" : ""}{formatUSD(event.valueEffect)}
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-muted-foreground">Unknown</span>
+                    )}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Pill tone={event.confidence === "confirmed" ? "gain" : event.confidence === "inferred" ? "amber" : "neutral"}>
+                      {event.confidence}
+                    </Pill>
+                  </TableCell>
+                  <TableCell align="right">
+                    {event.explorerUrl ? (
+                      <a href={event.explorerUrl} target="_blank" rel="noopener noreferrer" aria-label="Open transaction in explorer" className="group inline-flex h-8 w-8 items-center justify-center rounded-full border hairline bg-white/[0.03] text-muted-foreground transition-colors hover:text-primary hover:border-primary/30">
+                        <ExternalLink className="h-3.5 w-3.5 transition-transform duration-500 ease-out-expo group-hover:scale-110 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </a>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </DataTable>
+        </Reveal>
+      )}
     </Shell>
   );
 }

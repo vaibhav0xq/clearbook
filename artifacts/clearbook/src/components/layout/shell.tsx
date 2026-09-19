@@ -1,34 +1,92 @@
-import { ReactNode } from "react";
+import { ReactNode, useId } from "react";
 import { Link, useLocation } from "wouter";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateWalletQueries } from "@/lib/wallet-queries";
-import { CheckCircle2, AlertTriangle, ShieldAlert, Loader2, RefreshCw, AlertCircle } from "lucide-react";
-import { useGetWalletStatus, useIndexWallet, getGetWalletStatusQueryKey } from "@workspace/api-client-react";
+import { RefreshCw, AlertTriangle, AlertCircle, ArrowLeft } from "lucide-react";
+import { useGetWalletStatus, useIndexWallet, getGetWalletStatusQueryKey, type CostMethod } from "@workspace/api-client-react";
 import { WalletConnectButton } from "@/components/wallet-connect-button";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { CostMethod } from "@workspace/api-client-react";
 import { truncateAddress } from "@/lib/format";
+import { PageTransition } from "@/components/motion/page-transition";
+import { EASE_OUT } from "@/components/motion/reveal";
+import { cn } from "@/lib/utils";
 
 interface ShellProps {
   address: string;
   children: ReactNode;
 }
 
+const METHODS: { value: CostMethod; label: string; hint: string }[] = [
+  { value: "fifo", label: "FIFO", hint: "Oldest lots first" },
+  { value: "lifo", label: "LIFO", hint: "Newest lots first" },
+  { value: "hifo", label: "HIFO", hint: "Highest cost first" },
+];
+
+export function Brand({ className }: { className?: string }) {
+  return (
+    <Link href="/" className={cn("group flex items-center gap-2.5", className)} aria-label="Clearbook home">
+      <span className="relative block h-6 w-6">
+        <span className="absolute left-0 top-[3px] h-[5px] w-6 rounded-[2px] bg-foreground/90 transition-transform duration-500 ease-out-expo group-hover:translate-x-[3px]" />
+        <span className="absolute left-0 top-[10px] h-[5px] w-6 rounded-[2px] bg-primary transition-transform duration-500 ease-out-expo group-hover:-translate-x-[3px]" />
+        <span className="absolute left-0 top-[17px] h-[5px] w-6 rounded-[2px] bg-foreground/50 transition-transform duration-500 ease-out-expo group-hover:translate-x-[2px]" />
+      </span>
+      <span className="font-serif text-[22px] leading-none tracking-tight text-foreground">Clearbook</span>
+    </Link>
+  );
+}
+
+export function CostMethodControl({ compact = false }: { compact?: boolean }) {
+  const { method, setMethod } = useCostMethod();
+  const id = useId();
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Cost method"
+      className={cn("relative flex items-center rounded-full border hairline bg-white/[0.03] p-0.5", compact ? "h-8" : "h-9")}
+    >
+      {METHODS.map((m) => {
+        const active = m.value === method;
+        return (
+          <button
+            key={m.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            title={m.hint}
+            onClick={() => setMethod(m.value)}
+            className={cn(
+              "relative z-10 rounded-full px-3 num text-[11px] tracking-[0.12em] transition-colors duration-300",
+              compact ? "h-7" : "h-8",
+              active ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {active && (
+              <motion.span
+                layoutId={`cost-method-pill-${id}`}
+                className="absolute inset-0 -z-10 rounded-full bg-primary shadow-[0_0_24px_-4px_hsl(var(--primary)/0.7)]"
+                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+              />
+            )}
+            {m.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Shell({ address, children }: ShellProps) {
   const [location] = useLocation();
-  const { method, setMethod } = useCostMethod();
   const queryClient = useQueryClient();
-  
+
   const { data: status, error: statusError, refetch } = useGetWalletStatus(address, {
     query: {
       queryKey: getGetWalletStatusQueryKey(address),
-      refetchInterval: (query) => {
-        const state = query.state.data?.state;
-        return state === "indexing" ? 2000 : false;
-      }
-    }
+      refetchInterval: (query) => (query.state.data?.state === "indexing" ? 2000 : false),
+    },
   });
-  
+
   const indexWallet = useIndexWallet();
 
   const handleRefresh = async () => {
@@ -45,145 +103,185 @@ export function Shell({ address, children }: ShellProps) {
     { label: "Statements", path: `/w/${address}/statements` },
     { label: "Trade", path: `/w/${address}/trade` },
   ];
+  const isActive = (path: string) => location === path || (path !== `/w/${address}` && location.startsWith(path));
+
+  const stateTone =
+    status?.state === "ready"
+      ? "bg-success"
+      : status?.state === "indexing"
+        ? "bg-primary"
+        : status?.state === "partial"
+          ? "bg-primary"
+          : status
+            ? "bg-destructive"
+            : "bg-muted-foreground";
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
-      <header className="bg-card">
-        <div className="flex h-14 items-center px-6 justify-between max-w-screen-2xl mx-auto w-full border-b border-border">
-          <div className="flex items-center gap-8 md:gap-12 h-full">
-            <Link href="/" className="flex items-center gap-2 group">
-              <div className="w-2.5 h-2.5 bg-primary rounded-sm rotate-45 group-hover:rotate-90 transition-transform duration-500"></div>
-              <span className="font-serif text-lg tracking-tight text-foreground font-semibold">Clearbook</span>
-            </Link>
-            
-            <nav className="hidden md:flex items-center gap-6 h-full">
-              {navItems.map(item => {
-                const isActive = location === item.path || (item.path !== `/w/${address}` && location.startsWith(item.path));
+    <div className="relative min-h-screen flex flex-col">
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 grain" />
+      <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[520px] grid-lines" />
+
+      <header className="sticky top-0 z-50 px-3 pt-3 md:px-6">
+        <motion.div
+          initial={{ y: -24, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.8, ease: EASE_OUT }}
+          className="glass-strong mx-auto flex h-14 max-w-[1400px] items-center justify-between rounded-2xl px-3 md:px-4"
+        >
+          <div className="flex items-center gap-6 lg:gap-10">
+            <Brand />
+            <nav className="hidden lg:flex items-center gap-1" aria-label="Ledger sections">
+              {navItems.map((item) => {
+                const active = isActive(item.path);
                 return (
-                  <Link 
-                    key={item.path} 
+                  <Link
+                    key={item.path}
                     href={item.path}
-                    className={`text-sm font-sans h-full flex items-center transition-colors border-b-2 mt-[2px] ${
-                      isActive ? "border-primary text-foreground font-medium" : "border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
+                    className={cn(
+                      "relative rounded-full px-3.5 py-1.5 text-[13px] transition-colors duration-300",
+                      active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                    )}
                   >
-                    {item.label}
+                    {active && (
+                      <motion.span
+                        layoutId="nav-active"
+                        className="absolute inset-0 rounded-full bg-white/[0.06] border hairline"
+                        transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                      />
+                    )}
+                    <span className="relative z-10">{item.label}</span>
                   </Link>
                 );
               })}
             </nav>
           </div>
-          
-          <div className="flex items-center gap-6">
-            <div className="hidden sm:flex items-center gap-2">
-              <label htmlFor="cost-method" className="text-[11px] text-muted-foreground font-sans uppercase tracking-[0.08em]">Cost method</label>
-              <select 
-                id="cost-method"
-                value={method} 
-                onChange={(e) => setMethod(e.target.value as CostMethod)}
-                className="bg-transparent text-sm font-sans text-foreground pb-0.5 focus:outline-none cursor-pointer"
-              >
-                <option value="fifo">FIFO</option>
-                <option value="lifo">LIFO</option>
-                <option value="hifo">HIFO</option>
-              </select>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden md:block">
+              <CostMethodControl />
             </div>
             <WalletConnectButton />
           </div>
-        </div>
+        </motion.div>
 
-        {/* Mobile nav */}
-        <div className="md:hidden border-b border-border overflow-x-auto scrollbar-none px-4">
-          <div className="flex gap-6 min-w-max h-12">
-            {navItems.map(item => {
-              const isActive = location === item.path || (item.path !== `/w/${address}` && location.startsWith(item.path));
+        <div className="lg:hidden mx-auto max-w-[1400px] mt-2 overflow-x-auto scrollbar-none">
+          <div className="flex items-center gap-1 min-w-max px-1">
+            {navItems.map((item) => {
+              const active = isActive(item.path);
               return (
-                <Link 
-                  key={item.path} 
+                <Link
+                  key={item.path}
                   href={item.path}
-                  className={`text-sm font-sans h-full flex items-center transition-colors border-b-2 mt-[2px] ${
-                    isActive ? "border-primary text-foreground font-medium" : "border-transparent text-muted-foreground"
-                  }`}
+                  className={cn(
+                    "rounded-full px-3.5 py-1.5 text-[13px] border transition-colors",
+                    active ? "glass text-foreground" : "border-transparent text-muted-foreground",
+                  )}
                 >
                   {item.label}
                 </Link>
               );
             })}
+            <div className="md:hidden ml-2">
+              <CostMethodControl compact />
+            </div>
           </div>
         </div>
-
-        {/* Single slim status line */}
-        {status && !statusError && (
-          <div className="border-b border-border/60 bg-muted/20">
-            <div className="max-w-screen-2xl mx-auto w-full px-6 py-2 flex flex-col md:flex-row md:items-center justify-between gap-2 text-sm font-sans">
-               <div className="flex flex-wrap items-center gap-3">
-                  <span className={`flex items-center gap-1.5 font-medium ${
-                    status.state === "indexing" ? "text-accent" : 
-                    status.state === "ready" ? "text-success" : 
-                    "text-destructive"
-                  }`}>
-                    {status.state === "indexing" ? <Loader2 className="h-4 w-4 animate-spin" /> :
-                     status.state === "ready" ? <CheckCircle2 className="h-4 w-4" /> :
-                     status.state === "partial" ? <AlertTriangle className="h-4 w-4" /> :
-                     <ShieldAlert className="h-4 w-4" />}
-                  </span>
-                  
-                  <span className="text-foreground font-medium tabular-nums">{status.displayAddress}</span>
-                  <span className="text-muted-foreground text-xs">{status.isDemo ? "Demo ledger" : truncateAddress(address, 8)}</span>
-                  
-                  <span className="text-border mx-1">|</span>
-                  
-                  {status.state === "indexing" ? (
-                    <span className="text-muted-foreground text-xs">Events: {status.eventsIndexed} / Sigs: {status.signaturesScanned}</span>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">
-                      {status.lastIndexedAt ? `Indexed ${new Date(status.lastIndexedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : "Never indexed"}
-                    </span>
-                  )}
-               </div>
-
-               <div className="flex items-center gap-4">
-                  <button 
-                    onClick={handleRefresh}
-                    disabled={indexWallet.isPending || status.state === "indexing"}
-                    className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors focus:outline-none text-xs"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${indexWallet.isPending ? 'animate-spin' : ''}`} />
-                    {status.state === "not_indexed" ? "Index" : "Refresh"}
-                  </button>
-               </div>
-            </div>
-            
-            {/* Extended message line for demo, warnings or errors */}
-            {(status.warnings?.length > 0 || status.state === 'error' || status.state === 'partial' || (status.isDemo && status.message)) && (
-              <div className="max-w-screen-2xl mx-auto w-full px-6 pb-2.5 flex flex-col gap-1 text-[13px] text-muted-foreground">
-                {status.isDemo && status.message && <span>{status.message}</span>}
-                {(status.state === 'error' || status.state === 'partial') && !status.isDemo && <span className="text-destructive">{status.message}</span>}
-                {status.warnings?.map((w, i) => <span key={i} className="text-destructive flex items-center gap-1.5"><AlertTriangle className="h-3 w-3"/> {w}</span>)}
-              </div>
-            )}
-          </div>
-        )}
       </header>
 
-      <main className="flex-1 w-full max-w-screen-2xl mx-auto p-6 md:px-12 md:py-8 flex flex-col">
-        {statusError && (
-          <div className="border border-border bg-card p-12 flex flex-col items-center justify-center text-center gap-4 max-w-2xl mx-auto w-full mt-12 shadow-sm">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-            <h3 className="font-serif text-2xl text-foreground">
-              {statusError.status === 400 ? "Invalid account address" : "Unable to load ledger"}
-            </h3>
-            <p className="text-muted-foreground font-sans text-sm max-w-md break-all leading-relaxed">
-              {statusError.data?.message ?? statusError.message}
-            </p>
-            <Link href="/" className="mt-4 text-xs font-sans uppercase tracking-[0.08em] text-foreground border-b border-foreground pb-0.5 hover:text-primary hover:border-primary transition-colors">
-              Return to search
-            </Link>
-          </div>
+      <AnimatePresence initial={false}>
+        {status && !statusError && (
+          <motion.div
+            key="ledger-strip"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: EASE_OUT, delay: 0.15 }}
+            className="mx-auto w-full max-w-[1400px] px-6 md:px-10 pt-6"
+          >
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+                <span className="relative flex h-2 w-2">
+                  {status.state === "indexing" && (
+                    <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-60 animate-pulse-dot", stateTone)} />
+                  )}
+                  <span className={cn("relative inline-flex h-2 w-2 rounded-full", stateTone)} />
+                </span>
+                <span className="font-medium text-foreground">{status.displayAddress}</span>
+                <span className="num text-[12px] text-muted-foreground">{status.isDemo ? "Demo ledger" : truncateAddress(address, 6)}</span>
+                <span className="hidden md:inline text-muted-foreground/40">|</span>
+                <span className="text-muted-foreground">
+                  {status.state === "indexing"
+                    ? `Indexing. ${status.eventsIndexed} events from ${status.signaturesScanned} signatures`
+                    : status.lastIndexedAt
+                      ? `Indexed ${new Date(status.lastIndexedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                      : "Not indexed yet"}
+                </span>
+                {status.simulatedTrades > 0 && (
+                  <span className="text-muted-foreground">
+                    {status.simulatedTrades} simulated {status.simulatedTrades === 1 ? "sale" : "sales"}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={indexWallet.isPending || status.state === "indexing"}
+                className="group inline-flex items-center gap-2 self-start rounded-full border hairline px-3 py-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground hover:border-white/20 disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-700 ease-out-expo group-hover:rotate-180",
+                    (indexWallet.isPending || status.state === "indexing") && "animate-spin",
+                  )}
+                />
+                {status.state === "not_indexed" ? "Index wallet" : "Refresh"}
+              </button>
+            </div>
+            {(status.warnings?.length > 0 || status.state === "error" || status.state === "partial" || (status.isDemo && status.message)) && (
+              <div className="mt-3 flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                {status.isDemo && status.message && <span>{status.message}</span>}
+                {(status.state === "error" || status.state === "partial") && !status.isDemo && (
+                  <span className="text-destructive">{status.message}</span>
+                )}
+                {status.warnings?.map((w, i) => (
+                  <span key={i} className="flex items-center gap-1.5 text-destructive">
+                    <AlertTriangle className="h-3 w-3" /> {w}
+                  </span>
+                ))}
+              </div>
+            )}
+          </motion.div>
         )}
-        
-        {!statusError && children}
+      </AnimatePresence>
+
+      <main className="mx-auto w-full max-w-[1400px] flex-1 px-6 py-8 md:px-10 md:py-10 flex flex-col">
+        {statusError ? (
+          <PageTransition className="my-16 mx-auto w-full max-w-xl">
+            <div className="glass rounded-2xl p-10 text-center flex flex-col items-center gap-4">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+              <h3 className="display text-3xl text-foreground">
+                {statusError.status === 400 ? "That is not a Solana address" : "Unable to load this ledger"}
+              </h3>
+              <p className="text-sm text-muted-foreground max-w-md break-all leading-relaxed">
+                {statusError.data?.message ?? statusError.message}
+              </p>
+              <Link href="/" className="mt-2 inline-flex items-center gap-2 text-[12px] tracking-[0.12em] uppercase text-primary hover:text-foreground transition-colors">
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to lookup
+              </Link>
+            </div>
+          </PageTransition>
+        ) : (
+          <PageTransition key={location} className="flex-1 flex flex-col">
+            {children}
+          </PageTransition>
+        )}
       </main>
+
+      <footer className="mx-auto w-full max-w-[1400px] px-6 md:px-10 pb-8 pt-4 flex flex-col md:flex-row md:items-center justify-between gap-3 text-[12px] text-muted-foreground">
+        <span>Figures are rebuilt from public Solana history. Estimates are labelled. Nothing here is tax advice.</span>
+        <Link href="/methodology" className="hover:text-foreground transition-colors">
+          Methodology
+        </Link>
+      </footer>
     </div>
   );
 }
