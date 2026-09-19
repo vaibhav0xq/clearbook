@@ -1,19 +1,18 @@
 import { Link } from "wouter";
-import { AlertCircle, ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AlertCircle } from "lucide-react";
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center text-foreground p-6">
-      <div className="flex flex-col items-center text-center max-w-md">
-        <AlertCircle className="h-16 w-16 text-muted-foreground mb-6" />
-        <h1 className="text-4xl font-serif mb-4">Page not found</h1>
-        <p className="text-muted-foreground mb-8">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-6 font-sans">
+      <div className="border border-border bg-card p-12 max-w-lg w-full shadow-sm flex flex-col items-center gap-4 animate-in fade-in duration-700">
+        <AlertCircle className="h-8 w-8 text-muted-foreground" />
+        <h1 className="font-serif text-3xl text-foreground">Page not found</h1>
+        <p className="text-muted-foreground text-sm leading-relaxed mb-4">
           The requested ledger or interface does not exist in this environment. 
           Please check the URL or return home.
         </p>
-        <Link href="/" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 gap-2">
-          <ArrowLeft className="h-4 w-4" /> Return to Entry
+        <Link href="/" className="text-[11px] font-sans uppercase tracking-[0.08em] text-foreground border-b border-foreground pb-0.5 hover:text-primary hover:border-primary transition-colors">
+          Return to search
         </Link>
       </div>
     </div>

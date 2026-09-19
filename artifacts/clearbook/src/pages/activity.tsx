@@ -3,11 +3,9 @@ import { Shell } from "@/components/layout/shell";
 import { useListActivity } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { formatUSD, formatQuantity } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { AlertCircle, ExternalLink, ArrowLeft, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
+import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 
 export default function Activity() {
   const [, params] = useRoute("/w/:address/activity");
@@ -36,114 +34,143 @@ export default function Activity() {
 
   return (
     <Shell address={address}>
-      <div className="flex flex-col gap-8 pb-12">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-3xl">Ledger activity</h1>
-          <p className="text-muted-foreground text-sm">
+      <div className="flex flex-col animate-in fade-in duration-700 pb-12">
+        
+        {/* Page Header */}
+        <div className="flex flex-col gap-1 mb-8">
+          <h1 className="font-serif text-4xl tracking-tight text-foreground">Ledger activity</h1>
+          <p className="text-muted-foreground text-sm font-sans mt-2">
             All on-chain events and resolved transfers.
           </p>
         </div>
 
         {isLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-20 w-full" />)}
+          <div className="space-y-12 opacity-50">
+            <div className="flex gap-16 border-y border-border py-10">
+              <div className="h-16 w-full bg-muted animate-pulse rounded"></div>
+            </div>
           </div>
         ) : error ? (
-          <div className="p-8 border border-destructive/20 bg-destructive/10 text-destructive rounded-lg flex flex-col items-center justify-center text-center">
-            <AlertCircle className="h-8 w-8 mb-2" />
-            <h3 className="font-semibold">Unable to load activity</h3>
-            <p className="text-sm opacity-80 mt-1">{error.message}</p>
+          <div className="p-12 border border-border bg-card flex flex-col items-center justify-center text-center shadow-sm">
+            <AlertCircle className="h-8 w-8 mb-4 text-destructive" />
+            <h3 className="font-serif text-2xl mb-2 text-foreground">Unable to load activity</h3>
+            <p className="text-muted-foreground font-sans">{error.message || "An unknown error occurred"}</p>
           </div>
         ) : activityPage ? (
-          <div className="flex flex-col gap-4">
-            <div className="border border-card-border rounded-lg overflow-hidden bg-card">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-muted-foreground font-mono uppercase tracking-wider bg-muted/50 border-b border-card-border">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Event</th>
-                      <th className="px-4 py-3 font-medium">Date</th>
-                      <th className="px-4 py-3 font-medium">Asset</th>
-                      <th className="px-4 py-3 font-medium text-right">Quantity</th>
-                      <th className="px-4 py-3 font-medium text-right">Price</th>
-                      <th className="px-4 py-3 font-medium text-right">Amount</th>
-                      <th className="px-4 py-3 font-medium text-right">Link</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-card-border">
-                    {activityPage.items.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                          No ledger activity found.
-                        </td>
-                      </tr>
-                    ) : (
-                      activityPage.items.map((event) => (
-                        <tr key={event.id} className="hover:bg-muted/20 transition-colors">
-                          <td className="px-4 py-4">
-                            <div className="flex flex-col gap-1">
-                              <span className="font-medium">{event.kindLabel}</span>
-                              <div className="flex gap-2">
-                                {event.source !== 'live' && (
-                                  <Badge variant="outline" className="text-[9px] font-mono px-1 py-0 uppercase border-primary text-primary">
-                                    {event.source}
-                                  </Badge>
-                                )}
-                                {event.realizedPnl !== null && (
-                                  <Badge variant="outline" className={`text-[9px] font-mono px-1 py-0 uppercase ${event.realizedPnl > 0 ? 'border-success text-success' : event.realizedPnl < 0 ? 'border-destructive text-destructive' : 'border-muted-foreground text-muted-foreground'}`}>
-                                    {event.realizedPnl > 0 ? '+' : ''}{formatUSD(event.realizedPnl)} P/L
-                                  </Badge>
-                                )}
-                              </div>
+          <div className="flex flex-col gap-5">
+            {activityPage.items.length === 0 ? (
+              <div className="p-16 text-center border border-border bg-card shadow-sm">
+                <h3 className="font-serif text-2xl mb-3 text-foreground">No ledger activity</h3>
+                <p className="text-muted-foreground text-sm font-sans max-w-md mx-auto leading-relaxed">
+                  {cursor ? "This page is empty." : "No activity found for this ledger."}
+                </p>
+                {cursor && (
+                  <button type="button" onClick={handleReset} className="mt-6 text-[11px] font-sans uppercase tracking-[0.08em] text-foreground border-b border-foreground pb-0.5 hover:text-primary hover:border-primary transition-colors">
+                    Back to first page
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <DataTable>
+                  <TableHeader>
+                    <TableHead>Event</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Asset</TableHead>
+                    <TableHead align="right">Quantity</TableHead>
+                    <TableHead align="right">Price</TableHead>
+                    <TableHead align="right">Amount</TableHead>
+                    <TableHead align="right">Link</TableHead>
+                  </TableHeader>
+                  <TableBody>
+                    {activityPage.items.map((event) => (
+                      <TableRow key={event.id}>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[15px] font-medium text-foreground">{event.kindLabel}</span>
+                            <div className="flex items-center gap-2 text-[11px] font-sans uppercase tracking-[0.08em]">
+                              {event.source !== 'live' && (
+                                <span className="text-muted-foreground">{event.source === "demo" ? "Scripted" : event.source}</span>
+                              )}
+                              {event.realizedPnl !== null && (
+                                <span className={event.realizedPnl > 0 ? 'text-success' : event.realizedPnl < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+                                  {event.realizedPnl > 0 ? '+' : ''}{formatUSD(event.realizedPnl)} P/L
+                                </span>
+                              )}
                             </div>
-                          </td>
-                          <td className="px-4 py-4 font-mono text-xs">
-                            {format(new Date(event.blockTime), "MMM d, yyyy HH:mm")}
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="font-medium flex items-center gap-2">
-                              {event.symbol}
-                            </div>
-                          </td>
-                          <td className={`px-4 py-4 text-right font-mono ${event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : ""}`}>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[15px] tabular-nums text-foreground">{format(new Date(event.blockTime), "MMM d, yyyy")}</span>
+                            <span className="text-[11px] tabular-nums text-muted-foreground font-sans mt-0.5">
+                              {format(new Date(event.blockTime), "HH:mm")}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-serif text-lg text-foreground">{event.symbol}</span>
+                        </TableCell>
+                        <TableCell align="right">
+                          <span className={`text-[15px] tabular-nums ${event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : "text-foreground"}`}>
                             {event.quantity > 0 ? "+" : ""}{formatQuantity(event.quantity)}
-                          </td>
-                          <td className="px-4 py-4 text-right font-mono text-xs text-muted-foreground">
-                            {formatUSD(event.pricePerShare)}
-                          </td>
-                          <td className="px-4 py-4 text-right font-mono font-medium">
-                            {formatUSD(event.grossAmount)}
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            {event.explorerUrl ? (
-                              <a href={event.explorerUrl} target="_blank" rel="noopener noreferrer" className="inline-flex text-muted-foreground hover:text-foreground">
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
+                          </span>
+                        </TableCell>
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-[15px] tabular-nums text-foreground">{formatUSD(event.pricePerShare)}</span>
+                            {event.fee !== null && event.fee > 0 && (
+                              <span className="text-[11px] text-muted-foreground font-sans">Fee: {formatUSD(event.fee)}</span>
                             )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground font-mono">
-                Total: {activityPage.total}
-              </span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleReset} disabled={!cursor}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> First Page
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleNextPage} disabled={!activityPage.nextCursor}>
-                  Next <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-[15px] tabular-nums font-medium text-foreground">{formatUSD(event.grossAmount)}</span>
+                            {event.counterAsset && event.counterAmount !== null && (
+                              <span className="text-[11px] tabular-nums text-muted-foreground font-sans">
+                                {formatQuantity(event.counterAmount)} {event.counterAsset}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          {event.explorerUrl ? (
+                            <a href={event.explorerUrl} target="_blank" rel="noopener noreferrer" aria-label="Open transaction in explorer" className="inline-flex text-muted-foreground hover:text-foreground transition-colors">
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </DataTable>
+                
+                <div className="flex items-center justify-between border-t border-border pt-4">
+                  <span className="text-[11px] text-muted-foreground font-sans uppercase tracking-[0.08em]">
+                    Total entries: <span className="tabular-nums">{activityPage.total}</span>
+                  </span>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={handleReset} 
+                      disabled={!cursor}
+                      className="text-[11px] font-sans uppercase tracking-[0.08em] flex items-center gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors cursor-pointer"
+                    >
+                      <ArrowLeft className="h-3 w-3" /> First page
+                    </button>
+                    <button 
+                      onClick={handleNextPage} 
+                      disabled={!activityPage.nextCursor}
+                      className="text-[11px] font-sans uppercase tracking-[0.08em] flex items-center gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors cursor-pointer"
+                    >
+                      Next <ArrowRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         ) : null}
       </div>

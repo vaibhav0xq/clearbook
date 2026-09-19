@@ -26,3 +26,24 @@ export function truncateAddress(address: string, chars = 4): string {
   if (!address) return "";
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
 }
+
+export function formatAge(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "";
+  if (seconds < 60) return `${seconds} sec ago`;
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  return `${hours} hr ago`;
+}
+
+const ISSUER_LABELS: Record<string, string> = {
+  xstocks: "xStocks",
+  ondo: "Ondo",
+  prestocks: "PreStocks",
+  unknown: "Unknown issuer",
+};
+
+export function issuerLabel(issuer: string | null | undefined): string {
+  if (!issuer) return "Unknown issuer";
+  return ISSUER_LABELS[issuer] ?? issuer;
+}

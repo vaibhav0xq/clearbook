@@ -12,14 +12,10 @@ import {
 } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { formatUSD, formatQuantity, formatPercent } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowDown, Loader2, Info } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { AlertCircle, Loader2, Info } from "lucide-react";
 import { useWalletSession } from "@/lib/wallet";
 import { useQueryClient } from "@tanstack/react-query";
+import { Figure } from "@/components/figure";
 
 export default function Trade() {
   const [, params] = useRoute("/w/:address/trade");
@@ -31,7 +27,7 @@ export default function Trade() {
   const [selectedMint, setSelectedMint] = useState<string>("");
   const [quantity, setQuantity] = useState<string>("");
 
-  const { data: portfolio, isLoading: isPortfolioLoading } = useGetPortfolio(address, { method });
+  const { data: portfolio, isLoading: isPortfolioLoading, error: portfolioError } = useGetPortfolio(address, { method });
   
   const quoteQuery = useQuoteTrade();
   const prepareMutation = usePrepareTrade();
@@ -67,25 +63,20 @@ export default function Trade() {
     
     try {
       if (onChain && wallet.publicKey) {
-        // 1. Prepare
         const txData = await prepareMutation.mutateAsync({
           address,
           data: { quoteId: quote.quoteId, userPublicKey: wallet.publicKey }
         });
         
-        // 2. Sign & Send
         const signature = await wallet.signAndSendTransaction(txData.swapTransaction);
         
-        // 3. Confirm
         const result = await confirmMutation.mutateAsync({
           address,
           data: { quoteId: quote.quoteId, signature }
         });
         
-        // "pending" means the chain has not confirmed yet. "failed" means it reverted.
         setExecutionResult({ success: result.status === "confirmed", message: result.message });
       } else {
-        // Simulated execution
         const result = await simulateMutation.mutateAsync({
           address,
           data: { quoteId: quote.quoteId }
@@ -94,7 +85,6 @@ export default function Trade() {
         setExecutionResult({ success: true, message: result.message });
       }
       
-      // Every wallet scoped query is stale after a sale.
       invalidateWalletQueries(queryClient, address);
       setQuote(null);
       setQuantity("");
@@ -107,7 +97,6 @@ export default function Trade() {
   };
 
   const selectedPosition = portfolio?.positions.find(p => p.mint === selectedMint);
-  // On chain execution needs a route and the wallet that owns the ledger. Everything else is a simulated sale.
   const onChain = !!quote?.canExecuteOnChain && wallet.connected && wallet.publicKey === address;
   const simulationNote = quote
     ? quote.blockedReason ??
@@ -118,160 +107,165 @@ export default function Trade() {
 
   return (
     <Shell address={address}>
-      <div className="flex flex-col gap-8 pb-12">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-3xl">Trade</h1>
-          <p className="text-muted-foreground text-sm">
+      <div className="flex flex-col animate-in fade-in duration-700 pb-12">
+        <div className="flex flex-col gap-1 mb-8">
+          <h1 className="font-serif text-4xl tracking-tight text-foreground">Trade</h1>
+          <p className="text-muted-foreground text-sm font-sans mt-2">
             Sell tokenized stocks. Relieves lots based on your selected cost method.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Order Entry */}
-          <div className="flex flex-col gap-4 bg-card border border-card-border p-6 rounded-lg">
-            <h2 className="font-serif text-xl border-b border-card-border pb-4 mb-2">Sell position</h2>
-            
-            {isPortfolioLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : portfolio?.positions.length === 0 ? (
-              <div className="text-sm text-muted-foreground p-4 bg-muted/20 rounded">No positions available to sell.</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Asset</label>
-                  <Select value={selectedMint} onValueChange={(v) => { setSelectedMint(v); setQuote(null); setExecutionResult(null); }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an asset" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {portfolio?.positions.map(p => (
-                        <SelectItem key={p.mint} value={p.mint}>
-                          {p.symbol} - {formatQuantity(p.quantity)} shares
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          <div className="lg:col-span-5 flex flex-col gap-8">
+            <div className="flex flex-col gap-6 p-6 md:p-8 border border-border bg-card shadow-sm">
+              <h2 className="font-serif text-2xl text-foreground pb-4 border-b border-border">Sell position</h2>
+              
+              {isPortfolioLoading ? (
+                <div className="h-12 w-full bg-muted animate-pulse rounded-none"></div>
+              ) : portfolioError ? (
+                <div className="text-sm font-sans text-destructive p-5 bg-destructive/5 border border-destructive/20">
+                  Unable to load positions. {portfolioError.message}
                 </div>
+              ) : portfolio?.positions.length === 0 ? (
+                <div className="text-sm font-sans text-muted-foreground p-5 bg-muted/20 border border-border text-center">
+                  No positions available to sell.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="trade-asset" className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Asset</label>
+                    <select 
+                      id="trade-asset"
+                      value={selectedMint} 
+                      onChange={(e) => { setSelectedMint(e.target.value); setQuote(null); setExecutionResult(null); }}
+                      className="w-full bg-transparent border border-border p-2.5 text-sm font-sans text-foreground focus:outline-none focus:border-primary transition-colors appearance-none rounded-none cursor-pointer"
+                    >
+                      <option value="" disabled>Select an asset</option>
+                      {portfolio?.positions.map(p => (
+                        <option key={p.mint} value={p.mint}>
+                          {p.symbol}, {formatQuantity(p.quantity)} shares
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                {selectedPosition && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-end">
-                      <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Quantity to Sell</label>
-                      <span className="text-[10px] text-muted-foreground cursor-pointer hover:text-primary" onClick={() => setQuantity(selectedPosition.quantity.toString())}>
-                        Max: {formatQuantity(selectedPosition.quantity)}
-                      </span>
+                  {selectedPosition && (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex justify-between items-end">
+                        <label htmlFor="trade-quantity" className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Quantity to sell</label>
+                        <button 
+                          type="button"
+                          onClick={() => setQuantity(selectedPosition.quantity.toString())}
+                          className="text-[10px] font-sans text-muted-foreground hover:text-primary transition-colors uppercase tracking-[0.08em]"
+                        >
+                          Max: {formatQuantity(selectedPosition.quantity)}
+                        </button>
+                      </div>
+                      <input 
+                        id="trade-quantity"
+                        type="number" 
+                        min="0" 
+                        step="any"
+                        value={quantity} 
+                        onChange={(e) => { setQuantity(e.target.value); setQuote(null); }} 
+                        placeholder="0.00"
+                        className="w-full bg-transparent border border-border p-2.5 text-lg font-sans tabular-nums text-foreground focus:outline-none focus:border-primary transition-colors rounded-none"
+                      />
                     </div>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      step="any"
-                      value={quantity} 
-                      onChange={(e) => { setQuantity(e.target.value); setQuote(null); }} 
-                      placeholder="0.00"
-                      className="font-mono text-lg"
-                    />
-                  </div>
-                )}
+                  )}
 
-                <Button 
-                  className="w-full mt-4" 
-                  onClick={handleGetQuote} 
-                  disabled={!selectedMint || !quantity || Number(quantity) <= 0 || quoteQuery.isPending}
-                >
-                  {quoteQuery.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Review quote
-                </Button>
-                
-                {quoteQuery.isError && (
-                  <div className="text-xs text-destructive mt-2 p-2 bg-destructive/10 rounded">
-                    {quoteQuery.error?.message || "Failed to get quote."}
-                  </div>
-                )}
-                
-                {executionResult && (
-                  <div className={`text-sm mt-4 p-3 rounded flex items-start gap-2 ${executionResult.success ? 'bg-success/10 text-success border border-success/20' : 'bg-destructive/10 text-destructive border border-destructive/20'}`}>
-                    {executionResult.success ? <Info className="h-4 w-4 mt-0.5 shrink-0" /> : <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
-                    <span>{executionResult.message}</span>
-                  </div>
-                )}
-              </div>
-            )}
+                  <button 
+                    onClick={handleGetQuote}
+                    disabled={!selectedMint || !quantity || Number(quantity) <= 0 || quoteQuery.isPending}
+                    className="mt-2 w-full text-center text-[11px] font-sans uppercase tracking-[0.08em] text-foreground border border-border bg-secondary hover:bg-secondary/80 px-5 py-3 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {quoteQuery.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Review quote
+                  </button>
+
+                  {quoteQuery.isError && (
+                    <div className="text-sm text-destructive mt-1 font-sans">{quoteQuery.error?.message || "Failed to get quote."}</div>
+                  )}
+                  {executionResult && (
+                    <div className={`text-sm mt-1 flex items-start gap-2 font-sans ${executionResult.success ? 'text-success' : 'text-destructive'}`}>
+                      {executionResult.success ? <Info className="h-4 w-4 mt-0.5 shrink-0" /> : <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+                      <span>{executionResult.message}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Quote Review */}
-          <div className="flex flex-col gap-4">
+          <div className="lg:col-span-7 flex flex-col">
             {quote ? (
-              <div className="bg-card border border-card-border p-6 rounded-lg animate-in slide-in-from-right-4 duration-500">
-                <h2 className="font-serif text-xl border-b border-card-border pb-4 mb-4">Quote summary</h2>
+              <div className="p-6 md:p-8 border border-border bg-card relative shadow-sm animate-in slide-in-from-right-8 duration-700">
+                <div className="absolute top-0 left-0 w-full h-1 bg-primary"></div>
+                <h2 className="font-serif text-3xl text-foreground pb-4 mb-6 border-b-2 border-foreground">Quote summary</h2>
                 
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center py-2 border-b border-card-border/50">
-                    <span className="text-sm text-muted-foreground">Sell</span>
-                    <span className="font-mono font-medium">{formatQuantity(quote.quantity)} {quote.symbol}</span>
+                <div className="flex flex-col gap-8">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <Figure label="Sell" value={<>{formatQuantity(quote.quantity)} <span className="text-muted-foreground">{quote.symbol}</span></>} size="lg" className="col-span-2" />
+                    <Figure label="Expected proceeds" value={formatUSD(quote.expectedProceeds)} size="lg" className="col-span-2 text-foreground" />
                   </div>
-                  
-                  <div className="flex justify-center -my-2 relative z-10">
-                    <div className="bg-card border border-card-border rounded-full p-1">
-                      <ArrowDown className="h-4 w-4 text-muted-foreground" />
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-6 border-t border-border">
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Price / Share</span>
+                      <span className="text-[15px] tabular-nums text-foreground font-sans">{formatUSD(quote.pricePerShare)}</span>
                     </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center py-2 border-b border-card-border/50">
-                    <span className="text-sm text-muted-foreground">Expected proceeds</span>
-                    <span className="font-mono font-medium text-success">{formatUSD(quote.expectedProceeds)}</span>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4 py-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] uppercase font-mono text-muted-foreground">Price / Share</span>
-                      <span className="font-mono text-sm">{formatUSD(quote.pricePerShare)}</span>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Price impact</span>
+                      <span className="text-[15px] tabular-nums text-foreground font-sans">{formatPercent(quote.priceImpactPct)}</span>
                     </div>
-                    <div className="flex flex-col gap-1 items-end">
-                      <span className="text-[10px] uppercase font-mono text-muted-foreground">Price impact</span>
-                      <span className="font-mono text-sm">{formatPercent(quote.priceImpactPct)}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] uppercase font-mono text-muted-foreground">Est. Realized P/L</span>
-                      <span className={`font-mono text-sm ${quote.estimatedRealizedPnl && quote.estimatedRealizedPnl > 0 ? "text-success" : "text-destructive"}`}>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Est. Realized P/L</span>
+                      <span className={`text-[15px] font-sans tabular-nums ${quote.estimatedRealizedPnl && quote.estimatedRealizedPnl > 0 ? "text-success" : quote.estimatedRealizedPnl && quote.estimatedRealizedPnl < 0 ? "text-destructive" : "text-foreground"}`}>
                         {formatUSD(quote.estimatedRealizedPnl)}
                       </span>
                     </div>
-                    <div className="flex flex-col gap-1 items-end">
-                      <span className="text-[10px] uppercase font-mono text-muted-foreground">Execution</span>
-                      <Badge variant="outline" className={`text-[10px] font-mono ${quote.canExecuteOnChain ? 'border-success text-success' : 'border-primary text-primary'}`}>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Execution</span>
+                      <span className={`text-[13px] font-sans uppercase tracking-[0.08em] mt-0.5 ${quote.canExecuteOnChain ? 'text-success' : 'text-primary'}`}>
                         {quote.modeLabel}
-                      </Badge>
+                      </span>
                     </div>
                   </div>
 
                   {quote.warnings.length > 0 && (
-                    <div className="mt-4 p-3 bg-warning/10 border border-warning/20 rounded text-warning text-xs space-y-1">
-                      {quote.warnings.map((w, i) => <div key={i} className="flex gap-2"><AlertCircle className="h-3 w-3 shrink-0" />{w}</div>)}
+                    <div className="mt-2 flex flex-col gap-2">
+                      {quote.warnings.map((w, i) => (
+                        <div key={i} className="text-[13px] text-destructive flex gap-2 font-sans">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                          <span>{w}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
 
                   {simulationNote && (
-                    <div className="mt-4 p-3 bg-muted/40 border border-card-border rounded text-muted-foreground text-xs flex gap-2">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
+                    <div className="mt-2 p-4 bg-muted/20 border-l-2 border-primary text-sm font-sans text-muted-foreground leading-relaxed">
                       {simulationNote}
                     </div>
                   )}
 
-                  <Button 
-                    className="w-full mt-6" 
-                    size="lg"
-                    onClick={executeTrade}
-                    disabled={isExecuting}
-                  >
-                    {isExecuting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    {onChain ? "Sell on Jupiter" : "Record simulated sale"}
-                  </Button>
+                  <div className="pt-6 border-t border-border flex justify-end">
+                    <button 
+                      onClick={executeTrade}
+                      disabled={isExecuting}
+                      className="text-[11px] font-sans uppercase tracking-[0.08em] text-primary-foreground bg-foreground hover:bg-foreground/90 px-8 py-3 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 min-w-[200px]"
+                    >
+                      {isExecuting && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {onChain ? "Sign & Execute" : "Record simulated sale"}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="h-full min-h-[300px] border border-dashed border-card-border rounded-lg bg-card/30 flex flex-col items-center justify-center text-center p-8 text-muted-foreground">
-                <ArrowDown className="h-8 w-8 mb-4 opacity-50" />
-                <p className="text-sm max-w-[200px]">Select an asset and enter a quantity to review execution details.</p>
+              <div className="h-full min-h-[400px] border border-border bg-card/30 flex flex-col items-center justify-center text-center p-12 text-muted-foreground shadow-sm">
+                <p className="text-sm font-sans max-w-[250px] leading-relaxed">
+                  Select an asset and enter a quantity to request a quote.
+                </p>
               </div>
             )}
           </div>

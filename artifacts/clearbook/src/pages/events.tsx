@@ -2,10 +2,9 @@ import { useRoute } from "wouter";
 import { Shell } from "@/components/layout/shell";
 import { useListCorporateActions } from "@workspace/api-client-react";
 import { formatUSD, formatQuantity } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ExternalLink, Calendar, GitMerge } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { AlertCircle, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
+import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 
 export default function Events() {
   const [, params] = useRoute("/w/:address/events");
@@ -15,119 +14,117 @@ export default function Events() {
 
   return (
     <Shell address={address}>
-      <div className="flex flex-col gap-8 pb-12">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-3xl">Corporate actions</h1>
-          <p className="text-muted-foreground text-sm">
-            Dividend reinvestments, stock splits, and pending multiplier changes.
+      <div className="flex flex-col animate-in fade-in duration-700 pb-12">
+        
+        {/* Page Header */}
+        <div className="flex flex-col gap-1 mb-8">
+          <h1 className="font-serif text-4xl tracking-tight text-foreground">Corporate actions</h1>
+          <p className="text-muted-foreground text-sm font-sans mt-2">
+            Dividend reinvestments, splits and unclassified multiplier changes read from the token itself.
           </p>
         </div>
 
         {isLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+          <div className="space-y-12 opacity-50">
+            <div className="flex gap-16 border-y border-border py-10">
+              <div className="h-16 w-full bg-muted animate-pulse rounded"></div>
+            </div>
           </div>
         ) : error ? (
-          <div className="p-8 border border-destructive/20 bg-destructive/10 text-destructive rounded-lg flex flex-col items-center justify-center text-center">
-            <AlertCircle className="h-8 w-8 mb-2" />
-            <h3 className="font-semibold">Unable to load events</h3>
-            <p className="text-sm opacity-80 mt-1">{error.message}</p>
+          <div className="p-12 border border-border bg-card flex flex-col items-center justify-center text-center shadow-sm">
+            <AlertCircle className="h-8 w-8 mb-4 text-destructive" />
+            <h3 className="font-serif text-2xl mb-2 text-foreground">Unable to load events</h3>
+            <p className="text-muted-foreground font-sans">{error.message || "An unknown error occurred"}</p>
           </div>
         ) : events ? (
-          <div className="border border-card-border rounded-lg overflow-hidden bg-card">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground font-mono uppercase tracking-wider bg-muted/50 border-b border-card-border">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Event kind</th>
-                    <th className="px-4 py-3 font-medium">Asset</th>
-                    <th className="px-4 py-3 font-medium">Effective date</th>
-                    <th className="px-4 py-3 font-medium text-right">Multiplier change</th>
-                    <th className="px-4 py-3 font-medium text-right">Quantity effect</th>
-                    <th className="px-4 py-3 font-medium text-right">Value effect</th>
-                    <th className="px-4 py-3 font-medium text-right">Confidence</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-card-border">
-                  {events.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                        No corporate actions found for this portfolio.
-                      </td>
-                    </tr>
-                  ) : (
-                    events.map((event) => (
-                      <tr key={event.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-4">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-medium flex items-center gap-2">
-                              {event.kind === "multiplier_change" || event.kind === "pending_multiplier" ? (
-                                <GitMerge className="h-4 w-4 text-primary" />
-                              ) : (
-                                <Calendar className="h-4 w-4 text-secondary-foreground" />
-                              )}
-                              {event.kindLabel}
-                            </span>
-                            <span className="text-xs text-muted-foreground line-clamp-1">{event.note}</span>
+          <div className="flex flex-col gap-5">
+            {events.length === 0 ? (
+              <div className="p-16 text-center border border-border bg-card shadow-sm">
+                <h3 className="font-serif text-2xl mb-3 text-foreground">No corporate actions</h3>
+                <p className="text-muted-foreground text-sm font-sans max-w-md mx-auto leading-relaxed">
+                  No corporate actions found for this portfolio.
+                </p>
+              </div>
+            ) : (
+              <DataTable>
+                <TableHeader>
+                  <TableHead>Event kind</TableHead>
+                  <TableHead>Asset</TableHead>
+                  <TableHead>Effective date</TableHead>
+                  <TableHead align="right">Multiplier change</TableHead>
+                  <TableHead align="right">Quantity effect</TableHead>
+                  <TableHead align="right">Value effect</TableHead>
+                  <TableHead align="right">Confidence</TableHead>
+                </TableHeader>
+                <TableBody>
+                  {events.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[15px] font-medium text-foreground">{event.kindLabel}</span>
+                          <span className="text-[11px] text-muted-foreground font-sans max-w-[280px] leading-snug">
+                            {event.note}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-serif text-lg text-foreground">{event.symbol}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-[15px] tabular-nums text-foreground">{format(new Date(event.effectiveAt), "MMM d, yyyy")}</span>
+                      </TableCell>
+                      <TableCell align="right">
+                        {event.previousMultiplier !== event.newMultiplier ? (
+                          <div className="flex items-center justify-end gap-1.5 text-[15px] tabular-nums">
+                            <span className="text-muted-foreground">{event.previousMultiplier.toFixed(6)}</span>
+                            <span className="text-muted-foreground/50 font-sans">→</span>
+                            <span className="text-foreground">{event.newMultiplier.toFixed(6)}</span>
                           </div>
-                        </td>
-                        <td className="px-4 py-4 font-medium">
-                          {event.symbol}
-                        </td>
-                        <td className="px-4 py-4 font-mono text-xs">
-                          {format(new Date(event.effectiveAt), "MMM d, yyyy")}
-                        </td>
-                        <td className="px-4 py-4 text-right font-mono text-xs">
-                          {event.previousMultiplier !== event.newMultiplier ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <span className="text-muted-foreground">{event.previousMultiplier.toFixed(6)}</span>
-                              <span>→</span>
-                              <span className="text-foreground">{event.newMultiplier.toFixed(6)}</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-right font-mono text-xs">
-                          {event.quantityBefore !== null && event.quantityAfter !== null ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <span className="text-muted-foreground">{formatQuantity(event.quantityBefore)}</span>
-                              <span>→</span>
-                              <span className="text-success">{formatQuantity(event.quantityAfter)}</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-right font-mono text-xs">
-                          {event.valueEffect !== null ? (
-                            <span className={event.valueEffect > 0 ? "text-success" : event.valueEffect < 0 ? "text-destructive" : ""}>
-                              {event.valueEffect > 0 ? "+" : ""}{formatUSD(event.valueEffect)}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-right">
-                          <Badge variant="outline" className={`text-[10px] font-mono uppercase ${
-                            event.confidence === 'confirmed' ? 'border-success text-success' :
-                            event.confidence === 'inferred' ? 'border-warning text-warning' :
-                            'border-muted-foreground text-muted-foreground'
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        {event.quantityBefore !== null && event.quantityAfter !== null ? (
+                          <div className="flex items-center justify-end gap-1.5 text-[15px] tabular-nums">
+                            <span className="text-muted-foreground">{formatQuantity(event.quantityBefore)}</span>
+                            <span className="text-muted-foreground/50 font-sans">→</span>
+                            <span className="text-success">{formatQuantity(event.quantityAfter)}</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        {event.valueEffect !== null ? (
+                          <span className={`text-[15px] tabular-nums ${event.valueEffect > 0 ? "text-success" : event.valueEffect < 0 ? "text-destructive" : "text-foreground"}`}>
+                            {event.valueEffect > 0 ? "+" : ""}{formatUSD(event.valueEffect)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <div className="flex items-center justify-end gap-2">
+                          <span className={`text-[11px] font-sans uppercase tracking-[0.08em] ${
+                            event.confidence === 'confirmed' ? 'text-success' :
+                            event.confidence === 'inferred' ? 'text-primary' :
+                            'text-muted-foreground'
                           }`}>
                             {event.confidence}
-                          </Badge>
+                          </span>
                           {event.explorerUrl && (
-                            <a href={event.explorerUrl} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex text-muted-foreground hover:text-foreground">
+                            <a href={event.explorerUrl} target="_blank" rel="noopener noreferrer" aria-label="Open transaction in explorer" className="inline-flex text-muted-foreground hover:text-foreground transition-colors">
                               <ExternalLink className="h-3 w-3" />
                             </a>
                           )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </DataTable>
+            )}
           </div>
         ) : null}
       </div>

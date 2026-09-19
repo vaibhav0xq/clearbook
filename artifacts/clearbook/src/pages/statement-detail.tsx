@@ -1,14 +1,13 @@
 import { useRoute } from "wouter";
 import { Shell } from "@/components/layout/shell";
 import { useGetStatement, usePrepareNotarization, useSubmitNotarization, getGetStatementQueryKey, getPrepareNotarizationQueryKey } from "@workspace/api-client-react";
-import { formatUSD, formatQuantity, truncateAddress } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Download, FileText, ExternalLink, ShieldCheck } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { formatUSD, formatQuantity } from "@/lib/format";
+import { AlertCircle, ExternalLink, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
 import { NotarizeButton } from "@/components/notarize-button";
 import { useWalletSession } from "@/lib/wallet";
+import { Figure } from "@/components/figure";
+import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 
 export default function StatementDetail() {
   const [, params] = useRoute("/w/:address/statements/:statementId");
@@ -20,11 +19,12 @@ export default function StatementDetail() {
   });
   
   const wallet = useWalletSession();
-  // The payer decides whether the API returns a signable memo transaction or a simulated proof.
   const payer = wallet.publicKey && wallet.publicKey === address ? wallet.publicKey : undefined;
   const notarizationParams = payer ? { payer } : {};
-  const { data: notarizationPayload, refetch: refetchPayload } = usePrepareNotarization(statementId, notarizationParams, {
-    query: { queryKey: getPrepareNotarizationQueryKey(statementId, notarizationParams), enabled: !!statementId && statement?.proof.status === "none" }
+  
+  const canNotarize = statement?.proof.status === "none" || statement?.proof.status === "failed";
+  const { data: notarizationPayload, error: notarizationError, isLoading: isPayloadLoading, refetch: refetchPayload } = usePrepareNotarization(statementId, notarizationParams, {
+    query: { queryKey: getPrepareNotarizationQueryKey(statementId, notarizationParams), enabled: !!statementId && !!canNotarize }
   });
 
   const submitNotarization = useSubmitNotarization();
@@ -41,160 +41,186 @@ export default function StatementDetail() {
 
   return (
     <Shell address={address}>
-      <div className="flex flex-col gap-8 pb-12">
+      <div className="flex flex-col items-center animate-in fade-in duration-700 pb-16">
         {isLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-64 w-full" />
+          <div className="w-full max-w-5xl space-y-12 opacity-50 my-8">
+            <div className="h-24 w-full bg-muted animate-pulse rounded"></div>
+            <div className="h-64 w-full bg-muted animate-pulse rounded"></div>
           </div>
         ) : error ? (
-          <div className="p-8 border border-destructive/20 bg-destructive/10 text-destructive rounded-lg flex flex-col items-center justify-center text-center">
-            <AlertCircle className="h-8 w-8 mb-2" />
-            <h3 className="font-semibold">Unable to load statement</h3>
-            <p className="text-sm opacity-80 mt-1">{error.message}</p>
+          <div className="p-12 border border-border bg-card flex flex-col items-center justify-center text-center max-w-2xl w-full my-12">
+            <AlertCircle className="h-8 w-8 mb-4 text-destructive" />
+            <h3 className="font-serif text-2xl mb-2 text-foreground">Unable to load statement</h3>
+            <p className="text-muted-foreground font-sans">{error.message}</p>
           </div>
         ) : statement ? (
-          <div className="bg-bone text-ink p-8 rounded-sm shadow-xl max-w-4xl mx-auto w-full font-serif border border-ink/10">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start gap-8 border-b-2 border-ink/20 pb-8 mb-8">
-              <div className="flex flex-col gap-1">
-                <h1 className="text-4xl tracking-tight leading-none mb-2">{statement.title}</h1>
-                <div className="font-sans text-sm tracking-wider uppercase text-ink/60">
-                  {format(new Date(statement.periodStart), "MMMM d, yyyy")} to {format(new Date(statement.periodEnd), "MMMM d, yyyy")}
-                </div>
-                <div className="font-mono text-xs text-ink/50 mt-4">
-                  Account: {statement.displayAddress}
+          <div className="bg-card border border-border w-full max-w-5xl mt-6 p-8 md:p-14 lg:p-20 shadow-sm relative">
+            {/* Top decorative line */}
+            <div className="absolute top-0 left-0 w-full h-1 bg-primary"></div>
+            
+            {/* Document Header */}
+            <div className="flex flex-col lg:flex-row justify-between items-start gap-12 border-b-2 border-foreground pb-10 mb-10">
+              <div className="flex flex-col w-full">
+                <div className="text-[11px] font-sans uppercase tracking-[0.08em] text-primary font-semibold mb-2">Statement</div>
+                <h1 className="font-serif text-4xl md:text-5xl tracking-tight text-foreground leading-none">{statement.title}</h1>
+                
+                {/* Definition List for Metadata */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-6 text-sm mt-10 w-full max-w-2xl">
+                   <div className="flex flex-col">
+                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Account</span>
+                     <span className="font-mono mt-1 text-xs">{statement.displayAddress}</span>
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Period</span>
+                     <span className="font-sans mt-1">
+                       {format(new Date(statement.periodStart), "MMM d, yyyy")} to {format(new Date(statement.periodEnd), "MMM d, yyyy")}
+                     </span>
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Cost method</span>
+                     <span className="font-sans mt-1">{statement.method.toUpperCase()}</span>
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Generated</span>
+                     <span className="font-sans mt-1">{format(new Date(statement.generatedAt), "MMM d, yyyy")}</span>
+                   </div>
                 </div>
               </div>
               
-              <div className="flex flex-col items-end gap-4">
-                <div className="flex gap-2">
-                  <a href={csvUrl} download>
-                    <Button variant="outline" size="sm" className="bg-transparent border-ink/20 text-ink hover:bg-ink/5 gap-2">
-                      <Download className="h-4 w-4" /> CSV
-                    </Button>
+              <div className="flex flex-col items-start lg:items-end gap-6 w-full lg:w-auto shrink-0">
+                <div className="flex gap-3 w-full lg:w-auto">
+                  <a href={csvUrl} download className="flex-1 lg:flex-none text-center text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground border border-border px-5 py-2 hover:border-foreground transition-colors">
+                    Export CSV
                   </a>
-                  <a href={pdfUrl} download>
-                    <Button variant="outline" size="sm" className="bg-transparent border-ink/20 text-ink hover:bg-ink/5 gap-2">
-                      <FileText className="h-4 w-4" /> PDF
-                    </Button>
+                  <a href={pdfUrl} download className="flex-1 lg:flex-none text-center text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground border border-border px-5 py-2 hover:border-foreground transition-colors">
+                    Export PDF
                   </a>
                 </div>
                 
-                <div className="text-right font-mono text-[10px] text-ink/40 max-w-[200px] break-all">
-                  Hash: {statement.hash}
+                <div className="flex flex-col gap-1 items-start lg:items-end">
+                   <span className="text-[11px] font-sans uppercase tracking-[0.08em] text-muted-foreground">Document hash</span>
+                   <span className="text-[11px] text-muted-foreground font-mono max-w-[220px] break-all text-left lg:text-right bg-muted/30 p-2 border border-border">{statement.hash}</span>
                 </div>
               </div>
             </div>
 
-            {/* Proof Panel */}
-            <div className={`p-4 border mb-8 rounded-sm ${
-              statement.proof.status === 'confirmed' ? 'bg-success/10 border-success/30' :
+            {/* Proof Block */}
+            <div className={`mb-12 border p-5 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm ${
+              statement.proof.status === 'confirmed' ? 'bg-success/5 border-success/20' :
               statement.proof.status === 'simulated' ? 'bg-primary/5 border-primary/20' :
-              'bg-ink/5 border-ink/10'
+              statement.proof.status === 'failed' ? 'bg-destructive/5 border-destructive/20' :
+              'bg-muted/10 border-border/60'
             }`}>
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className={`h-6 w-6 ${
-                    statement.proof.status === 'confirmed' ? 'text-success' : 
-                    statement.proof.status === 'simulated' ? 'text-primary' : 
-                    'text-ink/40'
-                  }`} />
-                  <div>
-                    <div className="font-sans font-medium text-sm">
-                      {statement.proof.status === 'none' ? 'Statement not notarized' :
-                       statement.proof.status === 'confirmed' ? 'On-chain Proof Confirmed' :
-                       statement.proof.status === 'simulated' ? 'Simulated Proof' :
-                       'Proof Pending'}
-                    </div>
-                    <div className="font-sans text-xs opacity-70">{statement.proof.message}</div>
-                  </div>
+              <div className="flex items-start gap-4">
+                <ShieldCheck className={`w-6 h-6 mt-0.5 ${
+                  statement.proof.status === 'confirmed' ? 'text-success' : 
+                  statement.proof.status === 'simulated' ? 'text-primary' :
+                  statement.proof.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'
+                }`} />
+                <div className="flex flex-col gap-1">
+                  <span className="font-serif text-lg text-foreground">
+                    {statement.proof.status === 'none' ? 'Not notarized' :
+                     statement.proof.status === 'confirmed' ? 'On-chain proof confirmed' :
+                     statement.proof.status === 'simulated' ? 'Simulated proof recorded' :
+                     statement.proof.status === 'failed' ? 'Proof failed' :
+                     'Proof pending'}
+                  </span>
+                  <span className="text-sm font-sans text-muted-foreground leading-relaxed max-w-lg">{statement.proof.message}</span>
+                  
+                  {statement.proof.explorerUrl && (
+                    <a href={statement.proof.explorerUrl} target="_blank" className="text-[11px] font-sans uppercase tracking-[0.08em] text-primary hover:underline flex items-center gap-1 mt-2 w-fit">
+                      View on explorer <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
                 </div>
-                
-                {statement.proof.status === 'none' && notarizationPayload && (
+              </div>
+              <div className="flex flex-col items-start md:items-end gap-2">
+                {canNotarize && notarizationPayload && (
                   <NotarizeButton payload={notarizationPayload} onSubmit={handleNotarizeSubmit} />
                 )}
-                
-                {statement.proof.explorerUrl && (
-                  <a href={statement.proof.explorerUrl} target="_blank" rel="noopener noreferrer" className="font-sans text-xs underline underline-offset-2 flex items-center gap-1">
-                    View on Explorer <ExternalLink className="h-3 w-3" />
-                  </a>
+                {canNotarize && !notarizationPayload && isPayloadLoading && (
+                  <span className="text-xs font-sans text-muted-foreground">Preparing notarization...</span>
+                )}
+                {canNotarize && !notarizationPayload && notarizationError && (
+                  <div className="flex flex-col items-start md:items-end gap-1">
+                    <span className="text-xs font-sans text-destructive">Could not prepare notarization. {notarizationError.message}</span>
+                    <button type="button" onClick={() => refetchPayload()} className="text-[11px] font-sans uppercase tracking-[0.08em] text-foreground border-b border-foreground pb-0.5 hover:text-primary hover:border-primary transition-colors">
+                      Try again
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Totals Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-6 mb-12">
-              <div className="flex flex-col border-l-2 border-ink/20 pl-4">
-                <span className="font-sans text-xs uppercase tracking-widest text-ink/60 mb-1">Opening value</span>
-                <span className="font-mono text-xl">{formatUSD(statement.totals.openingValue)}</span>
-              </div>
-              <div className="flex flex-col border-l-2 border-ink/20 pl-4">
-                <span className="font-sans text-xs uppercase tracking-widest text-ink/60 mb-1">Closing value</span>
-                <span className="font-mono text-xl font-medium">{formatUSD(statement.totals.closingValue)}</span>
-              </div>
-              <div className="flex flex-col border-l-2 border-ink/20 pl-4">
-                <span className="font-sans text-xs uppercase tracking-widest text-ink/60 mb-1">Realized P/L</span>
-                <span className="font-mono text-xl">{formatUSD(statement.totals.realizedPnl)}</span>
-              </div>
-              <div className="flex flex-col border-l-2 border-ink/20 pl-4">
-                <span className="font-sans text-xs uppercase tracking-widest text-ink/60 mb-1">Income Est.</span>
-                <span className="font-mono text-xl">{formatUSD(statement.totals.incomeEstimate)}</span>
-              </div>
+            {/* Totals Section */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-14">
+              <Figure label="Opening value" value={formatUSD(statement.totals.openingValue)} size="lg" />
+              <Figure label="Closing value" value={formatUSD(statement.totals.closingValue)} size="lg" />
+              <Figure label="Realized P/L" value={formatUSD(statement.totals.realizedPnl)} subTone={statement.totals.realizedPnl} size="lg" />
+              <Figure label="Income est." value={formatUSD(statement.totals.incomeEstimate)} subTone={statement.totals.incomeEstimate} size="lg" />
             </div>
 
-            {/* Positions */}
-            <div className="mb-12">
-              <h2 className="text-2xl mb-4 border-b border-ink/10 pb-2">Holdings</h2>
+            {/* Holdings Section */}
+            <div className="mb-20">
+              <h2 className="font-serif text-2xl mb-4 pb-2 border-b border-border text-foreground">Holdings</h2>
               {statement.positions.length === 0 ? (
-                <div className="text-ink/60 italic">No holdings in this period.</div>
+                <div className="text-muted-foreground font-sans italic bg-muted/20 p-8 border border-border text-center text-sm">No holdings in this period.</div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left font-sans text-sm">
-                    <thead>
-                      <tr className="border-b border-ink/20 text-xs uppercase tracking-widest text-ink/60">
-                        <th className="py-2 font-normal">Asset</th>
-                        <th className="py-2 font-normal text-right">Quantity</th>
-                        <th className="py-2 font-normal text-right">Price</th>
-                        <th className="py-2 font-normal text-right">Value</th>
-                        <th className="py-2 font-normal text-right">Cost basis</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-ink/10">
-                      {statement.positions.map((pos) => (
-                        <tr key={pos.mint}>
-                          <td className="py-3">
-                            <div className="font-medium">{pos.symbol}</div>
-                            <div className="text-xs text-ink/60">{pos.name}</div>
-                          </td>
-                          <td className="py-3 text-right font-mono">{formatQuantity(pos.closingQuantity)}</td>
-                          <td className="py-3 text-right font-mono">{formatUSD(pos.closingPrice)}</td>
-                          <td className="py-3 text-right font-mono">{formatUSD(pos.closingValue)}</td>
-                          <td className="py-3 text-right font-mono">{formatUSD(pos.costBasis)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable>
+                  <TableHeader>
+                    <TableHead>Asset</TableHead>
+                    <TableHead align="right">Quantity</TableHead>
+                    <TableHead align="right">Close price</TableHead>
+                    <TableHead align="right">Value</TableHead>
+                    <TableHead align="right">Cost basis</TableHead>
+                  </TableHeader>
+                  <TableBody>
+                    {statement.positions.map((pos) => (
+                      <TableRow key={pos.mint}>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-serif text-lg text-foreground">{pos.symbol}</span>
+                            <span className="text-xs text-muted-foreground font-sans">{pos.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell align="right" className="text-[15px]">
+                          {formatQuantity(pos.closingQuantity)}
+                        </TableCell>
+                        <TableCell align="right" className="text-[15px]">
+                          {formatUSD(pos.closingPrice)}
+                        </TableCell>
+                        <TableCell align="right" className="text-[15px] font-medium">
+                          {formatUSD(pos.closingValue)}
+                        </TableCell>
+                        <TableCell align="right" className="text-[15px]">
+                          {formatUSD(pos.costBasis)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </DataTable>
               )}
             </div>
 
-            {/* Disclosures & Assumptions */}
-            <div className="mt-16 pt-8 border-t border-ink/20 font-sans text-xs text-ink/60 columns-1 md:columns-2 gap-8">
-              <h3 className="font-semibold uppercase tracking-widest mb-2 text-ink">Disclosures</h3>
-              <ul className="list-disc pl-4 space-y-2 mb-8">
-                {statement.assumptions.map((ass, i) => <li key={i}>{ass}</li>)}
-              </ul>
-              
-              <h3 className="font-semibold uppercase tracking-widest mb-2 text-ink mt-8 md:mt-0">Data sources</h3>
-              <ul className="space-y-1">
-                {statement.dataSources.map(ds => (
-                  <li key={ds.id} className="flex justify-between">
-                    <span>{ds.label}</span>
-                    <span className="font-mono uppercase text-[10px]">{ds.mode}</span>
-                  </li>
-                ))}
-              </ul>
+            {/* Disclosures Footer */}
+            <div className="border-t border-border pt-10 grid grid-cols-1 md:grid-cols-2 gap-16">
+              <div>
+                <h3 className="text-[11px] font-sans uppercase tracking-[0.08em] text-foreground mb-4 border-b border-border/50 pb-2">Disclosures</h3>
+                <ul className="list-disc list-outside ml-4 text-xs font-sans text-muted-foreground space-y-2.5 leading-relaxed">
+                  {statement.assumptions.map((ass, i) => <li key={i}>{ass}</li>)}
+                </ul>
+              </div>
+              <div>
+                <h3 className="text-[11px] font-sans uppercase tracking-[0.08em] text-foreground mb-4 border-b border-border/50 pb-2">Data sources</h3>
+                <ul className="space-y-2">
+                  {statement.dataSources.map(ds => (
+                    <li key={ds.id} className="flex justify-between items-baseline text-xs font-sans text-muted-foreground border-b border-border/30 pb-1.5">
+                      <span>{ds.label}</span>
+                      <span className="font-sans uppercase text-[10px] tracking-[0.08em] bg-muted px-1.5 py-[1px] rounded-[2px]">{ds.mode}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
             
           </div>

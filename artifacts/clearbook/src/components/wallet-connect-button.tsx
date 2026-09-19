@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useWalletSession } from "@/lib/wallet";
-import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 
 export function WalletConnectButton() {
@@ -23,21 +22,30 @@ export function WalletConnectButton() {
   };
 
   if (!wallet.available) {
-    return null; // Don't show connect button if no wallets are detected
+    return null;
   }
 
   if (wallet.connected) {
     return (
-      <Button variant="outline" onClick={handleDisconnect} className="font-mono text-xs">
+      <button 
+        type="button"
+        onClick={handleDisconnect} 
+        className="font-mono text-xs border border-border px-3 py-1.5 hover:bg-muted transition-colors text-foreground uppercase tracking-widest"
+      >
         {wallet.publicKey ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}` : "Disconnect"}
-      </Button>
+      </button>
     );
   }
 
   return (
-    <Button onClick={handleConnect} disabled={isConnecting || wallet.connecting} variant="secondary">
-      {(isConnecting || wallet.connecting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-      Connect Wallet
-    </Button>
+    <button 
+      type="button"
+      onClick={handleConnect} 
+      disabled={isConnecting || wallet.connecting} 
+      className="font-mono text-xs bg-foreground text-background border border-foreground px-4 py-1.5 hover:bg-foreground/90 transition-colors flex items-center gap-2 uppercase tracking-widest disabled:opacity-50"
+    >
+      {(isConnecting || wallet.connecting) && <Loader2 className="h-3 w-3 animate-spin" />}
+      Connect wallet
+    </button>
   );
 }

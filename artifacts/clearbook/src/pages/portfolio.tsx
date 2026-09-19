@@ -2,12 +2,10 @@ import { Link, useRoute } from "wouter";
 import { Shell } from "@/components/layout/shell";
 import { useGetPortfolio } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { formatUSD, formatQuantity, formatPercent } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Clock, Info } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatUSD, formatQuantity, formatPercent, formatAge, issuerLabel } from "@/lib/format";
+import { AlertCircle } from "lucide-react";
+import { Figure } from "@/components/figure";
+import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 
 export default function Portfolio() {
   const [, params] = useRoute("/w/:address");
@@ -18,186 +16,162 @@ export default function Portfolio() {
 
   return (
     <Shell address={address}>
-      <div className="flex flex-col gap-8 pb-12">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-3xl">Portfolio</h1>
-          <p className="text-muted-foreground text-sm">
+      <div className="flex flex-col animate-in fade-in duration-700">
+        
+        {/* Page Header */}
+        <div className="flex flex-col gap-1 mb-8">
+          <h1 className="font-serif text-4xl tracking-tight text-foreground">Portfolio</h1>
+          <p className="text-muted-foreground text-sm font-sans mt-2">
             Net valuation and open positions, marked to market.
           </p>
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 w-full" />)}
+          <div className="space-y-12 opacity-50">
+            <div className="flex gap-16 border-y border-border py-10">
+              <div className="h-16 w-32 bg-muted animate-pulse rounded"></div>
+              <div className="h-16 w-32 bg-muted animate-pulse rounded"></div>
+              <div className="h-16 w-32 bg-muted animate-pulse rounded"></div>
+            </div>
           </div>
         ) : error ? (
-          <div className="p-8 border border-destructive/20 bg-destructive/10 text-destructive rounded-lg flex flex-col items-center justify-center text-center">
-            <AlertCircle className="h-8 w-8 mb-2" />
-            <h3 className="font-semibold">Unable to load portfolio</h3>
-            <p className="text-sm opacity-80 mt-1">{error.message || "An unknown error occurred"}</p>
+          <div className="p-12 border border-border bg-card flex flex-col items-center justify-center text-center">
+            <AlertCircle className="h-8 w-8 mb-4 text-destructive" />
+            <h3 className="font-serif text-2xl mb-2 text-foreground">Unable to load portfolio</h3>
+            <p className="text-muted-foreground font-sans">{error.message || "An unknown error occurred"}</p>
           </div>
         ) : portfolio ? (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Net value</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-serif">{formatUSD(portfolio.totals.netValue)}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Cost basis</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-serif">{formatUSD(portfolio.totals.costBasis)}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Unrealized P/L</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className={`text-2xl font-serif ${portfolio.totals.unrealizedPnl > 0 ? "text-success" : portfolio.totals.unrealizedPnl < 0 ? "text-destructive" : ""}`}>
-                    {formatUSD(portfolio.totals.unrealizedPnl)}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {formatPercent(portfolio.totals.unrealizedPnlPct)}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Realized P/L</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className={`text-2xl font-serif ${portfolio.totals.realizedPnl > 0 ? "text-success" : portfolio.totals.realizedPnl < 0 ? "text-destructive" : ""}`}>
-                    {formatUSD(portfolio.totals.realizedPnl)}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1 font-mono">
-                    YTD: {formatUSD(portfolio.totals.realizedPnlYtd)}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Income Est.</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-serif text-success">{formatUSD(portfolio.totals.incomeEstimate)}</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Via multiplier growth
-                  </div>
-                </CardContent>
-              </Card>
+            {/* Top-Level Totals Grid - Single Row on LG+ */}
+            <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] gap-x-8 gap-y-8 border-y border-border py-8 mb-10 items-start">
+              <Figure label="Net value" value={formatUSD(portfolio.totals.netValue)} size="xl" className="col-span-2 lg:col-span-1" />
+              <Figure label="Cost basis" value={formatUSD(portfolio.totals.costBasis)} size="lg" />
+              <Figure 
+                label="Unrealized P/L" 
+                value={formatUSD(portfolio.totals.unrealizedPnl)} 
+                sub={formatPercent(portfolio.totals.unrealizedPnlPct)} 
+                subTone={portfolio.totals.unrealizedPnl} 
+                size="lg"
+              />
+              <Figure 
+                label="Realized P/L" 
+                value={formatUSD(portfolio.totals.realizedPnl)} 
+                sub={`YTD ${formatUSD(portfolio.totals.realizedPnlYtd)}`}
+                subTone={null} 
+                size="lg"
+              />
+              <Figure 
+                label="Income est." 
+                value={formatUSD(portfolio.totals.incomeEstimate)} 
+                sub="From multiplier increases"
+                subTone={null} 
+                size="lg"
+              />
             </div>
 
             {portfolio.totals.unknownBasisCount > 0 && (
-              <div className="bg-card border border-card-border p-3 text-sm flex items-start gap-2 rounded-lg">
-                <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+              <div className="bg-muted/30 border-l-2 border-primary p-4 text-sm font-sans flex flex-col gap-1.5 mb-10">
+                <span className="text-foreground font-medium">Incomplete cost basis</span>
                 <span className="text-muted-foreground">
-                  {portfolio.totals.unknownBasisCount === 1 ? "1 position has" : `${portfolio.totals.unknownBasisCount} positions have`} unknown cost basis because the tokens arrived by transfer. Their basis is excluded from the totals. 
-                  <Link href="/methodology" className="ml-1 text-primary hover:underline">Read the methodology</Link>.
+                  {portfolio.totals.unknownBasisCount === 1 ? "1 position holds" : `${portfolio.totals.unknownBasisCount} positions hold`} lots without a readable purchase price, usually because the tokens arrived by transfer. Unknown cost is excluded from the totals and each position carries a note.
+                  <Link href="/methodology" className="ml-2 text-primary hover:underline uppercase tracking-[0.08em] text-[10px]">Methodology</Link>
                 </span>
               </div>
             )}
 
-            <div className="flex flex-col gap-4 mt-4">
-              <h2 className="font-serif text-2xl">Positions</h2>
+            {/* Positions Section */}
+            <div className="flex flex-col gap-5">
+              <h2 className="font-serif text-3xl pb-2 border-b border-border text-foreground">Positions</h2>
+              
               {portfolio.positions.length === 0 ? (
-                <div className="p-12 text-center border border-dashed rounded-lg bg-card/50">
-                  <h3 className="font-serif text-xl mb-2">No positions found</h3>
-                  <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                    This wallet has no tokenized stock balances. If you just sent tokens, wait a few seconds and hit refresh.
+                <div className="p-16 text-center border border-border bg-card shadow-sm">
+                  <h3 className="font-serif text-2xl mb-3 text-foreground">No positions found</h3>
+                  <p className="text-muted-foreground text-sm font-sans max-w-md mx-auto leading-relaxed">
+                    This ledger has no tokenized stock balances. If you recently transferred tokens, they may be indexing. Wait a moment and hit refresh.
                   </p>
                 </div>
               ) : (
-                <div className="border border-card-border rounded-lg overflow-hidden bg-card">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead className="text-xs text-muted-foreground font-mono uppercase tracking-wider bg-muted/50 border-b border-card-border">
-                        <tr>
-                          <th className="px-4 py-3 font-medium">Asset</th>
-                          <th className="px-4 py-3 font-medium text-right">Quantity</th>
-                          <th className="px-4 py-3 font-medium text-right">Mark</th>
-                          <th className="px-4 py-3 font-medium text-right">Value</th>
-                          <th className="px-4 py-3 font-medium text-right">Cost basis</th>
-                          <th className="px-4 py-3 font-medium text-right">Unrealized P/L</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-card-border">
-                        {portfolio.positions.map((pos) => (
-                          <tr key={pos.mint} className="hover:bg-muted/20 transition-colors">
-                            <td className="px-4 py-4">
-                              <div className="flex flex-col">
-                                <div className="font-medium flex items-center gap-2">
-                                  {pos.symbol}
-                                  <Badge variant="outline" className="text-[10px] font-mono px-1 py-0">{pos.issuer}</Badge>
-                                </div>
-                                <div className="text-xs text-muted-foreground">{pos.name}</div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-right font-mono">
-                              <div className="flex flex-col items-end">
-                                <span>{formatQuantity(pos.quantity)}</span>
-                                {pos.multiplier.current !== 1 && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="text-[10px] text-muted-foreground cursor-help">
-                                        Raw: {formatQuantity(pos.rawQuantity)}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Multiplier: {pos.multiplier.current}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-right font-mono">
-                              <div className="flex flex-col items-end">
-                                <span>{formatUSD(pos.mark.price)}</span>
-                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                  <span className={pos.mark.status === "live" ? "text-success" : "text-destructive"}>
-                                    {pos.mark.statusLabel}
-                                  </span>
-                                  <span>via {pos.mark.source}</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-right font-mono font-medium">
-                              {formatUSD(pos.marketValue)}
-                              <div className="text-[10px] text-muted-foreground">
-                                {formatPercent(pos.weightPct)}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-right font-mono">
-                              <div className="flex flex-col items-end">
-                                <span>{formatUSD(pos.costBasis)}</span>
-                                {pos.basisStatus !== "complete" && (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <Badge variant="outline" className="text-[10px] border-destructive text-destructive px-1 py-0 mt-1">Est.</Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>{pos.basisNote}</TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-right font-mono">
-                              <div className={`flex flex-col items-end ${pos.unrealizedPnl && pos.unrealizedPnl > 0 ? "text-success" : pos.unrealizedPnl && pos.unrealizedPnl < 0 ? "text-destructive" : ""}`}>
-                                <span>{formatUSD(pos.unrealizedPnl)}</span>
-                                <span className="text-[10px]">{formatPercent(pos.unrealizedPnlPct)}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                <DataTable>
+                  <TableHeader>
+                    <TableHead>Asset</TableHead>
+                    <TableHead align="right">Quantity</TableHead>
+                    <TableHead align="right">Mark</TableHead>
+                    <TableHead align="right">Value</TableHead>
+                    <TableHead align="right">Cost basis</TableHead>
+                    <TableHead align="right">Unrealized P/L</TableHead>
+                  </TableHeader>
+                  <TableBody>
+                    {portfolio.positions.map((pos) => (
+                      <TableRow key={pos.mint}>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-serif text-lg text-foreground">{pos.symbol}</span>
+                            <span className="text-xs text-muted-foreground truncate max-w-[200px] font-sans">
+                              {pos.name} <span className="opacity-60 font-sans ml-1">{issuerLabel(pos.issuer)}</span>
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-[15px] tabular-nums text-foreground">{formatQuantity(pos.quantity)}</span>
+                            {pos.multiplier.current !== 1 && (
+                              <span className="text-[11px] text-muted-foreground font-mono tabular-nums mt-0.5">
+                                Raw: {formatQuantity(pos.rawQuantity)}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-[15px] tabular-nums text-foreground">{formatUSD(pos.mark.price)}</span>
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-sans">
+                              {pos.mark.status !== "live" && (
+                                <span className="text-destructive">{pos.mark.statusLabel}</span>
+                              )}
+                              <span>
+                                {pos.mark.sourceLabel}
+                                {pos.mark.ageSeconds ? `, ${formatAge(pos.mark.ageSeconds)}` : ""}
+                              </span>
+                            </div>
+                            {pos.premiumDiscount.differencePct !== null && (
+                              <span title={pos.premiumDiscount.referenceLabel} className="text-[11px] text-muted-foreground font-sans tabular-nums cursor-help">
+                                {formatPercent(pos.premiumDiscount.differencePct)} to reference, {pos.session.label.charAt(0).toLowerCase() + pos.session.label.slice(1)}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-[15px] font-medium tabular-nums text-foreground">{formatUSD(pos.marketValue)}</span>
+                            <span className="text-[11px] text-muted-foreground tabular-nums font-sans">
+                              {formatPercent(pos.weightPct)}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="text-[15px] tabular-nums text-foreground">{formatUSD(pos.costBasis)}</span>
+                            {pos.basisStatus !== "complete" && (
+                              <span title={pos.basisNote ?? undefined} className="text-[10px] text-destructive uppercase tracking-[0.08em] font-sans mt-0.5 border border-destructive/20 bg-destructive/5 px-1 py-px rounded-[2px] cursor-help">
+                                {pos.basisStatus === "unknown" ? "Unknown" : "Partial"}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell align="right">
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className={`text-[15px] tabular-nums ${pos.unrealizedPnl && pos.unrealizedPnl > 0 ? "text-success" : pos.unrealizedPnl && pos.unrealizedPnl < 0 ? "text-destructive" : "text-foreground"}`}>
+                              {formatUSD(pos.unrealizedPnl)}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground tabular-nums font-sans">
+                              {formatPercent(pos.unrealizedPnlPct)}
+                            </span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </DataTable>
               )}
             </div>
           </>

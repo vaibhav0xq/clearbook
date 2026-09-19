@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useWalletSession } from "@/lib/wallet";
-import { Button } from "@/components/ui/button";
 import { NotarizationPayload } from "@workspace/api-client-react";
-import { Loader2, CheckCircle2, Link as LinkIcon, FileSignature } from "lucide-react";
+import { Loader2, FileSignature, CheckCircle2 } from "lucide-react";
 
 interface NotarizeButtonProps {
   payload: NotarizationPayload;
@@ -13,7 +12,6 @@ export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
   const wallet = useWalletSession();
   const [isProcessing, setIsProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
-
   const [failure, setFailure] = useState<string | null>(null);
 
   const isSimulated = !wallet.connected || payload.mode === "simulated" || !payload.transaction;
@@ -44,30 +42,28 @@ export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
 
   if (success) {
     return (
-      <div className="flex items-center gap-2 text-success text-sm font-medium">
-        <CheckCircle2 className="h-4 w-4" />
-        {isSimulated ? "Simulated proof created" : "On-chain proof created"}
+      <div className="flex items-center justify-end gap-2 text-success text-[11px] font-sans uppercase tracking-[0.08em]">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {isSimulated ? "Simulated" : "Confirmed"}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-    <Button 
-      onClick={handleNotarize} 
-      disabled={isProcessing} 
-      variant="outline" 
-      size="sm"
-      className="gap-2"
-    >
-      {isProcessing ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <FileSignature className="h-4 w-4" />
-      )}
-      {isSimulated ? "Create simulated proof" : "Sign on-chain proof"}
-    </Button>
-    {failure && <span className="text-xs text-destructive max-w-xs text-right">{failure}</span>}
+    <div className="flex flex-col items-end gap-2">
+      <button 
+        onClick={handleNotarize} 
+        disabled={isProcessing} 
+        className="flex items-center gap-2 bg-foreground text-background hover:bg-foreground/90 px-4 py-2 text-[11px] font-sans uppercase tracking-[0.08em] transition-colors disabled:opacity-50"
+      >
+        {isProcessing ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <FileSignature className="h-3.5 w-3.5" />
+        )}
+        {isSimulated ? "Create simulated proof" : "Sign on-chain proof"}
+      </button>
+      {failure && <span className="text-xs font-sans text-destructive max-w-xs text-right break-words">{failure}</span>}
     </div>
   );
 }
