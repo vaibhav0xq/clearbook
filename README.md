@@ -107,3 +107,7 @@ See `docs/status.md` for what is live, what is simulated and what still needs wo
 ## Demo
 
 `docs/demo-script.md` walks through a three minute demo.
+
+## License
+
+MIT. See `LICENSE`.
