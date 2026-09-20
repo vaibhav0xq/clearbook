@@ -3,7 +3,34 @@
  * matching source reports itself as unavailable and the app keeps working
  * with the remaining sources or the demo ledger.
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 const DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
+
+/**
+ * Loads the nearest .env file above the working directory. Values already
+ * present in the environment win, so hosted deployments are unaffected.
+ */
+function loadDotenv(): void {
+  let dir = process.cwd();
+  for (let depth = 0; depth < 5; depth += 1) {
+    const file = path.join(dir, ".env");
+    if (existsSync(file)) {
+      try {
+        process.loadEnvFile(file);
+      } catch {
+        // A malformed file should not stop the server. Missing keys are reported per source.
+      }
+      return;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return;
+    dir = parent;
+  }
+}
+
+loadDotenv();
 
 function read(name: string): string | undefined {
   const v = process.env[name];

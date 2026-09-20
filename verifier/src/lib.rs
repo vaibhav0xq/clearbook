@@ -2,6 +2,8 @@ use serde_json::{Number, Value};
 use sha2::{Digest, Sha256};
 
 pub const MEMO_PREFIX: &str = "clearbook:v1:";
+pub const MEMO_PROGRAM: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+pub const LEGACY_MEMO_PROGRAM: &str = "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo";
 pub const VIEW_KEYS: [&str; 6] = ["id", "hash", "proof", "ownedByViewer", "csvUrl", "pdfUrl"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,6 +11,7 @@ pub struct TransactionDetails {
     pub memo: Option<String>,
     pub signer: Option<String>,
     pub signer_is_valid: bool,
+    pub transaction_succeeded: bool,
     pub slot: Option<u64>,
     pub block_time: Option<i64>,
 }
@@ -82,52 +85,8 @@ fn javascript_number(number: &Number) -> String {
         return "0".to_string();
     }
 
-    let raw = format!("{value:?}");
-    let raw = raw.strip_suffix(".0").unwrap_or(&raw);
-    let Some((coefficient, exponent)) = split_exponent(raw) else {
-        return raw.to_string();
-    };
-
-    if (-6..21).contains(&exponent) {
-        scientific_to_fixed(coefficient, exponent)
-    } else if exponent >= 0 {
-        format!("{coefficient}e+{exponent}")
-    } else {
-        format!("{coefficient}e{exponent}")
-    }
-}
-
-fn split_exponent(value: &str) -> Option<(&str, i32)> {
-    let index = value.find(['e', 'E'])?;
-    let exponent = value[index + 1..].parse().ok()?;
-    Some((&value[..index], exponent))
-}
-
-fn scientific_to_fixed(coefficient: &str, exponent: i32) -> String {
-    let negative = coefficient.starts_with('-');
-    let unsigned = coefficient.trim_start_matches('-');
-    let digits: String = unsigned
-        .chars()
-        .filter(|character| *character != '.')
-        .collect();
-    let decimal = unsigned.find('.').unwrap_or(unsigned.len()) as i32;
-    let target = decimal + exponent;
-    let fixed = if target <= 0 {
-        format!("0.{}{}", "0".repeat((-target) as usize), digits)
-    } else if target as usize >= digits.len() {
-        format!("{}{}", digits, "0".repeat(target as usize - digits.len()))
-    } else {
-        format!(
-            "{}.{}",
-            &digits[..target as usize],
-            &digits[target as usize..]
-        )
-    };
-    if negative {
-        format!("-{fixed}")
-    } else {
-        fixed
-    }
+    let mut buffer = ryu_js::Buffer::new();
+    buffer.format(value).to_string()
 }
 
 pub fn extract_transaction(value: &Value) -> Result<TransactionDetails, String> {
@@ -149,6 +108,7 @@ pub fn extract_transaction(value: &Value) -> Result<TransactionDetails, String> 
         .and_then(|key| key.get("signer"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let transaction_succeeded = result.pointer("/meta/err").is_some_and(Value::is_null);
 
     let mut memo = message
         .get("instructions")
@@ -171,21 +131,11 @@ pub fn extract_transaction(value: &Value) -> Result<TransactionDetails, String> 
             }
         }
     }
-    if memo.is_none() {
-        memo = result
-            .pointer("/meta/logMessages")
-            .and_then(Value::as_array)
-            .and_then(|logs| {
-                logs.iter()
-                    .filter_map(Value::as_str)
-                    .find_map(memo_from_log)
-            });
-    }
-
     Ok(TransactionDetails {
         memo,
         signer,
         signer_is_valid,
+        transaction_succeeded,
         slot: result.get("slot").and_then(Value::as_u64),
         block_time: result.get("blockTime").and_then(Value::as_i64),
     })
@@ -201,7 +151,8 @@ fn account_pubkey(value: &Value) -> Option<String> {
 
 fn memo_from_instructions(instructions: &[Value]) -> Option<String> {
     instructions.iter().find_map(|instruction| {
-        if instruction.get("program").and_then(Value::as_str) == Some("spl-memo") {
+        let program_id = instruction.get("programId").and_then(Value::as_str);
+        if program_id == Some(MEMO_PROGRAM) || program_id == Some(LEGACY_MEMO_PROGRAM) {
             instruction
                 .get("parsed")
                 .and_then(Value::as_str)
@@ -210,13 +161,6 @@ fn memo_from_instructions(instructions: &[Value]) -> Option<String> {
             None
         }
     })
-}
-
-fn memo_from_log(log: &str) -> Option<String> {
-    let prefix = "Program log: Memo (len ";
-    let rest = log.strip_prefix(prefix)?;
-    let quoted = rest.split_once("): ")?.1;
-    serde_json::from_str::<String>(quoted).ok()
 }
 
 pub fn make_rpc_request(signature: &str) -> Value {

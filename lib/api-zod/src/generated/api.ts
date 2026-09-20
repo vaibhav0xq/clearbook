@@ -18,7 +18,7 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Which data sources are live, which are simulated, and the demo wallets available.
+ * Which data sources are live, which are simulated and which demo wallets are available.
  * @summary Runtime configuration
  */
 export const GetAppConfigResponse = zod.object({
@@ -85,7 +85,7 @@ export const ListAssetsResponse = zod.array(ListAssetsResponseItem)
 
 
 /**
- * Starts a background run that discovers token accounts, fetches history and rebuilds the ledger, and returns at once with the wallet in the indexing state. Poll the status endpoint until the state changes. A run already in progress is joined. Demo wallets load from a stored scenario in place.
+ * Starts a background run that discovers token accounts, fetches history and rebuilds the ledger. It returns at once with the wallet in the indexing state. Poll the status endpoint until the state changes. A run already in progress is joined. Demo wallets load from a stored scenario in place.
  * @summary Index or refresh a wallet
  */
 export const IndexWalletParams = zod.object({

@@ -22,6 +22,10 @@ struct Cli {
     offline: bool,
     #[arg(long)]
     signature: Option<String>,
+    #[arg(long)]
+    expect_hash: Option<String>,
+    #[arg(long)]
+    allow_any_signer: bool,
     #[arg(long, default_value = "https://api.mainnet-beta.solana.com")]
     rpc: String,
     #[arg(long)]
@@ -33,6 +37,7 @@ struct Cli {
 struct Output {
     computed_hash: Option<String>,
     statement_hash: Option<String>,
+    expected_hash: Option<String>,
     hash_matches: Option<bool>,
     expected_memo: Option<String>,
     transaction_checked: bool,
@@ -42,10 +47,12 @@ struct Output {
     signer: Option<String>,
     signer_is_valid: Option<bool>,
     signer_matches_statement: Option<bool>,
+    transaction_succeeded: Option<bool>,
     slot: Option<u64>,
     block_time: Option<String>,
     explorer_url: Option<String>,
     warnings: Vec<String>,
+    failures: Vec<String>,
     error: Option<String>,
     valid: bool,
 }
@@ -78,16 +85,34 @@ fn run(cli: &Cli, output: &mut Output) -> Result<bool, String> {
         .get("hash")
         .and_then(Value::as_str)
         .map(str::to_string);
-    let hash_matches = carried.as_ref().map(|hash| hash == &computed);
+    if let Some(expected) = &cli.expect_hash {
+        validate_hash(expected)?;
+    }
+    let carried_matches = carried.as_ref().map(|hash| hash == &computed);
+    let expected_matches = cli
+        .expect_hash
+        .as_ref()
+        .map(|hash| hash.eq_ignore_ascii_case(&computed));
+    let has_hash_evidence = carried.is_some() || cli.expect_hash.is_some();
+    let hash_matches = carried_matches
+        .into_iter()
+        .chain(expected_matches)
+        .all(|matches| matches);
     output.computed_hash = Some(computed.clone());
     output.statement_hash = carried;
-    output.hash_matches = hash_matches;
+    output.expected_hash = cli.expect_hash.clone();
+    output.hash_matches = has_hash_evidence.then_some(hash_matches);
     let expected_memo = format!("{MEMO_PREFIX}{computed}");
     output.expected_memo = Some(expected_memo.clone());
 
     if cli.offline {
         output.transaction_skipped = Some("Offline mode was requested.".to_string());
-        return Ok(hash_matches.unwrap_or(true));
+        if !has_hash_evidence {
+            output
+                .failures
+                .push("Nothing to compare against. Provide a statement hash, an expected hash or a transaction signature.".to_string());
+        }
+        return Ok(has_hash_evidence && hash_matches);
     }
 
     let proof = statement.get("proof");
@@ -108,12 +133,12 @@ fn run(cli: &Cli, output: &mut Output) -> Result<bool, String> {
     if cli.signature.is_none() && proof_is_simulated {
         output.transaction_skipped =
             Some("The proof is simulated and has no on chain transaction.".to_string());
-        return Ok(hash_matches.unwrap_or(true));
+        return finish_without_transaction(output, has_hash_evidence, hash_matches);
     }
     let Some(signature) = signature else {
         output.transaction_skipped =
             Some("No transaction signature is available for this statement.".to_string());
-        return Ok(hash_matches.unwrap_or(true));
+        return finish_without_transaction(output, has_hash_evidence, hash_matches);
     };
 
     let rpc = call_rpc(&cli.rpc, &signature)?;
@@ -126,6 +151,7 @@ fn run(cli: &Cli, output: &mut Output) -> Result<bool, String> {
     output.memo_matches = Some(details.memo.as_deref() == Some(&expected_memo));
     output.signer = details.signer.clone();
     output.signer_is_valid = Some(details.signer_is_valid);
+    output.transaction_succeeded = Some(details.transaction_succeeded);
     output.slot = details.slot;
     output.block_time = details.block_time.map(format_utc);
     output.explorer_url = Some(format!(
@@ -134,24 +160,52 @@ fn run(cli: &Cli, output: &mut Output) -> Result<bool, String> {
 
     let address = statement.get("address").and_then(Value::as_str);
     output.signer_matches_statement =
-        address.map(|address| details.signer.as_deref() == Some(address));
+        Some(address.is_some_and(|address| details.signer.as_deref() == Some(address)));
     if output.signer_matches_statement == Some(false) {
-        output.warnings.push(
-            "The transaction signer differs from the statement address. The proof does not establish account ownership."
-                .to_string(),
-        );
+        let message = "The transaction signer differs from the statement address. The proof does not establish account ownership.".to_string();
+        if cli.allow_any_signer {
+            output.warnings.push(message);
+        } else {
+            output.failures.push(message);
+        }
     }
     if !details.signer_is_valid {
         output
-            .warnings
+            .failures
             .push("The first account key is not marked as a signer.".to_string());
     }
+    if !details.transaction_succeeded {
+        output
+            .failures
+            .push("The transaction failed on chain.".to_string());
+    }
 
-    Ok(
-        hash_matches.unwrap_or(true)
-            && output.memo_matches == Some(true)
-            && details.signer_is_valid,
-    )
+    Ok(hash_matches
+        && output.memo_matches == Some(true)
+        && details.signer_is_valid
+        && details.transaction_succeeded
+        && (cli.allow_any_signer || output.signer_matches_statement == Some(true)))
+}
+
+fn finish_without_transaction(
+    output: &mut Output,
+    has_hash_evidence: bool,
+    hash_matches: bool,
+) -> Result<bool, String> {
+    if !has_hash_evidence {
+        output
+            .failures
+            .push("Nothing to compare against. Provide a statement hash, an expected hash or a transaction signature.".to_string());
+    }
+    Ok(has_hash_evidence && hash_matches)
+}
+
+fn validate_hash(hash: &str) -> Result<(), String> {
+    if hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Ok(())
+    } else {
+        Err("The expected hash must contain 64 hexadecimal characters.".to_string())
+    }
 }
 
 fn load_statement(cli: &Cli) -> Result<Value, String> {
@@ -210,6 +264,9 @@ fn print_output(cli: &Cli, output: &Output) {
     } else {
         println!("Statement hash: not provided");
     }
+    if let Some(hash) = &output.expected_hash {
+        println!("Expected hash: {hash}");
+    }
     if let Some(reason) = &output.transaction_skipped {
         println!("Transaction check: skipped. {reason}");
     }
@@ -235,6 +292,14 @@ fn print_output(cli: &Cli, output: &Output) {
                 "invalid"
             }
         );
+        println!(
+            "Transaction status: {}",
+            if output.transaction_succeeded == Some(true) {
+                "successful"
+            } else {
+                "failed"
+            }
+        );
         if let Some(slot) = output.slot {
             println!("Slot: {slot}");
         }
@@ -247,6 +312,9 @@ fn print_output(cli: &Cli, output: &Output) {
     }
     for warning in &output.warnings {
         println!("Warning: {warning}");
+    }
+    for failure in &output.failures {
+        println!("Failure: {failure}");
     }
     println!("Result: {}", if output.valid { "valid" } else { "invalid" });
 }

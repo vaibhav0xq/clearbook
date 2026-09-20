@@ -44,7 +44,7 @@ paths:
       operationId: getAppConfig
       tags: [config]
       summary: Runtime configuration
-      description: Which data sources are live, which are simulated, and the demo wallets available.
+      description: Which data sources are live, which are simulated and which demo wallets are available.
       responses:
         "200":
           description: Configuration
@@ -85,7 +85,7 @@ paths:
       operationId: indexWallet
       tags: [wallets]
       summary: Index or refresh a wallet
-      description: Starts a background run that discovers token accounts, fetches history and rebuilds the ledger, and returns at once with the wallet in the indexing state. Poll the status endpoint until the state changes. A run already in progress is joined. Demo wallets load from a stored scenario in place.
+      description: Starts a background run that discovers token accounts, fetches history and rebuilds the ledger. It returns at once with the wallet in the indexing state. Poll the status endpoint until the state changes. A run already in progress is joined. Demo wallets load from a stored scenario in place.
       parameters:
         - $ref: "#/components/parameters/WalletAddress"
       responses:

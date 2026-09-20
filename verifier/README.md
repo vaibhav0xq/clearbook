@@ -29,7 +29,7 @@ verifier/target/release/clearbook-verify \
   --id STATEMENT_ID
 ```
 
-Use `--signature SIGNATURE` to check a specific transaction. Use `--rpc URL` to select another Solana JSON RPC endpoint. Use `--json` for structured output.
+Use `--signature SIGNATURE` to check a specific transaction. Use `--rpc URL` to select another Solana JSON RPC endpoint. Use `--expect-hash HASH` when the file has no hash field. Use `--allow-any-signer` only when another wallet knowingly signed the memo. Use `--json` for structured output.
 
 The verifier removes `id`, `hash`, `proof`, `ownedByViewer`, `csvUrl` and `pdfUrl` before hashing. It sorts object keys recursively and keeps array order. It uses compact JavaScript JSON number and string formatting.
 

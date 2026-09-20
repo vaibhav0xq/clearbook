@@ -3,6 +3,7 @@
   "result": {
     "blockTime": 1789936298,
     "meta": {
+      "err": null,
       "innerInstructions": [],
       "logMessages": [
         "Program ComputeBudget111111111111111111111111111111 invoke [1]",

@@ -66,6 +66,14 @@ class LotReplayTests(unittest.TestCase):
         row = result.open_lots()[0]
         self.assertIsNone(row["cost"])
 
+    def test_multiplier_is_not_derived_from_output_quantity(self):
+        item = event("buy", "buy", "2024-01-01", "10", "100")
+        del item["multiplierAtEvent"]
+        item["quantity"] = "50"
+        result = replay([item])
+        self.assertIsNone(result.lots[0].multiplier_at_open)
+        self.assertIsNone(result.open_lots()[0]["quantity"])
+
     def test_partial_relief_across_two_lots(self):
         result = replay(
             [
@@ -76,7 +84,7 @@ class LotReplayTests(unittest.TestCase):
         )
         self.assertEqual([row.lot_id for row in result.closed], ["a", "b"])
         self.assertEqual([row.cost for row in result.closed], [Decimal("40.00"), Decimal("120.00")])
-        self.assertEqual(result.open_lots()[0]["quantity"], Decimal("2"))
+        self.assertEqual(result.open_lots({"mint": Decimal("1")})[0]["quantity"], Decimal("2"))
 
 
 if __name__ == "__main__":

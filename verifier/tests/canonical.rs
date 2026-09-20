@@ -30,6 +30,38 @@ fn formats_numbers_like_json_stringify() {
 }
 
 #[test]
+fn formats_finite_double_boundaries_like_json_stringify() {
+    let cases = [
+        ("0", "0"),
+        ("-0", "0"),
+        ("1", "1"),
+        ("-1", "-1"),
+        ("1.5", "1.5"),
+        ("0.1", "0.1"),
+        ("100", "100"),
+        ("1e15", "1000000000000000"),
+        ("1000000000000000.2", "1000000000000000.2"),
+        ("-1843424983827315.2", "-1843424983827315.2"),
+        ("123456789012345680000", "123456789012345680000"),
+        ("1e21", "1e+21"),
+        ("1.5e21", "1.5e+21"),
+        ("1e-6", "0.000001"),
+        ("1e-7", "1e-7"),
+        ("1.5e-7", "1.5e-7"),
+        ("5e-324", "5e-324"),
+        ("1.7976931348623157e308", "1.7976931348623157e+308"),
+        ("0.000001234", "0.000001234"),
+        ("123.456e-9", "1.23456e-7"),
+        ("4.35", "4.35"),
+        ("0.3", "0.3"),
+    ];
+    for (input, expected) in cases {
+        let value: serde_json::Value = serde_json::from_str(input).unwrap();
+        assert_eq!(canonical_json(&value), expected, "input {input}");
+    }
+}
+
+#[test]
 fn keeps_unicode_and_json_escapes() {
     let value = json!("\u{0008}\u{000c}\n\r\t\"\\ café 東京");
     assert_eq!(

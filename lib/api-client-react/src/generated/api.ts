@@ -171,7 +171,7 @@ export const getGetAppConfigUrl = () => {
 }
 
 /**
- * Which data sources are live, which are simulated, and the demo wallets available.
+ * Which data sources are live, which are simulated and which demo wallets are available.
  * @summary Runtime configuration
  */
 export const getAppConfig = async ( options?: Parameters<typeof customFetch>[1]): Promise<AppConfig> => {
@@ -403,7 +403,7 @@ export const getIndexWalletUrl = (address: string,) => {
 }
 
 /**
- * Starts a background run that discovers token accounts, fetches history and rebuilds the ledger, and returns at once with the wallet in the indexing state. Poll the status endpoint until the state changes. A run already in progress is joined. Demo wallets load from a stored scenario in place.
+ * Starts a background run that discovers token accounts, fetches history and rebuilds the ledger. It returns at once with the wallet in the indexing state. Poll the status endpoint until the state changes. A run already in progress is joined. Demo wallets load from a stored scenario in place.
  * @summary Index or refresh a wallet
  */
 export const indexWallet = async (address: string, options?: Parameters<typeof customFetch>[1]): Promise<WalletStatus> => {

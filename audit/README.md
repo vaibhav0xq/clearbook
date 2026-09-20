@@ -13,9 +13,10 @@ Run against a local API:
 ```text
 python3 audit/audit.py --api http://localhost:8080/api --wallet demo-trader
 python3 audit/audit.py --api http://localhost:8080/api --wallet demo-trader --method hifo --tax-year 2026
+python3 audit/audit.py --api http://localhost:8080/api --wallet demo-trader --viewer browser-id
 ```
 
-The API check reads ledger activity, corporate action events, lots and tax lot CSV exports. No request headers are required.
+The API check reads every ledger activity page, reported multipliers, lots and tax lot CSV exports. The optional viewer value is sent in the `x-clearbook-viewer` header on every request.
 
 Run against saved JSON:
 

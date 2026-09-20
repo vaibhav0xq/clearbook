@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Iterable
 
 
@@ -27,7 +27,7 @@ def instant(value: str | datetime) -> datetime:
 
 
 def money(value: Decimal) -> Decimal:
-    return value.quantize(CENT)
+    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def is_long_term(opened: datetime, closed: datetime) -> bool:
@@ -74,7 +74,7 @@ class ClosedLot:
     symbol: str
     opened_at: datetime | None
     closed_at: datetime
-    quantity: Decimal
+    quantity: Decimal | None
     proceeds: Decimal | None
     cost: Decimal | None
     gain: Decimal | None
@@ -92,13 +92,13 @@ class Replay:
         for lot in self.lots:
             if lot.remaining <= ZERO:
                 continue
-            multiplier = current.get(lot.mint, lot.multiplier_at_open or Decimal("1"))
+            multiplier = current.get(lot.mint)
             rows.append(
                 {
                     "id": lot.id,
                     "mint": lot.mint,
                     "symbol": lot.symbol,
-                    "quantity": lot.remaining * multiplier,
+                    "quantity": None if multiplier is None else lot.remaining * multiplier,
                     "cost": lot.remaining_cost,
                 }
             )
@@ -113,14 +113,8 @@ def _event_quantity(event: dict[str, Any]) -> Decimal:
     return decimal(event.get("rawQuantity")) or ZERO
 
 
-def _event_multiplier(event: dict[str, Any], quantity: Decimal) -> Decimal:
-    explicit = decimal(event.get("multiplierAtEvent"))
-    if explicit is not None:
-        return explicit
-    exposure = decimal(event.get("quantity"))
-    if exposure is not None and quantity:
-        return abs(exposure / quantity)
-    return Decimal("1")
+def _event_multiplier(event: dict[str, Any]) -> Decimal | None:
+    return decimal(event.get("multiplierAtEvent"))
 
 
 def _sort_key(event: dict[str, Any]) -> tuple[Any, ...]:
@@ -142,7 +136,7 @@ def replay(events: Iterable[dict[str, Any]], method: str = "fifo") -> Replay:
     for event in sorted(events, key=_sort_key):
         kind = event.get("kind", "unknown")
         quantity = _event_quantity(event)
-        multiplier = _event_multiplier(event, quantity)
+        multiplier = _event_multiplier(event)
         mint = str(event["mint"])
         symbol = str(event.get("symbol") or mint[:6])
         at = instant(event["blockTime"])
@@ -159,7 +153,7 @@ def replay(events: Iterable[dict[str, Any]], method: str = "fifo") -> Replay:
             elif kind == "transfer_in":
                 lot_kind = "transfer_in"
                 reference = decimal(event.get("referencePriceUsd"))
-                if reference is not None:
+                if reference is not None and multiplier is not None:
                     cost = reference * quantity * multiplier
                     status = "estimated"
             elif kind == "wrapper_swap_in":
@@ -243,7 +237,7 @@ def replay(events: Iterable[dict[str, Any]], method: str = "fifo") -> Replay:
                         symbol,
                         None if lot.kind == "opening_balance" else lot.opened_at,
                         at,
-                        take * multiplier,
+                        None if multiplier is None else take * multiplier,
                         None if proceeds is None else money(proceeds),
                         None if cost is None else money(cost),
                         None,
@@ -266,6 +260,8 @@ def replay(events: Iterable[dict[str, Any]], method: str = "fifo") -> Replay:
 def current_multipliers(corporate_events: Iterable[dict[str, Any]]) -> dict[str, Decimal]:
     latest: dict[str, tuple[datetime, Decimal]] = {}
     for event in corporate_events:
+        if event.get("kind") in {"pending_multiplier", "multiplier_pending"}:
+            continue
         value = decimal(event.get("newMultiplier"))
         at_value = event.get("effectiveAt") or event.get("detectedAt")
         if value is None or not at_value:
@@ -275,3 +271,31 @@ def current_multipliers(corporate_events: Iterable[dict[str, Any]]) -> dict[str,
         if mint not in latest or at > latest[mint][0]:
             latest[mint] = (at, value)
     return {mint: value for mint, (_, value) in latest.items()}
+
+
+def multiplier_at(
+    mint: str,
+    at: datetime,
+    corporate_events: Iterable[dict[str, Any]],
+    current: dict[str, Decimal],
+) -> Decimal | None:
+    changes = []
+    for event in corporate_events:
+        if str(event.get("mint")) != mint:
+            continue
+        if event.get("kind") in {"pending_multiplier", "multiplier_pending"}:
+            continue
+        effective = event.get("effectiveAt") or event.get("detectedAt")
+        previous = decimal(event.get("previousMultiplier"))
+        new = decimal(event.get("newMultiplier"))
+        if effective and previous is not None and new is not None:
+            changes.append((instant(effective), previous, new))
+    changes.sort(key=lambda item: item[0])
+    if not changes:
+        return current.get(mint)
+    value = changes[0][1]
+    for effective, _, new in changes:
+        if effective > at:
+            break
+        value = new
+    return value

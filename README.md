@@ -82,7 +82,7 @@ pnpm --filter @workspace/ledger run test    # accounting engine tests
 | `API_PROXY_TARGET` | no | Local development only, forwards `/api` from Vite to the API |
 | `LOG_LEVEL` | no | API log level |
 
-No key is ever sent to the browser. `GET /api/config` reports which sources are live so the UI can label fallbacks.
+All three processes read `.env` from the repository root. Values already present in the environment take precedence. No key is ever sent to the browser. `GET /api/config` reports which sources are live so the UI can label fallbacks.
 
 ## Demo ledgers
 
