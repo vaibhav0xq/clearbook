@@ -12,8 +12,10 @@ export interface StatementSummary {
   id: string;
   address: string;
   title: string;
-  periodStart: Date;
-  periodEnd: Date;
+  /** Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash */
+  periodStart: string;
+  /** Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash */
+  periodEnd: string;
   method: CostMethod;
   generatedAt: Date;
   hash: string;

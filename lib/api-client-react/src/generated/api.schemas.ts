@@ -608,7 +608,9 @@ export interface StatementSummary {
   id: string;
   address: string;
   title: string;
+  /** Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash */
   periodStart: string;
+  /** Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash */
   periodEnd: string;
   method: CostMethod;
   generatedAt: string;
@@ -702,7 +704,9 @@ export interface Statement {
   displayAddress: string;
   isDemo: boolean;
   title: string;
+  /** Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash */
   periodStart: string;
+  /** Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash */
   periodEnd: string;
   method: CostMethod;
   generatedAt: string;

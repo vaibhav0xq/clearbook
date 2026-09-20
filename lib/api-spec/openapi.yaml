@@ -1378,10 +1378,10 @@ components:
           type: string
         periodStart:
           type: string
-          format: date
+          description: Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash
         periodEnd:
           type: string
-          format: date
+          description: Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash
         method:
           $ref: "#/components/schemas/CostMethod"
         generatedAt:
@@ -1517,10 +1517,10 @@ components:
           type: string
         periodStart:
           type: string
-          format: date
+          description: Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash
         periodEnd:
           type: string
-          format: date
+          description: Calendar day in YYYY-MM-DD form, exactly as covered by the statement hash
         method:
           $ref: "#/components/schemas/CostMethod"
         generatedAt:
