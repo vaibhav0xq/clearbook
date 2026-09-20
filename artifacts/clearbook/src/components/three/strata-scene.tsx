@@ -45,9 +45,14 @@ export const COLOR_EDGE = new THREE.Color("#c9ccd4");
 export const COLOR_INK = new THREE.Color("#f2f1ec");
 export const COLOR_BG = "#0a0a0b";
 
-/** A stage that is much wider than tall: the band above the reading panel on small screens. */
+/** A stage that is much wider than tall: the ledger band under the top bar. */
 export function isStageBand(aspect: number): boolean {
   return aspect > 1.6;
+}
+
+/** A band on a wide screen, seen almost frontally so the row reads as a skyline across the width. */
+export function isWideBand(aspect: number): boolean {
+  return aspect > 2.6;
 }
 
 export const MONO_FONT = `${import.meta.env.BASE_URL}fonts/GeistMono-Regular.ttf`;
@@ -82,10 +87,11 @@ interface LayerState {
   born: number | null;
 }
 
-export function useLayout(columns: StrataColumn[]) {
+/** Column placements. `spread` widens the pitch, used by the wide ledger band so the row fills its width. */
+export function useLayout(columns: StrataColumn[], spread = 1) {
   return useMemo(() => {
     const n = columns.length;
-    const pitch = n > 9 ? PITCH * (9 / n) : PITCH;
+    const pitch = (n > 9 ? PITCH * (9 / n) : PITCH) * spread;
     const maxValue = Math.max(1, ...columns.map((c) => c.layers.reduce((s, l) => s + l.value, 0)));
     const scale = MAX_STACK / maxValue;
     const placements: LayerPlacement[] = [];
@@ -105,7 +111,7 @@ export function useLayout(columns: StrataColumn[]) {
     const totalWidth = Math.max(pitch, (n - 1) * pitch + WIDTH);
     const tallest = Math.max(1, ...heights.values());
     return { placements, heights, totalWidth, tallest, pitch };
-  }, [columns]);
+  }, [columns, spread]);
 }
 
 /** Smoothstep style visibility for the engraved faces: fully legible inside `near`, gone past `far`. */
@@ -331,7 +337,7 @@ function Rig({
   useFrame((state, delta) => {
     const aspect = size.width / Math.max(1, size.height);
     const persp = camera as THREE.PerspectiveCamera;
-    const wantedFov = mode === "stage" ? (aspect < 0.9 ? 38 : 32) : 30;
+    const wantedFov = mode === "stage" ? (aspect < 0.9 ? 38 : isWideBand(aspect) ? 26 : 32) : 30;
     if (persp.fov !== wantedFov) {
       persp.fov = wantedFov;
       persp.updateProjectionMatrix();
@@ -348,31 +354,38 @@ function Rig({
       // Short wide stages (the band above the reading panel on small screens) are viewed more
       // frontally so the row spreads across the width, and keep the bottom clear for the caption
       // and the top clear for the brand and wallet controls.
+      // Every stage is a band under the top bar. The identity sits in its top left corner, the
+      // summary in the bottom left and the rewind control in the bottom right, so the frame box
+      // keeps those corners clear. A wide band is seen almost frontally and lets the columns run
+      // tall between the overlays; a phone band is nearly square and keeps the top third clear.
       const band = isStageBand(aspect);
-      const yaw = band ? 0.5 : 0.85;
-      const el = band ? 0.26 : 0.3;
-      const wide = aspect > 1.25;
-      const box: FrameBox = band
-        ? { left: -0.84, right: 0.84, bottom: -0.4, top: 0.78 }
-        : wide
-          ? { left: -0.88, right: 0.88, bottom: -0.6, top: 0.86 }
-          : { left: -0.9, right: 0.9, bottom: -0.52, top: 0.84 };
+      const skyline = isWideBand(aspect);
+      const yaw = skyline ? 0.36 : band ? 0.5 : 0.62;
+      const el = skyline ? 0.21 : band ? 0.26 : 0.28;
+      const box: FrameBox = skyline
+        ? { left: -0.8, right: 0.8, bottom: -0.56, top: 0.84 }
+        : band
+          ? { left: -0.84, right: 0.84, bottom: -0.45, top: 0.6 }
+          : { left: -0.86, right: 0.86, bottom: -0.5, top: 0.52 };
       // The point arrays are rebuilt whenever heights or placements change, so their identity is
       // the geometry revision. The key covers the viewport and which column is focused.
-      const pts = focusPoints ?? framePoints;
-      const key = `${size.width}x${size.height}|${focusKey}`;
+      // The wide band keeps the whole row in frame and lets the highlight carry the focus, so the
+      // camera holds still while the reader moves between positions.
+      const closeUp = skyline ? null : focusPoints;
+      const pts = closeUp ?? framePoints;
+      const key = `${size.width}x${size.height}|${closeUp ? focusKey : ""}`;
       if ((fitted.current.key !== key || fitted.current.pts !== pts) && pts.length > 0) {
         const look = fitted.current.look;
-        look.set(0, focusPoints ? 0 : tallest * 0.35, 0);
-        if (focusPoints) {
+        look.set(0, closeUp ? 0 : tallest * 0.35, 0);
+        if (closeUp) {
           // Start from the column's own centre so the recentring converges in two passes.
           let sx = 0;
           let sy = 0;
-          for (let i = 0; i < focusPoints.length; i += 3) {
-            sx += focusPoints[i];
-            sy += focusPoints[i + 1];
+          for (let i = 0; i < closeUp.length; i += 3) {
+            sx += closeUp[i];
+            sy += closeUp[i + 1];
           }
-          look.set(sx / (focusPoints.length / 3), sy / (focusPoints.length / 3), 0);
+          look.set(sx / (closeUp.length / 3), sy / (closeUp.length / 3), 0);
         }
         fitted.current.distance = fitFrame(pts, yaw, el, look, persp.fov, aspect, box, scratch);
         fitted.current.key = key;
@@ -391,7 +404,7 @@ function Rig({
         target.copy(lookAt);
         settled.current = true;
       }
-      const k = focusPoints ? 3 : 2.2;
+      const k = closeUp ? 3 : 2.2;
       camera.position.x = THREE.MathUtils.damp(camera.position.x, desired.x, k, delta);
       camera.position.y = THREE.MathUtils.damp(camera.position.y, desired.y, k, delta);
       camera.position.z = THREE.MathUtils.damp(camera.position.z, desired.z, k, delta);
@@ -469,7 +482,9 @@ function Layers({
   onSelectColumn,
   reduced = false,
 }: Omit<StrataSceneProps, "lowPower" | "frameloop">) {
-  const { placements, heights, totalWidth, tallest } = useLayout(columns);
+  const stageSize = useThree((state) => state.size);
+  const stageAspect = stageSize.width / Math.max(1, stageSize.height);
+  const { placements, heights, totalWidth, tallest } = useLayout(columns, mode === "stage" && isWideBand(stageAspect) ? 1.6 : 1);
   const meshes = useRef(new Map<string, THREE.Mesh>());
   const materials = useRef(new Map<string, THREE.MeshPhysicalMaterial>());
   const edgeMaterials = useRef(new Map<string, THREE.LineBasicMaterial>());
@@ -601,11 +616,10 @@ function Layers({
     }
   });
 
-  const viewportSize = useThree((state) => state.size);
-  // Values under the symbols need room. A short wide stage draws the columns small, so it keeps the symbols only.
-  const showValues = mode !== "hero" && !isStageBand(viewportSize.width / Math.max(1, viewportSize.height));
+  // Values under the symbols need room. A short stage draws the columns small, so it keeps the symbols only.
+  const showValues = mode !== "hero" && stageSize.height >= 300 && stageSize.width >= 1024;
   // On narrow hero viewports the copy sits over the scene, so labels stay out of the way.
-  const showLabels = !(mode === "hero" && viewportSize.width / Math.max(1, viewportSize.height) < 1.15);
+  const showLabels = !(mode === "hero" && stageAspect < 1.15);
 
   return (
     <group>
@@ -661,10 +675,8 @@ function Layers({
       ))}
 
       {showLabels &&
-        columns.map((c, i) => {
-          const n = columns.length;
-          const pitch = n > 9 ? PITCH * (9 / n) : PITCH;
-          const x = (i - (n - 1) / 2) * pitch;
+        columns.map((c) => {
+          const x = placements.find((p) => p.column.mint === c.mint)?.x ?? 0;
           const h = heights.get(c.mint) ?? 0;
           const activeMint = hovered?.column.mint ?? highlightMint ?? focusMint ?? null;
           const active = activeMint === c.mint;

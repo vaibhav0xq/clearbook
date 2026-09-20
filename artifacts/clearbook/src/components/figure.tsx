@@ -17,12 +17,16 @@ interface FigureProps {
   className?: string;
 }
 
+/**
+ * A statement scale. The largest figure is the account value at the top of the portfolio, sized
+ * like a heading rather than a poster, so tables and the figure read at one distance.
+ */
 const SIZE: Record<NonNullable<FigureProps["size"]>, string> = {
-  sm: "text-[17px] desk:text-[18px]",
-  md: "text-[22px] desk:text-[26px]",
-  lg: "text-[30px] md:text-[34px] desk:text-[38px]",
-  xl: "text-[44px] md:text-[64px] desk:text-[72px] leading-[0.95] tracking-[-0.03em]",
-  xxl: "text-[56px] md:text-[84px] xl:text-[96px] desk:text-[116px] leading-[0.92] tracking-[-0.04em]",
+  sm: "text-[15px] desk:text-[16px]",
+  md: "text-[20px] desk:text-[22px]",
+  lg: "text-[24px] md:text-[26px] desk:text-[28px]",
+  xl: "text-[30px] md:text-[34px] desk:text-[38px] tracking-[-0.02em]",
+  xxl: "text-[36px] md:text-[42px] desk:text-[48px] leading-[0.95] tracking-[-0.025em]",
 };
 
 export function Figure({ label, value, format = formatUSD, sub, subTone, tone = false, size = "md", align = "left", className }: FigureProps) {
@@ -38,7 +42,7 @@ export function Figure({ label, value, format = formatUSD, sub, subTone, tone = 
   const isNumeric = typeof value === "number" || value === null || value === undefined;
 
   return (
-    <div className={cn("flex flex-col gap-2", align === "right" && "items-end text-right", className)}>
+    <div className={cn("flex flex-col gap-1.5", align === "right" && "items-end text-right", className)}>
       {label && <span className="label">{label}</span>}
       <span className={cn("text-foreground leading-none tracking-tight", SIZE[size])}>
         {isNumeric ? (
@@ -47,7 +51,7 @@ export function Figure({ label, value, format = formatUSD, sub, subTone, tone = 
           <span className="num">{value}</span>
         )}
       </span>
-      {sub && <span className={cn("num text-[12px] desk:text-[13px]", subColor)}>{sub}</span>}
+      {sub && <span className={cn("num text-[12px]", subColor)}>{sub}</span>}
     </div>
   );
 }

@@ -24,11 +24,11 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-8 md:mb-10", className)}>
-      <div className="flex flex-col gap-3">
+    <div className={cn("mb-7 flex flex-col gap-4 md:mb-8 md:flex-row md:items-end md:justify-between", className)}>
+      <div className="flex flex-col gap-2">
         {eyebrow && <span className="label text-primary">{eyebrow}</span>}
-        <h1 className="display text-[40px] md:text-[56px] desk:text-[64px] text-foreground">{title}</h1>
-        {description && <p className="text-[15px] desk:text-[16px] text-muted-foreground max-w-2xl leading-relaxed">{description}</p>}
+        <h1 className="display text-[26px] text-foreground md:text-[30px]">{title}</h1>
+        {description && <p className="max-w-3xl text-[14px] leading-relaxed text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">{actions}</div>}
     </div>
@@ -37,9 +37,9 @@ export function PageHeader({
 
 export function SectionTitle({ children, aside, className }: { children: ReactNode; aside?: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex items-baseline justify-between gap-4 mb-4", className)}>
-      <h2 className="display text-[26px] md:text-[30px] desk:text-[34px] text-foreground">{children}</h2>
-      {aside && <div className="text-[12px] desk:text-[13px] text-muted-foreground">{aside}</div>}
+    <div className={cn("mb-4 flex items-baseline justify-between gap-4", className)}>
+      <h2 className="display text-[20px] text-foreground md:text-[22px]">{children}</h2>
+      {aside && <div className="text-[12px] text-muted-foreground">{aside}</div>}
     </div>
   );
 }
@@ -76,14 +76,14 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <Panel className={cn("px-8 py-16 text-center flex flex-col items-center gap-4", className)}>
+    <Panel className={cn("flex flex-col items-center gap-4 px-8 py-14 text-center", className)}>
       {Icon && (
         <span className="flex h-11 w-11 items-center justify-center rounded-full border hairline bg-white/[0.03]">
           <Icon className="h-5 w-5 text-muted-foreground" />
         </span>
       )}
-      <h3 className="display text-[28px] text-foreground">{title}</h3>
-      {description && <p className="text-sm text-muted-foreground max-w-md leading-relaxed">{description}</p>}
+      <h3 className="display text-[20px] text-foreground">{title}</h3>
+      {description && <p className="max-w-md text-[13px] leading-relaxed text-muted-foreground">{description}</p>}
       {action}
     </Panel>
   );
@@ -91,10 +91,10 @@ export function EmptyState({
 
 export function ErrorState({ title = "Something did not load", message, className }: { title?: string; message?: string; className?: string }) {
   return (
-    <Panel className={cn("px-8 py-14 text-center flex flex-col items-center gap-4", className)}>
+    <Panel className={cn("flex flex-col items-center gap-4 px-8 py-12 text-center", className)}>
       <AlertCircle className="h-6 w-6 text-destructive" />
-      <h3 className="display text-[28px] text-foreground">{title}</h3>
-      {message && <p className="text-sm text-muted-foreground max-w-md leading-relaxed break-words">{message}</p>}
+      <h3 className="display text-[20px] text-foreground">{title}</h3>
+      {message && <p className="max-w-md break-words text-[13px] leading-relaxed text-muted-foreground">{message}</p>}
     </Panel>
   );
 }

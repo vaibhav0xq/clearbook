@@ -67,7 +67,7 @@ export function Rewind({ className }: { className?: string }) {
           : null;
 
   return (
-    <div className={cn("pointer-events-auto absolute inset-x-0 bottom-[8.75rem] z-20 hidden px-6 md:px-8 lg:block", className)}>
+    <div className={cn("pointer-events-auto w-full", className)}>
       <div className="flex items-end justify-between text-[11px]">
         <span className="flex items-baseline gap-2">
           <span className="eyebrow !text-[10px] text-foreground/45">Rewind</span>

@@ -3,7 +3,7 @@ import { Link, useRoute } from "wouter";
 import { ExternalLink, ShieldCheck, Download, Clock, AlertTriangle, Copy, Check, ArrowUpRight } from "lucide-react";
 
 import { useGetStatement, usePrepareNotarization, useSubmitNotarization, getGetStatementQueryKey, getPrepareNotarizationQueryKey } from "@workspace/api-client-react";
-import { formatUSD, formatQuantity, formatDate, formatDateTime, formatMultiplier, issuerLabel, formatDay } from "@/lib/format";
+import { formatUSD, formatQuantity, formatDateTime, formatMultiplier, issuerLabel, formatDay } from "@/lib/format";
 import { useStageContext, useStage } from "@/components/layout/stage";
 import { NotarizeButton } from "@/components/notarize-button";
 import { useWalletSession } from "@/lib/wallet";
@@ -131,8 +131,8 @@ export default function StatementDetail() {
                   <Link href={`/w/${address}/statements`} className="label text-primary transition-colors hover:text-foreground">
                     Statements
                   </Link>
-                  <h1 className="display text-[40px] leading-none text-foreground md:text-[56px] desk:text-[64px]">{statement.title}</h1>
-                  <div className="mt-2 flex flex-col gap-1.5 text-[15px] text-muted-foreground">
+                  <h1 className="display text-[26px] leading-tight text-foreground md:text-[30px]">{statement.title}</h1>
+                  <div className="mt-1 flex flex-col gap-1 text-[14px] text-muted-foreground">
                     <span className="num">
                       {formatDay(statement.periodStart)} to {formatDay(statement.periodEnd)}
                     </span>
@@ -170,101 +170,103 @@ export default function StatementDetail() {
                 </div>
               </div>
 
-              <Panel className="relative flex flex-col gap-4 overflow-hidden p-6 md:flex-row md:items-center md:justify-between md:p-8">
-                <div className="absolute left-0 top-0 h-full w-1 bg-primary" />
-                <div className="flex min-w-0 flex-col gap-2">
-                  <span className="label">Document hash, SHA-256</span>
-                  <span className="num break-all text-[15px] tracking-[0.06em] text-foreground md:text-[18px]">{statement.hash}</span>
-                  <span className="text-[12px] text-muted-foreground">Computed over the statement body. The CSV and PDF exports are built from the same rows.</span>
-                </div>
-                <CopyHash value={statement.hash} />
-              </Panel>
-            </div>
-          </Reveal>
-
-          {/* Proof */}
-          <Reveal delay={0.1}>
-            <Panel
-              className={cn(
-                "flex flex-col justify-between gap-8 border p-6 md:flex-row md:items-center md:p-8",
-                statement.proof.status === "confirmed"
-                  ? "border-success/30 bg-success/[0.03]"
-                  : statement.proof.status === "simulated"
-                    ? "border-primary/30 bg-primary/[0.03]"
-                    : statement.proof.status === "failed"
-                      ? "border-destructive/30 bg-destructive/[0.03]"
-                      : "hairline",
-              )}
-            >
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2.5">
-                  {statement.proof.status === "confirmed" ? (
-                    <ShieldCheck className="h-5 w-5 text-success" />
-                  ) : statement.proof.status === "simulated" ? (
-                    <ShieldCheck className="h-5 w-5 text-primary" />
-                  ) : statement.proof.status === "failed" ? (
-                    <AlertTriangle className="h-5 w-5 text-destructive" />
-                  ) : (
-                    <Clock className="h-5 w-5 text-muted-foreground" />
-                  )}
-                  <h3 className="display text-[22px] text-foreground md:text-[26px]">{PROOF_TITLE[statement.proof.status] ?? "Proof"}</h3>
-                </div>
-                <p className="max-w-xl text-[14px] leading-relaxed text-muted-foreground">
-                  {statement.proof.status === "none"
-                    ? statement.isDemo
-                      ? "Post the document hash in a memo transaction from the account's wallet. Anyone can then compare the statement against the memo without trusting this site. A demo ledger has no wallet, so it records a simulated proof."
-                      : "Post the document hash in a memo transaction from this account's wallet. Anyone can then compare the statement against the memo without trusting this site."
-                    : statement.proof.message}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
-                  <span>
-                    Memo <span className="num break-all text-foreground/80">{statement.proof.memo}</span>
-                  </span>
-                  {statement.proof.signer && (
-                    <span>
-                      Signer <span className="num text-foreground/80">{statement.proof.signer}</span>
-                    </span>
-                  )}
-                  {statement.proof.confirmedAt && (
-                    <span>
-                      Confirmed <span className="num text-foreground/80">{formatDateTime(statement.proof.confirmedAt)}</span>
-                    </span>
-                  )}
-                </div>
-                {statement.proof.explorerUrl && (
-                  <a
-                    href={statement.proof.explorerUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex w-fit items-center gap-1.5 text-[12px] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
-                  >
-                    View on explorer <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-
-              <div className="flex shrink-0 flex-col gap-2 md:items-end">
-                {canNotarize && notarizationPayload && (statement.isDemo || payer) && <NotarizeButton payload={notarizationPayload} onSubmit={handleNotarizeSubmit} />}
-                {canNotarize && notarizationPayload && !statement.isDemo && !payer && (
-                  <span className="max-w-[240px] text-[12px] leading-relaxed text-muted-foreground md:text-right">
-                    {wallet.connected ? "The connected wallet does not own this ledger." : "Connect the wallet that owns this ledger to sign the memo."}
-                  </span>
-                )}
-                {canNotarize && !notarizationPayload && isPayloadLoading && (
-                  <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5 animate-spin" /> Preparing the memo transaction
-                  </span>
-                )}
-                {canNotarize && !notarizationPayload && notarizationError && (
-                  <div className="flex flex-col gap-1.5 md:items-end">
-                    <span className="max-w-[240px] break-words text-right text-[12px] text-destructive">{notarizationError.data?.message ?? notarizationError.message}</span>
-                    <button type="button" onClick={() => refetchPayload()} className="text-[12px] text-foreground underline underline-offset-4 transition-colors hover:text-primary">
-                      Try again
-                    </button>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Panel className="relative flex flex-col gap-4 overflow-hidden p-6 md:justify-between md:p-8">
+                  <div className="absolute left-0 top-0 h-full w-1 bg-primary" />
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <span className="label">Document hash, SHA-256</span>
+                    <span className="num break-all text-[13px] tracking-[0.04em] text-foreground md:text-[14px]">{statement.hash}</span>
+                    <span className="text-[12px] text-muted-foreground">Computed over the statement body. The CSV and PDF exports are built from the same rows.</span>
                   </div>
-                )}
+                  <div className="mt-2 flex self-start">
+                    <CopyHash value={statement.hash} />
+                  </div>
+                </Panel>
+
+                {/* Proof */}
+                <Panel
+                  className={cn(
+                    "flex flex-col justify-between gap-8 border p-6 md:p-8",
+                    statement.proof.status === "confirmed"
+                      ? "border-success/30 bg-success/[0.03]"
+                      : statement.proof.status === "simulated"
+                        ? "border-primary/30 bg-primary/[0.03]"
+                        : statement.proof.status === "failed"
+                          ? "border-destructive/30 bg-destructive/[0.03]"
+                          : "hairline",
+                  )}
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2.5">
+                      {statement.proof.status === "confirmed" ? (
+                        <ShieldCheck className="h-5 w-5 text-success" />
+                      ) : statement.proof.status === "simulated" ? (
+                        <ShieldCheck className="h-5 w-5 text-primary" />
+                      ) : statement.proof.status === "failed" ? (
+                        <AlertTriangle className="h-5 w-5 text-destructive" />
+                      ) : (
+                        <Clock className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <h3 className="display text-[20px] text-foreground">{PROOF_TITLE[statement.proof.status] ?? "Proof"}</h3>
+                    </div>
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                      {statement.proof.status === "none"
+                        ? statement.isDemo
+                          ? "Post the document hash in a memo transaction from the account's wallet. Anyone can then compare the statement against the memo without trusting this site. A demo ledger has no wallet, so it records a simulated proof."
+                          : "Post the document hash in a memo transaction from this account's wallet. Anyone can then compare the statement against the memo without trusting this site."
+                        : statement.proof.message}
+                    </p>
+                    <div className="flex flex-col gap-1.5 text-[12px] text-muted-foreground">
+                      <span>
+                        Memo <span className="num break-all text-foreground/80">{statement.proof.memo}</span>
+                      </span>
+                      {statement.proof.signer && (
+                        <span>
+                          Signer <span className="num text-foreground/80">{statement.proof.signer}</span>
+                        </span>
+                      )}
+                      {statement.proof.confirmedAt && (
+                        <span>
+                          Confirmed <span className="num text-foreground/80">{formatDateTime(statement.proof.confirmedAt)}</span>
+                        </span>
+                      )}
+                    </div>
+                    {statement.proof.explorerUrl && (
+                      <a
+                        href={statement.proof.explorerUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-flex w-fit items-center gap-1.5 text-[12px] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      >
+                        View on explorer <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 flex-col gap-2">
+                    {canNotarize && notarizationPayload && (statement.isDemo || payer) && <NotarizeButton payload={notarizationPayload} onSubmit={handleNotarizeSubmit} />}
+                    {canNotarize && notarizationPayload && !statement.isDemo && !payer && (
+                      <span className="text-[12px] leading-relaxed text-muted-foreground">
+                        {wallet.connected ? "The connected wallet does not own this ledger." : "Connect the wallet that owns this ledger to sign the memo."}
+                      </span>
+                    )}
+                    {canNotarize && !notarizationPayload && isPayloadLoading && (
+                      <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                        <Clock className="h-3.5 w-3.5 animate-spin" /> Preparing the memo transaction
+                      </span>
+                    )}
+                    {canNotarize && !notarizationPayload && notarizationError && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="break-words text-[12px] text-destructive">{notarizationError.data?.message ?? notarizationError.message}</span>
+                        <button type="button" onClick={() => refetchPayload()} className="self-start text-[12px] text-foreground underline underline-offset-4 transition-colors hover:text-primary">
+                          Try again
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </Panel>
               </div>
-            </Panel>
+            </div>
           </Reveal>
 
           {/* Summary */}
@@ -313,13 +315,13 @@ export default function StatementDetail() {
               <DataTable>
                 <TableHeader>
                   <TableHead>Asset</TableHead>
+                  <TableHead align="right" className="hidden lg:table-cell">Opening</TableHead>
                   <TableHead align="right">Quantity</TableHead>
                   <TableHead align="right">Close mark</TableHead>
+                  <TableHead align="right" className="hidden md:table-cell">Cost basis</TableHead>
                   <TableHead align="right">Value</TableHead>
-                  <TableHead align="right" className="hidden desk:table-cell">
-                    Cost basis
-                  </TableHead>
                   <TableHead align="right">Unrealized</TableHead>
+                  <TableHead align="right" className="hidden lg:table-cell">Realized</TableHead>
                 </TableHeader>
                 <TableBody>
                   {statement.positions.map((pos, i) => (
@@ -327,7 +329,7 @@ export default function StatementDetail() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <span className="flex items-center gap-2">
-                            <span className="num text-[15px] tracking-[0.08em] text-foreground">{pos.symbol}</span>
+                            <span className="num text-[14px] tracking-[0.06em] text-foreground">{pos.symbol}</span>
                             {pos.basisStatus !== "complete" && <Pill tone="loss">{pos.basisStatus === "unknown" ? "Unknown cost" : "Partial cost"}</Pill>}
                           </span>
                           <span className="text-[12px] text-muted-foreground">
@@ -335,11 +337,19 @@ export default function StatementDetail() {
                           </span>
                         </div>
                       </TableCell>
+                      <TableCell align="right" className="hidden lg:table-cell">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="num text-foreground">{formatQuantity(pos.openingQuantity)}</span>
+                          {pos.multiplier !== 1 && (
+                            <span className="num text-[11px] text-muted-foreground">{formatMultiplier(pos.multiplier)}</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
                           <span className="num text-foreground">{formatQuantity(pos.closingQuantity)}</span>
-                          <span className="num text-[11px] text-muted-foreground">
-                            {Math.abs(pos.openingQuantity - pos.closingQuantity) < 1e-9 ? "Unchanged in period" : `From ${formatQuantity(pos.openingQuantity)}`}
+                          <span className="num text-[11px] text-muted-foreground lg:hidden">
+                            {Math.abs(pos.openingQuantity - pos.closingQuantity) < 1e-9 ? "Unchanged" : `From ${formatQuantity(pos.openingQuantity)}`}
                             {pos.multiplier !== 1 ? `, ${formatMultiplier(pos.multiplier)}` : ""}
                           </span>
                         </div>
@@ -350,14 +360,20 @@ export default function StatementDetail() {
                           <span className="text-[11px] text-muted-foreground">{pos.priceSource}</span>
                         </div>
                       </TableCell>
+                      <TableCell align="right" className="hidden md:table-cell">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={cn("num", pos.costBasis === null ? "text-muted-foreground" : "text-foreground")}>
+                            {pos.costBasis === null ? "Unknown" : formatUSD(pos.costBasis)}
+                          </span>
+                        </div>
+                      </TableCell>
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
                           <span className="num text-foreground">{formatUSD(pos.closingValue)}</span>
-                          <span className="num text-[11px] text-muted-foreground desk:hidden">{pos.costBasis === null ? "Unknown cost" : `${formatUSD(pos.costBasis)} cost`}</span>
+                          <span className="num text-[11px] text-muted-foreground md:hidden">
+                            {pos.costBasis === null ? "Unknown cost" : `${formatUSD(pos.costBasis)} cost`}
+                          </span>
                         </div>
-                      </TableCell>
-                      <TableCell align="right" className="hidden desk:table-cell">
-                        <span className={cn("num", pos.costBasis === null ? "text-muted-foreground" : "text-foreground")}>{pos.costBasis === null ? "Unknown" : formatUSD(pos.costBasis)}</span>
                       </TableCell>
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
@@ -365,9 +381,20 @@ export default function StatementDetail() {
                             {formatUSD(pos.unrealizedPnl)}
                           </span>
                           {pos.realizedPnlInPeriod !== 0 && (
-                            <span className={cn("num text-[11px]", pos.realizedPnlInPeriod > 0 ? "text-success" : "text-destructive")}>
+                            <span className={cn("num text-[11px] lg:hidden", pos.realizedPnlInPeriod > 0 ? "text-success" : "text-destructive")}>
                               {formatUSD(pos.realizedPnlInPeriod)} realized
                             </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell align="right" className="hidden lg:table-cell">
+                        <div className="flex flex-col items-end gap-1">
+                          {pos.realizedPnlInPeriod !== 0 ? (
+                            <span className={cn("num text-[14px]", pos.realizedPnlInPeriod > 0 ? "text-success" : "text-destructive")}>
+                              {formatUSD(pos.realizedPnlInPeriod)}
+                            </span>
+                          ) : (
+                            <span className="num text-muted-foreground">-</span>
                           )}
                         </div>
                       </TableCell>
@@ -399,7 +426,9 @@ export default function StatementDetail() {
                   <TableHead>Asset</TableHead>
                   <TableHead align="right">Quantity</TableHead>
                   <TableHead align="right">Price</TableHead>
+                  <TableHead align="right" className="hidden md:table-cell">Fee</TableHead>
                   <TableHead align="right">Value</TableHead>
+                  <TableHead align="right" className="hidden lg:table-cell">Realized</TableHead>
                 </TableHeader>
                 <TableBody>
                   {[...statement.activity].reverse().map((event, i) => (
@@ -425,17 +454,38 @@ export default function StatementDetail() {
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
                           <span className={cn("num text-[14px]", event.pricePerShare !== null ? "text-foreground" : "text-muted-foreground")}>{formatUSD(event.pricePerShare)}</span>
-                          {event.fee !== null && event.fee > 0 && <span className="num text-[11px] text-muted-foreground">Fee {formatUSD(event.fee)}</span>}
+                          {event.fee !== null && event.fee > 0 && <span className="num text-[11px] text-muted-foreground md:hidden">Fee {formatUSD(event.fee)}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell align="right" className="hidden md:table-cell">
+                        <div className="flex flex-col items-end gap-1">
+                          {event.fee !== null && event.fee > 0 ? (
+                            <span className="num text-[14px] text-foreground">{formatUSD(event.fee)}</span>
+                          ) : (
+                            <span className="num text-muted-foreground">-</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
                           <span className={cn("num text-[14px]", event.grossAmount !== null ? "text-foreground" : "text-muted-foreground")}>{formatUSD(event.grossAmount)}</span>
                           {event.realizedPnl !== null && (
-                            <span className={cn("num text-[11px]", event.realizedPnl > 0 ? "text-success" : event.realizedPnl < 0 ? "text-destructive" : "text-muted-foreground")}>
+                            <span className={cn("num text-[11px] lg:hidden", event.realizedPnl > 0 ? "text-success" : event.realizedPnl < 0 ? "text-destructive" : "text-muted-foreground")}>
                               {event.realizedPnl > 0 ? "+" : ""}
                               {formatUSD(event.realizedPnl)} realized
                             </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell align="right" className="hidden lg:table-cell">
+                        <div className="flex flex-col items-end gap-1">
+                          {event.realizedPnl !== null ? (
+                            <span className={cn("num text-[14px]", event.realizedPnl > 0 ? "text-success" : event.realizedPnl < 0 ? "text-destructive" : "text-muted-foreground")}>
+                              {event.realizedPnl > 0 ? "+" : ""}
+                              {formatUSD(event.realizedPnl)}
+                            </span>
+                          ) : (
+                            <span className="num text-muted-foreground">-</span>
                           )}
                         </div>
                       </TableCell>

@@ -57,12 +57,25 @@ pointers and it hides the native cursor through `html.has-cursor`.
 
 Every wallet page renders inside one `Shell` (src/components/layout/shell.tsx),
 mounted once by the router for the whole `/w/:address/*` tree. The shell is a
-split view: a reading panel on the left (about 60vw) and the stage on the
-right (`clamp(360px, 40vw, 720px)`, full height, sticky). On small screens the
-stage is a 42vh band at the top and the panel scrolls under it. The stage is
-the one WebGL view of the ledger (`Strata` in mode "stage") and it stays
-mounted while pages change, so the camera moves between pages instead of the
-scene reloading.
+stack, not a split view:
+
+1. A sticky 56px top bar: brand, section tabs, cost method control, wallet
+   button. On small screens the tabs move to a second scrolling row.
+2. The ledger band: the one WebGL view of the ledger (`Strata` in mode
+   "stage"), full width and `var(--stage-height)` tall (36vh clamped to 300
+   to 440px on laptops, 46vh on phones). The band is shown on Portfolio, Tax
+   lots and Trade, the pages whose rows map to columns and layers. Statements,
+   Activity and Corporate actions are documents and tables and have no band.
+   The visitor can hide the band ("Hide chart", remembered in localStorage)
+   and a "Show chart" link brings it back. The ledger identity (name, demo or
+   address, indexed time, refresh) sits in the band's top left corner, or in a
+   strip under the top bar when there is no band.
+3. The page content in the `.ledger` frame: full width up to 1560px with
+   modest gutters. Pages are read at desk distance, so the type is a
+   statement scale: page titles 26 to 30px, section titles 20 to 22px, body
+   14px, table cells 13px (14px on wide monitors), labels 10 to 11px. The
+   largest figure is the account value at 36 to 48px. Nothing on a wallet page
+   is poster sized.
 
 Pages never render their own `Strata`, `Shell`, header, nav, method control or
 wallet strip. A page describes what the stage should show with the `useStage`
@@ -70,7 +83,7 @@ hook from `@/components/layout/stage`:
 
 ```tsx
 const { hoverMint, setHoverMint, columns } = useStage({
-  focusMint,          // string | null: the camera closes on this column
+  focusMint,          // string | null: the highlighted column (the wide band keeps the whole row in frame)
   highlightLayerId,   // string | null: draw this lot as hovered (table row hover)
   preview,            // { mint, quantity } | null: lift the layers a sale would relieve
   caption,            // string | null: one short sentence printed under the scene
@@ -87,14 +100,27 @@ render active, because hovering a column in the stage sets the same value.
 `lotDetail` says whether those layers are real lots ("ready") or one aggregate
 layer per position while lots load or fail; only pass a `preview` when it is
 "ready". Pages exit with an animation, so the stage keeps the state of the
-latest page to publish and ignores the exiting page's cleanup.
+latest page to publish and ignores the exiting page's cleanup. Pages without a
+band may still call `useStage`; the call is harmless.
 
-The reading panel is narrow. Design for about 800px: single column sections,
-tables of at most five columns, secondary detail as 11px sub lines inside
-cells, panels stacked rather than side by side below `xl`. Page titles use
-`PageHeader` at the top of the content with a one line description. Keep the
-identity strip, the method control and the wallet button out of pages; the
-shell owns them.
+Layout rules for the wide frame:
+
+- Use the width for columns, not for wider paragraphs. Tables carry six to
+  eight columns at `lg` and drop secondary columns below it with
+  `hidden md:table-cell` and `hidden lg:table-cell`, moving the dropped value
+  into an 11px sub line of a neighbouring cell so nothing is lost on a phone.
+- Summary figures go in one row (`grid-cols-2 md:grid-cols-4` or up to six at
+  `lg`) separated by hairlines, never in equal boxed cards.
+- Detail panels sit side by side at `lg` (`grid lg:grid-cols-2` or a
+  `lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]` main plus aside) and stack
+  below it.
+- A form and its result (the trade ticket and the quote) sit side by side at
+  `lg`, with the form no wider than about 420px.
+- Descriptions are one sentence, `max-w-3xl`. Long explanations belong on the
+  methodology page.
+- Page titles use `PageHeader` at the top of the content. Keep the identity
+  strip, the method control and the wallet button out of pages; the shell owns
+  them.
 
 ## Tokens (already defined in src/index.css, do not redefine)
 
@@ -126,7 +152,8 @@ ring), `.ticker` (marquee), `ease-out-expo`, `animate-pulse-dot`,
   (tones neutral, amber, gain, loss), `Skeleton`, `EmptyState`, `ErrorState`,
   `MethodologyLink`.
 - `@/components/figure`: `Figure` (animated number with label, sub, tone,
-  sizes sm md lg xl).
+  sizes sm 15px, md 20px, lg 24px, xl 30px, xxl 36px; xxl is for the account
+  value only).
 - `@/components/data-table`: `DataTable`, `TableHeader`, `TableHead`,
   `TableBody`, `TableRow` (index for stagger, active, hover and click
   handlers), `TableCell`.

@@ -7,7 +7,7 @@ import { useListLots, useGetPortfolio, type LotStatusFilter, type Lot } from "@w
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { formatUSD, formatQuantity, formatDate, eventKindLabel } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
-import { Panel, Pill, Skeleton, EmptyState, ErrorState, PageHeader, SectionTitle } from "@/components/surface";
+import { Pill, Skeleton, EmptyState, ErrorState, PageHeader, SectionTitle } from "@/components/surface";
 import { Figure } from "@/components/figure";
 import { Reveal, EASE_OUT } from "@/components/motion/reveal";
 import { buildStrata, reliefRank, reliefOrder, type StrataLayer } from "@/components/three/strata-data";
@@ -276,7 +276,7 @@ export default function Lots() {
         <div className="flex flex-col gap-14">
           {summary && (
             <Reveal>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-8 border-t hairline pt-6 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-t hairline pt-6 md:grid-cols-4 lg:grid-cols-5">
                 {statusFilter === "closed" ? (
                   <>
                     <Figure
@@ -321,18 +321,21 @@ export default function Lots() {
                 onMouseLeave={() => ctx.setHoverMint(null)}
               >
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-baseline justify-between">
-                    <h3 className="display text-[26px] md:text-[32px] text-foreground flex items-center gap-3">
-                      {group.symbol}
-                      <span className="font-sans text-[15px] tracking-normal text-muted-foreground">{group.name}</span>
-                    </h3>
-                    {group.col && (
-                      <div className="flex items-center gap-3">
-                        <span className="label text-muted-foreground">Market value</span>
-                        <span className="num text-[18px] text-foreground">{formatUSD(group.col.value)}</span>
-                      </div>
-                    )}
-                  </div>
+                  <SectionTitle
+                    aside={
+                      group.col && (
+                        <div className="flex flex-col items-end gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                          <span className="label text-muted-foreground">Market value</span>
+                          <span className="num text-[16px] text-foreground sm:text-[18px]">{formatUSD(group.col.value)}</span>
+                        </div>
+                      )
+                    }
+                  >
+                    <span className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                      <span>{group.symbol}</span>
+                      <span className="font-sans text-[13px] tracking-normal text-muted-foreground sm:text-[15px]">{group.name}</span>
+                    </span>
+                  </SectionTitle>
 
                   {group.col && group.order.length > 0 && (statusFilter === "open" || statusFilter === "all") && (
                     <div className="flex flex-col gap-2">
@@ -351,9 +354,21 @@ export default function Lots() {
                   <TableHeader>
                     <TableHead>Lot</TableHead>
                     <TableHead>Acquired</TableHead>
+                    <TableHead className="hidden md:table-cell">Holding</TableHead>
                     <TableHead align="right">Quantity</TableHead>
                     <TableHead align="right">Cost basis</TableHead>
-                    <TableHead align="right">{statusFilter === "closed" ? "Realized" : "Mark and P/L"}</TableHead>
+                    <TableHead align="right" className="hidden lg:table-cell">Cost per share</TableHead>
+                    {statusFilter === "closed" ? (
+                      <>
+                        <TableHead align="right">Closed</TableHead>
+                        <TableHead align="right">Realized</TableHead>
+                      </>
+                    ) : (
+                      <>
+                        <TableHead align="right">{statusFilter === "all" ? "Value or close" : "Value"}</TableHead>
+                        <TableHead align="right">{statusFilter === "all" ? "Result" : "Unrealized"}</TableHead>
+                      </>
+                    )}
                   </TableHeader>
                   <TableBody>
                     {group.lots.map((lot, i) => (
@@ -387,11 +402,18 @@ export default function Lots() {
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <span className="num text-[14px] text-foreground">{lot.openedAt ? formatDate(lot.openedAt) : "Opening"}</span>
-                            <span className="flex items-center gap-1.5 text-[11px]">
+                            <span className="flex items-center gap-1.5 text-[11px] md:hidden">
                               <span className="num text-muted-foreground">{lot.holdingDays} days</span>
                               <span className="text-muted-foreground/40">|</span>
                               <span className={cn("uppercase tracking-[0.1em]", lot.term === "long" ? "text-success" : "text-muted-foreground")}>{lot.term}</span>
                             </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <div className="flex items-center gap-1.5 text-[12px]">
+                            <span className="num text-muted-foreground">{lot.holdingDays} days</span>
+                            <span className="text-muted-foreground/40">|</span>
+                            <span className={cn("uppercase tracking-[0.1em]", lot.term === "long" ? "text-success" : "text-muted-foreground")}>{lot.term}</span>
                           </div>
                         </TableCell>
                         <TableCell align="right">
@@ -410,29 +432,67 @@ export default function Lots() {
                                 <Pill tone="loss">{lot.basisStatus}</Pill>
                               </span>
                             ) : (
-                              <span className="num text-[11px] text-muted-foreground">{formatUSD(lot.costPerShare)} / sh</span>
+                              <span className="num text-[11px] text-muted-foreground lg:hidden">{formatUSD(lot.costPerShare)} per sh</span>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell align="right">
-                          {lot.status === "closed" ? (
-                            <div className="flex flex-col items-end gap-1">
-                              <span className={cn("num text-[14px]", lot.realizedPnl > 0 ? "text-success" : lot.realizedPnl < 0 ? "text-destructive" : "text-foreground")}>
-                                {lot.realizedPnl > 0 ? "+" : ""}{formatUSD(lot.realizedPnl)}
-                              </span>
-                              {lot.closedAt && (
-                                <span className="num text-[11px] text-muted-foreground mt-0.5">Closed {formatDate(lot.closedAt)}</span>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-end gap-1">
-                              <span className="num text-[14px] text-foreground">{formatUSD(lot.marketValue)}</span>
-                              <span className={cn("num text-[11px]", (lot.unrealizedPnl ?? 0) > 0 ? "text-success" : (lot.unrealizedPnl ?? 0) < 0 ? "text-destructive" : "text-muted-foreground")}>
-                                {lot.unrealizedPnl === null ? "Unknown cost" : `${lot.unrealizedPnl > 0 ? "+" : ""}${formatUSD(lot.unrealizedPnl)} unrealized`}
-                              </span>
-                            </div>
-                          )}
+                        <TableCell align="right" className="hidden lg:table-cell">
+                          <div className="flex flex-col items-end gap-1">
+                            {lot.basisStatus !== "complete" ? (
+                              <span className="text-[12px] text-muted-foreground">Unknown</span>
+                            ) : (
+                              <span className="num text-[14px] text-foreground">{formatUSD(lot.costPerShare)}</span>
+                            )}
+                          </div>
                         </TableCell>
+                        {statusFilter === "closed" ? (
+                          <>
+                            <TableCell align="right">
+                              {lot.closedAt && (
+                                <span className="num text-[14px] text-foreground">{formatDate(lot.closedAt)}</span>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              <div className="flex flex-col items-end gap-1">
+                                <span className={cn("num text-[14px]", lot.realizedPnl > 0 ? "text-success" : lot.realizedPnl < 0 ? "text-destructive" : "text-foreground")}>
+                                  {lot.realizedPnl > 0 ? "+" : ""}{formatUSD(lot.realizedPnl)}
+                                </span>
+                              </div>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell align="right">
+                              <div className="flex flex-col items-end gap-1">
+                                {lot.status === "closed" ? (
+                                  lot.closedAt ? <span className="num text-[14px] text-foreground">{formatDate(lot.closedAt)}</span> : <span className="text-muted-foreground">-</span>
+                                ) : (
+                                  <span className="num text-[14px] text-foreground">{formatUSD(lot.marketValue)}</span>
+                                )}
+                                {lot.status === "closed" && statusFilter === "all" && (
+                                   <span className="text-[11px] text-muted-foreground">Closed</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell align="right">
+                              {lot.status === "closed" ? (
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className={cn("num text-[14px]", lot.realizedPnl > 0 ? "text-success" : lot.realizedPnl < 0 ? "text-destructive" : "text-foreground")}>
+                                    {lot.realizedPnl > 0 ? "+" : ""}{formatUSD(lot.realizedPnl)}
+                                  </span>
+                                  {statusFilter === "all" && <span className="text-[11px] text-muted-foreground">Realized</span>}
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className={cn("num text-[14px]", (lot.unrealizedPnl ?? 0) > 0 ? "text-success" : (lot.unrealizedPnl ?? 0) < 0 ? "text-destructive" : "text-foreground")}>
+                                    {lot.unrealizedPnl === null ? "Unknown" : `${lot.unrealizedPnl > 0 ? "+" : ""}${formatUSD(lot.unrealizedPnl)}`}
+                                  </span>
+                                  {statusFilter === "all" && <span className="text-[11px] text-muted-foreground">Unrealized</span>}
+                                </div>
+                              )}
+                            </TableCell>
+                          </>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

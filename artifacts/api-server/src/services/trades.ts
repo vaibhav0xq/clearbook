@@ -126,7 +126,7 @@ export async function quoteTrade(address: string, input: QuoteInput) {
     warnings.push(`${bundle.session.venue} is ${state}. The token still trades on Solana. Expect wider spreads.`);
   }
   if (bundle && bundle.premiumDiscount.differencePct !== null && Math.abs(bundle.premiumDiscount.differencePct) > 1) {
-    warnings.push(`Token trades at a ${bundle.premiumDiscount.differencePct.toFixed(2)}% ${bundle.premiumDiscount.direction} to the reference market.`);
+    warnings.push(`The token trades at a ${Math.abs(bundle.premiumDiscount.differencePct).toFixed(2)}% ${bundle.premiumDiscount.direction} to the reference market.`);
   }
   const isDemo = ctx.wallet.isDemo;
   const canExecuteOnChain = !isDemo && route !== null;

@@ -95,13 +95,57 @@ export default function Activity() {
 
   return (
     <>
-      <PageHeader title="Activity" description="Every indexed event in date order with its price, fee and the lots a sale relieved." />
+      <div className={cn(
+        "mb-8",
+        (isLoading || (summary && shown > 0)) && "grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12"
+      )}>
+        <PageHeader 
+          title="Activity" 
+          description="Every indexed event in date order with its price, fee and the lots a sale relieved."
+          className="mb-0 md:mb-0"
+        />
+
+        {isLoading ? (
+          <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-t hairline pt-6 md:grid-cols-4 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-1">
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+          </div>
+        ) : summary && shown > 0 ? (
+          <Reveal>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-t hairline pt-6 md:grid-cols-4 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-1">
+              <Figure
+                label="Events"
+                value={String(activityPage!.total)}
+                size="md"
+                sub={`${summary.trades} ${summary.trades === 1 ? "trade" : "trades"}, ${summary.transfers} ${summary.transfers === 1 ? "transfer" : "transfers"}`}
+              />
+              <Figure
+                label="Purchases"
+                value={summary.purchases}
+                size="md"
+                sub={summary.unpricedPurchases > 0 ? `${scope}, ${summary.unpricedPurchases} unpriced excluded` : scope}
+              />
+              <Figure
+                label="Proceeds"
+                value={summary.proceeds}
+                size="md"
+                sub={summary.unpricedSales > 0 ? `${scope}, ${summary.unpricedSales} unpriced excluded` : scope}
+              />
+              <Figure
+                label="Fees"
+                value={summary.fees}
+                size="md"
+                sub={summary.unknownFees > 0 ? `Venue fees at trade time, ${summary.unknownFees} unknown` : "Venue fees at trade time"}
+              />
+            </div>
+          </Reveal>
+        ) : null}
+      </div>
 
       {isLoading ? (
-        <div className="flex flex-col gap-10">
-          <Skeleton className="h-20 w-full rounded-2xl" />
-          <Skeleton className="h-[520px] w-full rounded-2xl" />
-        </div>
+        <Skeleton className="h-[520px] w-full rounded-2xl" />
       ) : error ? (
         <ErrorState title="Unable to load activity" message={error.data?.message ?? error.message} />
       ) : shown === 0 ? (
@@ -126,45 +170,17 @@ export default function Activity() {
         />
       ) : (
         <div className="flex flex-col gap-10">
-          {summary && (
-            <Reveal>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-8 border-t hairline pt-6 md:grid-cols-4">
-                <Figure
-                  label="Events"
-                  value={String(activityPage!.total)}
-                  size="md"
-                  sub={`${summary.trades} ${summary.trades === 1 ? "trade" : "trades"}, ${summary.transfers} ${summary.transfers === 1 ? "transfer" : "transfers"}`}
-                />
-                <Figure
-                  label="Purchases"
-                  value={summary.purchases}
-                  size="md"
-                  sub={summary.unpricedPurchases > 0 ? `${scope}, ${summary.unpricedPurchases} unpriced excluded` : scope}
-                />
-                <Figure
-                  label="Proceeds"
-                  value={summary.proceeds}
-                  size="md"
-                  sub={summary.unpricedSales > 0 ? `${scope}, ${summary.unpricedSales} unpriced excluded` : scope}
-                />
-                <Figure
-                  label="Fees"
-                  value={summary.fees}
-                  size="md"
-                  sub={summary.unknownFees > 0 ? `Venue fees at trade time, ${summary.unknownFees} unknown` : "Venue fees at trade time"}
-                />
-              </div>
-            </Reveal>
-          )}
-
           <Reveal delay={0.05}>
             <DataTable>
               <TableHeader>
+                <TableHead className="hidden md:table-cell">Time</TableHead>
                 <TableHead>Event</TableHead>
-                <TableHead>Asset</TableHead>
-                <TableHead align="right">Quantity</TableHead>
-                <TableHead align="right">Price</TableHead>
+                <TableHead className="hidden sm:table-cell">Asset</TableHead>
+                <TableHead align="right" className="hidden sm:table-cell">Quantity</TableHead>
+                <TableHead align="right" className="hidden md:table-cell">Price</TableHead>
+                <TableHead align="right" className="hidden lg:table-cell">Fee</TableHead>
                 <TableHead align="right">Value</TableHead>
+                <TableHead align="right" className="hidden lg:table-cell">Result</TableHead>
                 <TableHead align="right" className="w-12">
                   <span className="sr-only">Transaction</span>
                 </TableHead>
@@ -181,34 +197,29 @@ export default function Activity() {
                       onMouseEnter={() => event.mint && setHoverMint(event.mint)}
                       onMouseLeave={() => event.mint && setHoverMint(null)}
                     >
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <span className="flex items-center gap-2 text-[14px] text-foreground">
-                            {event.kindLabel}
-                            {event.source === "simulated" && <Pill tone="amber">Simulated</Pill>}
-                          </span>
-                          <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                            <span className="num">{formatDateTime(event.blockTime)}</span>
-                            {relieved > 0 && (
-                              <>
-                                <span className="text-muted-foreground/30">/</span>
-                                <span>
-                                  {relieved} {relieved === 1 ? "lot" : "lots"} relieved
-                                </span>
-                              </>
-                            )}
-                          </span>
-                        </div>
+                      <TableCell className="hidden md:table-cell">
+                        <span className="num text-foreground">{formatDateTime(event.blockTime)}</span>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <span className="num text-[14px] tracking-[0.08em] text-foreground">{event.symbol}</span>
+                          <span className="flex items-center gap-2 text-foreground">
+                            {event.kindLabel}
+                            <span className="num tracking-[0.06em] sm:hidden">{event.symbol}</span>
+                            {event.source === "simulated" && <Pill tone="amber">Simulated</Pill>}
+                          </span>
+                          <span className="num text-[11px] text-muted-foreground sm:hidden">{formatDate(event.blockTime)}</span>
+                          <span className="hidden num text-[11px] text-muted-foreground sm:block md:hidden">{formatDateTime(event.blockTime)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <div className="flex flex-col gap-1">
+                          <span className="num tracking-[0.08em] text-foreground">{event.symbol}</span>
                           <span className="text-[11px] text-muted-foreground">{issuerLabel(event.issuer)}</span>
                         </div>
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" className="hidden sm:table-cell">
                         <div className="flex flex-col items-end gap-1">
-                          <span className={cn("num text-[14px]", event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : "text-foreground")}>
+                          <span className={cn("num", event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : "text-foreground")}>
                             {event.quantity > 0 ? "+" : ""}
                             {formatQuantity(event.quantity)} sh
                           </span>
@@ -219,29 +230,78 @@ export default function Activity() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" className="hidden md:table-cell">
                         <div className="flex flex-col items-end gap-1">
-                          <span className={cn("num text-[14px]", priced ? "text-foreground" : "text-muted-foreground")}>{formatUSD(event.pricePerShare)}</span>
-                          {priced && event.fee !== null && event.fee > 0 ? (
-                            <span className="num text-[11px] text-muted-foreground">Fee {formatUSD(event.fee)}</span>
-                          ) : !priced ? (
-                            <span className="text-[11px] text-muted-foreground">No price on chain</span>
-                          ) : null}
+                          <span className={cn("num", priced ? "text-foreground" : "text-muted-foreground")}>{formatUSD(event.pricePerShare)}</span>
+                          <span className="flex items-center gap-2 text-[11px] text-muted-foreground lg:hidden">
+                            {priced && event.fee !== null && event.fee > 0 ? (
+                              <span className="num">Fee {formatUSD(event.fee)}</span>
+                            ) : !priced ? (
+                              <span>No price on chain</span>
+                            ) : null}
+                          </span>
                         </div>
+                      </TableCell>
+                      <TableCell align="right" className="hidden lg:table-cell">
+                        {priced && event.fee !== null && event.fee > 0 ? (
+                          <span className="num text-foreground">{formatUSD(event.fee)}</span>
+                        ) : !priced ? (
+                          <span className="text-muted-foreground">No price</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
-                          <span className={cn("num text-[14px]", event.grossAmount !== null ? "text-foreground" : "text-muted-foreground")}>{formatUSD(event.grossAmount)}</span>
+                          <span className={cn("num", event.grossAmount !== null ? "text-foreground" : "text-muted-foreground")}>{formatUSD(event.grossAmount)}</span>
+                          <div className="flex flex-col items-end gap-1 lg:hidden">
+                            <span className={cn("num text-[11px] sm:hidden", event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : "text-muted-foreground")}>
+                              {event.quantity > 0 ? "+" : ""}
+                              {formatQuantity(event.quantity)} sh
+                            </span>
+                            <span className="num text-[11px] text-muted-foreground md:hidden">
+                              {priced ? `${formatUSD(event.pricePerShare)} per sh` : "No price on chain"}
+                            </span>
+                            {priced && event.fee !== null && event.fee > 0 && (
+                              <span className="num text-[11px] text-muted-foreground md:hidden">Fee {formatUSD(event.fee)}</span>
+                            )}
+                            {event.realizedPnl !== null && (
+                              <span className={cn("num text-[11px]", event.realizedPnl > 0 ? "text-success" : event.realizedPnl < 0 ? "text-destructive" : "text-muted-foreground")}>
+                                {event.realizedPnl > 0 ? "+" : ""}
+                                {formatUSD(event.realizedPnl)} realized
+                              </span>
+                            )}
+                            {event.realizedPnl === null && event.counterAsset && event.counterAmount !== null && (
+                              <span className="num text-[11px] text-muted-foreground">
+                                {formatQuantity(event.counterAmount, 2)} {event.counterAsset}
+                              </span>
+                            )}
+                            {relieved > 0 && (
+                              <span className="num text-[11px] text-muted-foreground">
+                                {relieved} {relieved === 1 ? "lot" : "lots"} relieved
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell align="right" className="hidden lg:table-cell">
+                        <div className="flex flex-col items-end gap-1">
                           {event.realizedPnl !== null ? (
-                            <span className={cn("num text-[11px]", event.realizedPnl > 0 ? "text-success" : event.realizedPnl < 0 ? "text-destructive" : "text-muted-foreground")}>
+                            <span className={cn("num", event.realizedPnl > 0 ? "text-success" : event.realizedPnl < 0 ? "text-destructive" : "text-muted-foreground")}>
                               {event.realizedPnl > 0 ? "+" : ""}
                               {formatUSD(event.realizedPnl)} realized
                             </span>
                           ) : event.counterAsset && event.counterAmount !== null ? (
-                            <span className="num text-[11px] text-muted-foreground">
+                            <span className="num text-foreground">
                               {formatQuantity(event.counterAmount, 2)} {event.counterAsset}
                             </span>
-                          ) : null}
+                          ) : relieved > 0 ? (
+                            <span className="num text-muted-foreground">
+                              {relieved} {relieved === 1 ? "lot" : "lots"} relieved
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell align="right">

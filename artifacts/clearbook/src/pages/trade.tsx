@@ -17,7 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { useWalletSession } from "@/lib/wallet";
-import { formatUSD, formatQuantity, formatPercent, formatDate, formatTime } from "@/lib/format";
+import { formatUSD, formatQuantity, formatPercent, formatDate, formatTime, eventKindLabel } from "@/lib/format";
 import { useStage, useStageContext } from "@/components/layout/stage";
 
 import { Panel, PageHeader, SectionTitle, Pill, Skeleton, ErrorState, EmptyState } from "@/components/surface";
@@ -33,6 +33,14 @@ type Execution =
   | { phase: "pending"; quoteId: string; signature: string; message: string; explorerUrl: string | null }
   | { phase: "failed"; quoteId: string; message: string; explorerUrl: string | null }
   | { phase: "recorded"; quoteId: string; simulated: boolean; message: string; explorerUrl: string | null };
+
+/** The stages of a sale, shown in the quote panel before a quantity is entered. */
+const SALE_STEPS: { title: string; detail: string }[] = [
+  { title: "Quote", detail: "Jupiter prices the sale and the lots it relieves are estimated." },
+  { title: "Review", detail: "Proceeds, price impact and the realized result, valid for a short window." },
+  { title: "Sign", detail: "The owning wallet signs. Without one the sale is recorded as a simulation." },
+  { title: "Confirm", detail: "The transaction is checked on chain and the ledger and activity update." },
+];
 
 export default function Trade() {
   const [, params] = useRoute("/w/:address/trade");
@@ -296,9 +304,9 @@ export default function Trade() {
             <ErrorState title="Unable to load open lots" message={`${lotsError.data?.message ?? lotsError.message} Quotes still work, but the relief preview is unavailable until lots load.`} />
           )}
 
-          <section className="flex flex-col gap-5">
+          <section className="flex flex-col gap-4">
             <span className="label text-muted-foreground">Position to sell</span>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2.5">
               {portfolio.positions.map(p => (
                 <button
                   key={p.mint}
@@ -307,379 +315,444 @@ export default function Trade() {
                   disabled={locked}
                   onClick={() => { if (locked) return; setSelectedMint(p.mint); resetExecution(); }}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-2.5 rounded-xl border hairline transition-all",
-                    selectedMint === p.mint 
-                      ? "bg-primary/[0.08] border-primary/40 text-primary ring-1 ring-primary/20" 
-                      : "bg-white/[0.02] hover:bg-white/[0.06] hover:text-foreground text-muted-foreground"
+                    "flex items-center gap-2.5 rounded-lg border hairline px-3.5 py-2 transition-colors",
+                    selectedMint === p.mint
+                      ? "border-primary/40 bg-primary/[0.08] text-primary"
+                      : "bg-white/[0.02] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground",
+                    locked && selectedMint !== p.mint && "opacity-50"
                   )}
                 >
-                  <span className="num font-medium text-[15px]">{p.symbol}</span>
-                  <span className="text-[12px] opacity-60 font-sans tracking-wide">{formatQuantity(p.quantity)} sh</span>
+                  <span className="num text-[13px]">{p.symbol}</span>
+                  <span className="num text-[11px] opacity-60">{formatQuantity(p.quantity)} sh</span>
                 </button>
               ))}
             </div>
           </section>
 
-          <AnimatePresence mode="wait">
-            {selectedPosition && (
-              <motion.section 
-                key="trade-panels"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 12 }}
-                transition={{ duration: 0.5, ease: EASE_OUT }}
-                className="flex flex-col gap-8"
-              >
-              <div className="grid grid-cols-2 gap-x-8 gap-y-8 border-t hairline pt-6 md:grid-cols-4">
-                <Figure label="Holding" value={`${formatQuantity(selectedPosition.quantity)} sh`} size="md" sub={`${selectedPosition.openLots} open ${selectedPosition.openLots === 1 ? "lot" : "lots"}`} />
-                <Figure label="Mark" value={selectedPosition.mark.price} size="md" sub={selectedPosition.mark.sourceLabel} />
-                <Figure label="Market value" value={selectedPosition.marketValue} size="md" sub={`${formatUSD(selectedPosition.costBasis)} cost`} />
-                <Figure label="Unrealized" value={selectedPosition.unrealizedPnl} tone size="md" sub={formatPercent(selectedPosition.unrealizedPnlPct)} subTone={selectedPosition.unrealizedPnl} />
-              </div>
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                <div className="xl:col-span-5 flex flex-col gap-6">
-                  <Panel className="p-6 md:p-8 flex flex-col gap-6 h-full border hairline bg-white/[0.02]">
-                    <div className="flex items-center justify-between">
-                      <span className="label text-muted-foreground">Quantity</span>
-                      <button 
-                        type="button" 
-                        disabled={locked}
-                        onClick={() => { if (locked) return; setQuantity(String(maxQuantity)); resetExecution(); }}
-                        className="num text-[11px] uppercase tracking-[0.12em] text-primary hover:text-foreground transition-colors"
-                      >
-                        Sell all {formatQuantity(selectedPosition.quantity)}
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <input 
-                        id="qty"
-                        type="number"
-                        min="0"
-                        max={maxQuantity}
-                        step="any"
-                        inputMode="decimal"
-                        aria-label={`Quantity of ${selectedPosition.symbol} to sell`}
-                        aria-invalid={quantityProblem !== null}
-                        value={quantity}
-                        disabled={locked}
-                        onChange={e => { if (locked) return; setQuantity(e.target.value); resetExecution(); }}
-                        onKeyDown={e => { if (e.key === "Enter" && canQuote) void handleGetQuote(); }}
-                        placeholder="0.00"
-                        className={cn(
-                          "glass-strong h-16 w-full rounded-2xl pl-5 pr-20 text-[24px] num text-foreground outline-none transition-shadow focus:ring-1",
-                          quantityProblem ? "ring-1 ring-destructive/50 focus:ring-destructive/60" : "focus:ring-primary/50",
+          {selectedPosition && (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-t hairline pt-6 md:grid-cols-4 lg:grid-cols-4">
+              <Figure label="Holding" value={`${formatQuantity(selectedPosition.quantity)} sh`} size="md" sub={`${selectedPosition.openLots} open ${selectedPosition.openLots === 1 ? "lot" : "lots"}`} />
+              <Figure label="Mark" value={selectedPosition.mark.price} size="md" sub={selectedPosition.mark.sourceLabel} />
+              <Figure label="Market value" value={selectedPosition.marketValue} size="md" sub={`${formatUSD(selectedPosition.costBasis)} cost`} />
+              <Figure label="Unrealized" value={selectedPosition.unrealizedPnl} tone size="md" sub={formatPercent(selectedPosition.unrealizedPnlPct)} subTone={selectedPosition.unrealizedPnl} />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-[400px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)] gap-8 lg:gap-12">
+            <div className="flex flex-col gap-10">
+              <AnimatePresence mode="wait">
+                {selectedPosition && (
+                  <motion.div
+                    key="ticket"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 12 }}
+                    transition={{ duration: 0.5, ease: EASE_OUT }}
+                  >
+                    <Panel className="p-6 md:p-8 flex flex-col gap-6 h-full border hairline bg-white/[0.02]">
+                      <div className="flex items-center justify-between">
+                        <span className="label text-muted-foreground">Quantity</span>
+                        <button 
+                          type="button" 
+                          disabled={locked}
+                          onClick={() => { if (locked) return; setQuantity(String(maxQuantity)); resetExecution(); }}
+                          className="num text-[11px] uppercase tracking-[0.12em] text-primary hover:text-foreground transition-colors"
+                        >
+                          Sell all {formatQuantity(selectedPosition.quantity)}
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input 
+                          id="qty"
+                          type="number"
+                          min="0"
+                          max={maxQuantity}
+                          step="any"
+                          inputMode="decimal"
+                          aria-label={`Quantity of ${selectedPosition.symbol} to sell`}
+                          aria-invalid={quantityProblem !== null}
+                          value={quantity}
+                          disabled={locked}
+                          onChange={e => { if (locked) return; setQuantity(e.target.value); resetExecution(); }}
+                          onKeyDown={e => { if (e.key === "Enter" && canQuote) void handleGetQuote(); }}
+                          placeholder="0.00"
+                          className={cn(
+                            "glass-strong h-16 w-full rounded-2xl pl-5 pr-20 text-[24px] num text-foreground outline-none transition-shadow focus:ring-1",
+                            quantityProblem ? "ring-1 ring-destructive/50 focus:ring-destructive/60" : "focus:ring-primary/50",
+                          )}
+                        />
+                        <span className="absolute right-5 top-1/2 -translate-y-1/2 num text-[14px] text-muted-foreground">
+                          sh
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 text-[12px] text-muted-foreground">
+                        {quantityProblem ? (
+                          <span className="flex items-center gap-1.5 text-destructive">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            {quantityProblem}
+                          </span>
+                        ) : previewQuantity > 0 ? (
+                          <span className="num">
+                            About {formatUSD(previewQuantity * (selectedPosition.mark.price ?? 0))} at the current mark, before route pricing and fees.
+                          </span>
+                        ) : (
+                          <span>Shares of exposure, not raw tokens. Partial quantities are allowed.</span>
                         )}
-                      />
-                      <span className="absolute right-5 top-1/2 -translate-y-1/2 num text-[14px] text-muted-foreground">
-                        sh
-                      </span>
-                    </div>
+                      </div>
 
-                    <div className="flex flex-col gap-1.5 text-[12px] text-muted-foreground">
-                      {quantityProblem ? (
-                        <span className="flex items-center gap-1.5 text-destructive">
-                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                          {quantityProblem}
-                        </span>
-                      ) : previewQuantity > 0 ? (
-                        <span className="num">
-                          About {formatUSD(previewQuantity * (selectedPosition.mark.price ?? 0))} at the current mark, before route pricing and fees.
-                        </span>
-                      ) : (
-                        <span>Shares of exposure, not raw tokens. Partial quantities are allowed.</span>
-                      )}
-                    </div>
-
-                    <div className="mt-auto pt-6 flex flex-col gap-3">
-                      <button 
-                        type="button"
-                        onClick={handleGetQuote}
-                        disabled={!canQuote}
-                        className={cn(
-                          "group flex h-14 w-full items-center justify-center gap-2 rounded-xl text-[13px] tracking-[0.08em] uppercase transition-all",
-                          !canQuote
-                            ? "bg-white/[0.03] text-muted-foreground cursor-not-allowed"
-                            : "bg-white/[0.08] text-foreground hover:bg-white/[0.12] border hairline hover:border-white/20"
-                        )}
-                      >
-                        {quoteQuery.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Review quote"}
-                      </button>
-                      {quoteQuery.isError && (
-                        <div className="text-[13px] text-destructive flex items-start gap-2 mt-2">
-                          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                          <span className="leading-relaxed">{quoteQuery.error?.data?.message ?? quoteQuery.error?.message ?? "The quote could not be produced."}</span>
-                        </div>
-                      )}
-                    </div>
-                  </Panel>
-                </div>
-
-                <div className="xl:col-span-7 flex flex-col gap-6">
-                  <Panel className="p-6 md:p-8 flex flex-col gap-6 h-full border hairline bg-white/[0.02]">
-                    <div className="flex items-center justify-between">
-                      <span className="label text-muted-foreground">Quote</span>
-                      {quote && !quoteConsumed && (
-                        <span className={cn("num text-[11px] uppercase tracking-[0.12em]", quoteExpired ? "text-destructive" : "text-muted-foreground")}>
-                          {quoteExpired ? "Expired" : `Valid until ${formatTime(quote.expiresAt)}`}
-                        </span>
-                      )}
-                    </div>
-                    {quote ? (
-                      <Reveal className="flex flex-col flex-1 gap-8">
-                        <div className="grid grid-cols-2 gap-8">
-                          <Figure
-                            label="Expected proceeds"
-                            value={quote.expectedProceeds}
-                            size="lg"
-                            sub={`At least ${formatUSD(quote.minimumProceeds)} in ${quote.outputSymbol} after slippage`}
-                          />
-                          <Figure label="Realized" value={quote.estimatedRealizedPnl} tone size="lg" sub={`Estimated against open lots under ${quoteMethod.toUpperCase()}`} />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-6 border-t hairline pt-6 desk:grid-cols-4">
-                          <div className="flex flex-col gap-1.5">
-                            <span className="label text-muted-foreground">Execution price</span>
-                            <span className="num text-[16px] text-foreground">{formatUSD(quote.pricePerShare)}</span>
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <span className="label text-muted-foreground">Reference price</span>
-                            <span className="num text-[16px] text-foreground">{formatUSD(quote.referencePrice)}</span>
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <span className="label text-muted-foreground">Price impact</span>
-                            <span className="num text-[16px] text-foreground">{quote.priceImpactPct === null ? "Unknown" : `${quote.priceImpactPct.toFixed(2)}%`}</span>
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <span className="label text-muted-foreground">Slippage</span>
-                            <span className="num text-[16px] text-foreground">{(quote.slippageBps / 100).toFixed(2)}%</span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex flex-col gap-4 border-t hairline pt-6">
-                          <div className="flex items-start justify-between gap-6">
-                            <span className="label text-muted-foreground">Route</span>
-                            <span className="flex flex-wrap items-center justify-end gap-2 text-right text-[14px] text-foreground">
-                              {quote.route.length === 0 ? (
-                                <span className="text-muted-foreground">No route, priced at the mark</span>
-                              ) : (
-                                quote.route.map((node, i) => (
-                                  <span key={i} className="flex items-center gap-2">
-                                    {i > 0 && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />}
-                                    {node}
-                                  </span>
-                                ))
-                              )}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="label text-muted-foreground">Execution</span>
-                            <span className="text-[14px] text-foreground flex items-center gap-2">
-                              {quote.modeLabel} <Pill tone={quote.canExecuteOnChain ? "gain" : "amber"}>{quote.mode}</Pill>
-                            </span>
-                          </div>
-                        </div>
-                        
-                        {quote.warnings?.length > 0 && (
-                          <div className="flex flex-col gap-2 border-t hairline pt-6">
-                            {quote.warnings.map((w, i) => (
-                              <div key={i} className="flex items-start gap-2 text-[13px] text-primary">
-                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                                <span className="leading-relaxed">{w}</span>
-                              </div>
-                            ))}
+                      <div className="mt-auto pt-6 flex flex-col gap-3">
+                        <button 
+                          type="button"
+                          onClick={handleGetQuote}
+                          disabled={!canQuote}
+                          className={cn(
+                            "group flex h-14 w-full items-center justify-center gap-2 rounded-xl text-[13px] tracking-[0.08em] uppercase transition-all",
+                            !canQuote
+                              ? "bg-white/[0.03] text-muted-foreground cursor-not-allowed"
+                              : "bg-white/[0.08] text-foreground hover:bg-white/[0.12] border hairline hover:border-white/20"
+                          )}
+                        >
+                          {quoteQuery.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Review quote"}
+                        </button>
+                        {quoteQuery.isError && (
+                          <div className="text-[13px] text-destructive flex items-start gap-2 mt-2">
+                            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                            <span className="leading-relaxed">{quoteQuery.error?.data?.message ?? quoteQuery.error?.message ?? "The quote could not be produced."}</span>
                           </div>
                         )}
+                      </div>
+                    </Panel>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
-                        {simulationNote && (
-                          <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-5 py-4 text-[13px]">
-                            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                            <div className="flex flex-col gap-1">
-                              <span className="text-foreground font-medium">Execution simulated</span>
-                              <span className="text-muted-foreground leading-relaxed">{simulationNote}</span>
+            <div className="flex flex-col gap-10 md:gap-14">
+              <AnimatePresence mode="wait">
+                {selectedPosition ? (
+                  <motion.div
+                    key="quote-panel"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 12 }}
+                    transition={{ duration: 0.5, ease: EASE_OUT }}
+                  >
+                    <Panel className="p-6 md:p-8 flex flex-col gap-6 h-full border hairline bg-white/[0.02]">
+                      <div className="flex items-center justify-between">
+                        <span className="label text-muted-foreground">Quote</span>
+                        {quote && !quoteConsumed && (
+                          <span className={cn("num text-[11px] uppercase tracking-[0.12em]", quoteExpired ? "text-destructive" : "text-muted-foreground")}>
+                            {quoteExpired ? "Expired" : `Valid until ${formatTime(quote.expiresAt)}`}
+                          </span>
+                        )}
+                      </div>
+                      {quote ? (
+                        <Reveal className="flex flex-col flex-1 gap-8">
+                          <div className="grid grid-cols-2 gap-8">
+                            <Figure
+                              label="Expected proceeds"
+                              value={quote.expectedProceeds}
+                              size="lg"
+                              sub={`At least ${formatUSD(quote.minimumProceeds)} in ${quote.outputSymbol} after slippage`}
+                            />
+                            <Figure label="Realized" value={quote.estimatedRealizedPnl} tone size="lg" sub={`Estimated against open lots under ${quoteMethod.toUpperCase()}`} />
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-6 border-t hairline pt-6 md:grid-cols-4">
+                            <div className="flex flex-col gap-1.5">
+                              <span className="label text-muted-foreground">Execution price</span>
+                              <span className="num text-[16px] text-foreground">{formatUSD(quote.pricePerShare)}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <span className="label text-muted-foreground">Reference price</span>
+                              <span className="num text-[16px] text-foreground">{formatUSD(quote.referencePrice)}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <span className="label text-muted-foreground">Price impact</span>
+                              <span className="num text-[16px] text-foreground">{quote.priceImpactPct === null ? "Unknown" : `${quote.priceImpactPct.toFixed(2)}%`}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <span className="label text-muted-foreground">Slippage</span>
+                              <span className="num text-[16px] text-foreground">{(quote.slippageBps / 100).toFixed(2)}%</span>
                             </div>
                           </div>
-                        )}
-
-                        <div className="mt-auto pt-6 border-t hairline">
-                          <button 
-                            type="button"
-                            onClick={quoteExpired || execution?.phase === "failed" ? handleGetQuote : executeTrade}
-                            disabled={isExecuting || execution?.phase === "recorded" || quoteQuery.isPending}
-                            className={cn(
-                              "group w-full inline-flex h-14 items-center justify-center gap-2 rounded-xl text-[13px] tracking-[0.12em] uppercase transition-all",
-                              execution?.phase === "recorded"
-                                ? "bg-success/10 text-success border border-success/30"
-                                : quoteExpired || execution?.phase === "failed"
-                                  ? "bg-white/[0.03] border hairline text-muted-foreground hover:text-foreground hover:bg-white/[0.06]"
-                                  : onChain || execution?.phase === "pending"
-                                    ? "bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50" 
-                                    : "bg-white/[0.08] border hairline text-foreground hover:bg-white/[0.12]"
-                            )}
-                          >
-                            {isExecuting || quoteQuery.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : execution?.phase === "recorded" ? <CheckCircle2 className="h-5 w-5" /> : null}
-                            {execution?.phase === "recorded"
-                              ? "Recorded"
-                              : execution?.phase === "pending"
-                                ? isExecuting ? "Waiting for confirmation" : "Check status"
-                                : execution?.phase === "failed"
-                                  ? "Request a new quote"
-                                  : quoteExpired
-                                    ? "Quote expired, request again"
-                                    : onChain
-                                      ? "Sign and execute"
-                                      : "Record simulated sale"}
-                          </button>
                           
-                          {execution && (
-                            <div
-                              className={cn(
-                                "mt-4 flex items-start gap-2 text-[13px]",
-                                execution.phase === "recorded" ? "text-success" : execution.phase === "pending" ? "text-primary" : "text-destructive",
-                              )}
-                            >
-                              {execution.phase === "recorded" ? (
-                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                              ) : execution.phase === "pending" ? (
-                                <Clock className="mt-0.5 h-4 w-4 shrink-0" />
-                              ) : (
-                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                              )}
-                              <span className="flex flex-col gap-1 leading-relaxed">
-                                <span>{execution.message}</span>
-                                {"explorerUrl" in execution && execution.explorerUrl && (
-                                  <a href={execution.explorerUrl} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1 text-foreground underline-offset-4 hover:underline">
-                                    View on explorer <ExternalLink className="h-3 w-3" />
-                                  </a>
+                          <div className="flex flex-col gap-4 border-t hairline pt-6">
+                            <div className="flex items-start justify-between gap-6">
+                              <span className="label text-muted-foreground">Route</span>
+                              <span className="flex flex-wrap items-center justify-end gap-2 text-right text-[14px] text-foreground">
+                                {quote.route.length === 0 ? (
+                                  <span className="text-muted-foreground">No route, priced at the mark</span>
+                                ) : (
+                                  quote.route.map((node, i) => (
+                                    <span key={i} className="flex items-center gap-2">
+                                      {i > 0 && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                                      {node}
+                                    </span>
+                                  ))
                                 )}
                               </span>
                             </div>
+                            <div className="flex items-center justify-between">
+                              <span className="label text-muted-foreground">Execution</span>
+                              <span className="text-[14px] text-foreground flex items-center gap-2">
+                                {quote.modeLabel} <Pill tone={quote.canExecuteOnChain ? "gain" : "amber"}>{quote.mode}</Pill>
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {quote.warnings?.length > 0 && (
+                            <div className="flex flex-col gap-2 border-t hairline pt-6">
+                              {quote.warnings.map((w, i) => (
+                                <div key={i} className="flex items-start gap-2 text-[13px] text-primary">
+                                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                  <span className="leading-relaxed">{w}</span>
+                                </div>
+                              ))}
+                            </div>
                           )}
-                        </div>
-                      </Reveal>
-                    ) : (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-                        <span className="flex h-16 w-16 items-center justify-center rounded-full border hairline bg-white/[0.02] mb-5">
-                          <ArrowRight className="h-6 w-6 text-muted-foreground/50" />
-                        </span>
-                        <p className="text-[15px] text-muted-foreground max-w-[280px] leading-relaxed">
-                          {previewQuantity > 0
-                            ? "Review the quote to see the route, proceeds, price impact and realized result."
-                            : "Enter a quantity to request a quote for this position."}
-                        </p>
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-              </div>
-              </motion.section>
-            )}
-          </AnimatePresence>
 
-          {(quote?.reliefs.length || queue.length > 0) ? (
-            <Reveal delay={0.1}>
-              <section>
-                <SectionTitle
-                  aside={
-                    quote ? null : previewMap ? (
-                      <Pill tone="amber">Preview</Pill>
-                    ) : (
-                      <span>
-                        {method.toUpperCase()} order, {queue.length} {queue.length === 1 ? "lot" : "lots"}
-                      </span>
-                    )
-                  }
-                >
-                  {quote ? "Relieved lots" : previewMap ? "Estimated relief" : "Relief queue"}
-                </SectionTitle>
-                <DataTable>
-                  <TableHeader>
-                    <TableHead>Lot</TableHead>
-                    <TableHead align="right">{quote || previewMap ? "Quantity relieved" : "Quantity"}</TableHead>
-                    <TableHead align="right">Cost basis</TableHead>
-                    {quote && <TableHead align="right">Proceeds</TableHead>}
-                    {quote ? <TableHead align="right">Realized</TableHead> : <TableHead align="right">Unrealized</TableHead>}
-                  </TableHeader>
-                  <TableBody>
-                    {quote ? (
-                      quote.reliefs.map((r, i) => {
-                        const lot = lots?.find(l => l.id === r.lotId);
-                        const openedLabel = lot?.openedAt ? formatDate(lot.openedAt) : "Opening balance";
-                        
-                        return (
-                          <TableRow key={r.lotId} index={i}>
-                            <TableCell>
+                          {simulationNote && (
+                            <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-5 py-4 text-[13px]">
+                              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                               <div className="flex flex-col gap-1">
-                                <span className="text-[14px] text-foreground">{openedLabel}</span>
-                                {r.term && <span className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground">{r.term}</span>}
+                                <span className="text-foreground font-medium">Execution simulated</span>
+                                <span className="text-muted-foreground leading-relaxed">{simulationNote}</span>
                               </div>
-                            </TableCell>
-                            <TableCell align="right" className="num text-foreground">{formatQuantity(r.quantity, 4)} sh</TableCell>
-                            <TableCell align="right" className="num text-muted-foreground">{formatUSD(r.costBasis)}</TableCell>
-                            {quote && <TableCell align="right" className="num text-foreground">{formatUSD(r.proceeds)}</TableCell>}
-                            {quote && (
-                              <TableCell align="right">
-                                <span className={cn("num", (r.realizedPnl ?? 0) > 0 ? "text-success" : (r.realizedPnl ?? 0) < 0 ? "text-destructive" : "text-muted-foreground")}>
-                                  {r.realizedPnl === null ? "Unknown" : `${(r.realizedPnl ?? 0) > 0 ? "+" : ""}${formatUSD(r.realizedPnl)}`}
-                                </span>
-                              </TableCell>
-                            )}
-                          </TableRow>
-                        );
-                      })
-                    ) : (
-                      queue.map((lot, i) => {
-                        const fraction = previewMap ? (previewMap.get(lot.id) ?? 0) : 1;
-                        const take = lot.quantity * fraction;
-                        const untouched = !!previewMap && fraction <= 0;
-                        const pnl = lot.unrealizedPnl;
-                        return (
-                          <TableRow key={lot.id} index={i} className={cn("transition-opacity duration-500", untouched && "opacity-40")}>
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <span className="num w-5 text-[11px] text-muted-foreground">{i + 1}</span>
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-[14px] text-foreground">{lot.openedAt ? formatDate(lot.openedAt) : "Opening balance"}</span>
-                                  {lot.term && <span className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground">{lot.term}</span>}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell align="right">
-                              <div className="flex flex-col items-end gap-1">
-                                <span className="num text-foreground">{formatQuantity(take, 4)} sh</span>
-                                {previewMap && fraction > 0 && fraction < 1 && (
-                                  <span className="num text-[11px] text-muted-foreground">{formatPercent(fraction * 100).replace("+", "")} of {formatQuantity(lot.quantity, 4)}</span>
+                            </div>
+                          )}
+
+                          <div className="mt-auto pt-6 border-t hairline">
+                            <button 
+                              type="button"
+                              onClick={quoteExpired || execution?.phase === "failed" ? handleGetQuote : executeTrade}
+                              disabled={isExecuting || execution?.phase === "recorded" || quoteQuery.isPending}
+                              className={cn(
+                                "group w-full inline-flex h-14 items-center justify-center gap-2 rounded-xl text-[13px] tracking-[0.12em] uppercase transition-all",
+                                execution?.phase === "recorded"
+                                  ? "bg-success/10 text-success border border-success/30"
+                                  : quoteExpired || execution?.phase === "failed"
+                                    ? "bg-white/[0.03] border hairline text-muted-foreground hover:text-foreground hover:bg-white/[0.06]"
+                                    : onChain || execution?.phase === "pending"
+                                      ? "bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50" 
+                                      : "bg-white/[0.08] border hairline text-foreground hover:bg-white/[0.12]"
+                              )}
+                            >
+                              {isExecuting || quoteQuery.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : execution?.phase === "recorded" ? <CheckCircle2 className="h-5 w-5" /> : null}
+                              {execution?.phase === "recorded"
+                                ? "Recorded"
+                                : execution?.phase === "pending"
+                                  ? isExecuting ? "Waiting for confirmation" : "Check status"
+                                  : execution?.phase === "failed"
+                                    ? "Request a new quote"
+                                    : quoteExpired
+                                      ? "Quote expired, request again"
+                                      : onChain
+                                        ? "Sign and execute"
+                                        : "Record simulated sale"}
+                            </button>
+                            
+                            {execution && (
+                              <div
+                                className={cn(
+                                  "mt-4 flex items-start gap-2 text-[13px]",
+                                  execution.phase === "recorded" ? "text-success" : execution.phase === "pending" ? "text-primary" : "text-destructive",
                                 )}
-                              </div>
-                            </TableCell>
-                            <TableCell align="right">
-                              {lot.basisUnknown || lot.costBasis === null ? (
-                                <Pill tone="loss">Unknown</Pill>
-                              ) : (
-                                <div className="flex flex-col items-end gap-1">
-                                  <span className="num text-foreground">{formatUSD(lot.costBasis * fraction)}</span>
-                                  {lot.costPerShare !== null && <span className="num text-[11px] text-muted-foreground">{formatUSD(lot.costPerShare)} / sh</span>}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell align="right">
-                              {pnl === null ? (
-                                <span className="text-[12px] text-muted-foreground">Unknown</span>
-                              ) : (
-                                <span className={cn("num", pnl > 0 ? "text-success" : pnl < 0 ? "text-destructive" : "text-muted-foreground")}>
-                                  {pnl > 0 ? "+" : ""}
-                                  {formatUSD(pnl * fraction)}
+                              >
+                                {execution.phase === "recorded" ? (
+                                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                                ) : execution.phase === "pending" ? (
+                                  <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+                                ) : (
+                                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                )}
+                                <span className="flex flex-col gap-1 leading-relaxed">
+                                  <span>{execution.message}</span>
+                                  {"explorerUrl" in execution && execution.explorerUrl && (
+                                    <a href={execution.explorerUrl} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1 text-foreground underline-offset-4 hover:underline">
+                                      View on explorer <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  )}
                                 </span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </DataTable>
-              </section>
-            </Reveal>
-          ) : null}
+                              </div>
+                            )}
+                          </div>
+                        </Reveal>
+                      ) : (
+                        <div className="flex flex-1 flex-col gap-6">
+                          <p className="max-w-[56ch] text-[13px] leading-relaxed text-muted-foreground">
+                            {previewQuantity > 0
+                              ? `Review the quote to see the route, proceeds, price impact and the realized result of selling ${formatQuantity(previewQuantity)} ${selectedPosition.symbol}.`
+                              : `Enter a quantity of ${selectedPosition.symbol} to request a quote. The relief queue below shows which lots a sale would take first under ${method.toUpperCase()}.`}
+                          </p>
+                          <ol className="grid grid-cols-2 gap-x-6 gap-y-5 border-t hairline pt-5 md:grid-cols-4">
+                            {SALE_STEPS.map((step, i) => (
+                              <li key={step.title} className="flex flex-col gap-1.5">
+                                <span className="flex items-center gap-2">
+                                  <span className={cn("num text-[11px]", i === 0 ? "text-primary" : "text-muted-foreground/60")}>{i + 1}</span>
+                                  <span className={cn("text-[13px]", i === 0 ? "text-foreground" : "text-muted-foreground")}>{step.title}</span>
+                                </span>
+                                <span className="text-[11px] leading-relaxed text-muted-foreground/70">{step.detail}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                    </Panel>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+
+              {(quote?.reliefs.length || queue.length > 0) ? (
+                <Reveal delay={0.1}>
+                  <section>
+                    <SectionTitle
+                      aside={
+                        quote ? null : previewMap ? (
+                          <Pill tone="amber">Preview</Pill>
+                        ) : (
+                          <span>
+                            {method.toUpperCase()} order, {queue.length} {queue.length === 1 ? "lot" : "lots"}
+                          </span>
+                        )
+                      }
+                    >
+                      {quote ? "Relieved lots" : previewMap ? "Estimated relief" : "Relief queue"}
+                    </SectionTitle>
+                    <DataTable>
+                      <TableHeader>
+                        <TableHead>Lot</TableHead>
+                        <TableHead>Acquired</TableHead>
+                        <TableHead className="hidden lg:table-cell">Holding</TableHead>
+                        <TableHead align="right">Quantity relieved</TableHead>
+                        <TableHead align="right">Cost relieved</TableHead>
+                        <TableHead align="right" className="hidden lg:table-cell">Cost per share</TableHead>
+                        {quote && <TableHead align="right" className="hidden lg:table-cell">Proceeds</TableHead>}
+                        {quote ? <TableHead align="right">Realized</TableHead> : <TableHead align="right">Unrealized</TableHead>}
+                      </TableHeader>
+                      <TableBody>
+                        {quote ? (
+                          quote.reliefs.map((r, i) => {
+                            const lot = lots?.find(l => l.id === r.lotId);
+                            const openedLabel = lot?.openedAt ? formatDate(lot.openedAt) : "Opening balance";
+                            
+                            return (
+                              <TableRow key={r.lotId} index={i}>
+                                <TableCell>
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="num w-5 text-[11px] text-muted-foreground">{i + 1}</span>
+                                    <span className="text-foreground">{eventKindLabel(lot?.openKind)}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="num text-[14px] text-foreground">{openedLabel}</span>
+                                    {r.term && <span className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground lg:hidden">{r.term}</span>}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden lg:table-cell">
+                                  {r.term && (
+                                    <span className="uppercase tracking-[0.1em] text-[12px] text-muted-foreground">{r.term}</span>
+                                  )}
+                                </TableCell>
+                                <TableCell align="right" className="num text-[14px] text-foreground">{formatQuantity(r.quantity, 4)} sh</TableCell>
+                                <TableCell align="right">
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span className="num text-[14px] text-foreground">{formatUSD(r.costBasis)}</span>
+                                    {lot?.costPerShare !== null && lot?.costPerShare !== undefined && <span className="num text-[11px] text-muted-foreground lg:hidden">{formatUSD(lot.costPerShare)} per sh</span>}
+                                  </div>
+                                </TableCell>
+                                <TableCell align="right" className="hidden lg:table-cell">
+                                  {lot?.costPerShare !== null && lot?.costPerShare !== undefined && (
+                                    <span className="num text-[14px] text-foreground">{formatUSD(lot.costPerShare)}</span>
+                                  )}
+                                </TableCell>
+                                {quote && (
+                                  <TableCell align="right" className="hidden lg:table-cell num text-[14px] text-foreground">{formatUSD(r.proceeds)}</TableCell>
+                                )}
+                                {quote && (
+                                  <TableCell align="right">
+                                    <div className="flex flex-col items-end gap-1">
+                                      <span className={cn("num text-[14px]", (r.realizedPnl ?? 0) > 0 ? "text-success" : (r.realizedPnl ?? 0) < 0 ? "text-destructive" : "text-muted-foreground")}>
+                                        {r.realizedPnl === null ? "Unknown" : `${(r.realizedPnl ?? 0) > 0 ? "+" : ""}${formatUSD(r.realizedPnl)}`}
+                                      </span>
+                                      <span className="num text-[11px] text-muted-foreground lg:hidden">{formatUSD(r.proceeds)} proceeds</span>
+                                    </div>
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            );
+                          })
+                        ) : (
+                          queue.map((layer, i) => {
+                            const fraction = previewMap ? (previewMap.get(layer.id) ?? 0) : 1;
+                            const take = layer.quantity * fraction;
+                            const untouched = !!previewMap && fraction <= 0;
+                            const pnl = layer.unrealizedPnl;
+                            const lot = lots?.find(l => l.id === layer.id);
+                            
+                            return (
+                              <TableRow key={layer.id} index={i} className={cn("transition-opacity duration-500", untouched && "opacity-40")}>
+                                <TableCell>
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="num w-5 text-[11px] text-muted-foreground">{i + 1}</span>
+                                    <span className="text-[14px] text-foreground">{eventKindLabel(lot?.openKind)}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="num text-[14px] text-foreground">{layer.openedAt ? formatDate(layer.openedAt) : "Opening balance"}</span>
+                                    {layer.term && <span className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground lg:hidden">{layer.term}</span>}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden lg:table-cell">
+                                  {layer.term && <span className="text-[12px] uppercase tracking-[0.1em] text-muted-foreground">{layer.term}</span>}
+                                </TableCell>
+                                <TableCell align="right">
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span className="num text-[14px] text-foreground">{formatQuantity(take, 4)} sh</span>
+                                    {previewMap && fraction > 0 && fraction < 1 && (
+                                      <span className="num text-[11px] text-muted-foreground">{formatPercent(fraction * 100).replace("+", "")} of {formatQuantity(layer.quantity, 4)}</span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell align="right">
+                                  {layer.basisUnknown || layer.costBasis === null ? (
+                                    <Pill tone="loss">Unknown</Pill>
+                                  ) : (
+                                    <div className="flex flex-col items-end gap-1">
+                                      <span className="num text-[14px] text-foreground">{formatUSD(layer.costBasis * fraction)}</span>
+                                      {layer.costPerShare !== null && <span className="num text-[11px] text-muted-foreground lg:hidden">{formatUSD(layer.costPerShare)} per sh</span>}
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell align="right" className="hidden lg:table-cell">
+                                  {layer.costPerShare !== null && !layer.basisUnknown && (
+                                    <span className="num text-[14px] text-foreground">{formatUSD(layer.costPerShare)}</span>
+                                  )}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {pnl === null ? (
+                                    <span className="text-[14px] text-muted-foreground">Unknown</span>
+                                  ) : (
+                                    <span className={cn("num text-[14px]", pnl > 0 ? "text-success" : pnl < 0 ? "text-destructive" : "text-muted-foreground")}>
+                                      {pnl > 0 ? "+" : ""}
+                                      {formatUSD(pnl * fraction)}
+                                    </span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </DataTable>
+                  </section>
+                </Reveal>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
     </>

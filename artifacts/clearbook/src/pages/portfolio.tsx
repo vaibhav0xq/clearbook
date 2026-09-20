@@ -41,23 +41,28 @@ export default function Portfolio() {
     <>
       {isLoading ? (
         <div className="flex flex-col gap-10">
-          <Skeleton className="h-6 w-40" />
-          <Skeleton className="h-24 w-3/4" />
-          <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
+            <div className="flex flex-col gap-3">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-12 w-64" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+              <Skeleton className="h-14" />
+              <Skeleton className="h-14" />
+              <Skeleton className="h-14" />
+              <Skeleton className="h-14" />
+            </div>
           </div>
           <Skeleton className="h-72 rounded-2xl" />
         </div>
       ) : error ? (
         <ErrorState title="Unable to load this portfolio" message={error.data?.message ?? error.message} />
       ) : portfolio ? (
-        <div className="flex flex-col gap-12 md:gap-14">
-          {/* Totals */}
-          <section className="flex flex-col gap-8">
-            <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-10 md:gap-12">
+          {/* Account summary: the value on the left, its components in one row on the right */}
+          <section className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
+            <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="label">Net value, {portfolio.currency}</span>
                 <span className="text-muted-foreground/40">|</span>
@@ -69,8 +74,11 @@ export default function Portfolio() {
                 {portfolio.totals.unpricedValueCount > 0 && <Pill tone="loss">{portfolio.totals.unpricedValueCount} unpriced</Pill>}
               </div>
               <Figure value={portfolio.totals.netValue} size="xxl" />
+              <span className="text-[12px] text-muted-foreground">
+                Marked <span className="num">{formatTime(portfolio.asOf)}</span> with {portfolio.pricing.providerLabel}
+              </span>
             </div>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-8 border-t hairline pt-6 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-t hairline pt-6 md:grid-cols-4 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-1">
               <Figure label="Cost basis" value={portfolio.totals.costBasis} size="md" />
               <Figure
                 label="Unrealized"
@@ -103,15 +111,7 @@ export default function Portfolio() {
 
           {/* Positions */}
           <section>
-            <SectionTitle
-              aside={
-                <span>
-                  Marked <span className="num">{formatTime(portfolio.asOf)}</span> with {portfolio.pricing.providerLabel}
-                </span>
-              }
-            >
-              Positions
-            </SectionTitle>
+            <SectionTitle aside={<span>Click a position to open its lots</span>}>Positions</SectionTitle>
             {portfolio.positions.length === 0 ? (
               <EmptyState
                 title="No positions found"
@@ -124,7 +124,10 @@ export default function Portfolio() {
                   <TableHead align="right">Quantity</TableHead>
                   <TableHead align="right">Mark</TableHead>
                   <TableHead align="right">Value</TableHead>
-                  <TableHead align="right" className="hidden desk:table-cell">
+                  <TableHead align="right" className="hidden md:table-cell">
+                    Weight
+                  </TableHead>
+                  <TableHead align="right" className="hidden lg:table-cell">
                     Cost basis
                   </TableHead>
                   <TableHead align="right">Unrealized</TableHead>
@@ -189,13 +192,21 @@ export default function Portfolio() {
                       <TableCell align="right">
                         <div className="flex flex-col items-end gap-1">
                           <span className="num text-foreground">{formatUSD(pos.marketValue)}</span>
-                          <span className="num text-[11px] text-muted-foreground">{formatPercent(pos.weightPct).replace("+", "")} of value</span>
-                          <span className="num text-[11px] text-muted-foreground desk:hidden" title={pos.basisStatus === "complete" ? `${formatUSD(pos.averageCost)} average cost` : undefined}>
+                          <span className="num text-[11px] text-muted-foreground md:hidden">{formatPercent(pos.weightPct).replace("+", "")} of value</span>
+                          <span className="num text-[11px] text-muted-foreground lg:hidden" title={pos.basisStatus === "complete" ? `${formatUSD(pos.averageCost)} average cost` : undefined}>
                             {formatUSD(pos.costBasis)} cost
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell align="right" className="hidden desk:table-cell">
+                      <TableCell align="right" className="hidden md:table-cell">
+                        <div className="flex flex-col items-end gap-1.5">
+                          <span className="num text-foreground">{formatPercent(pos.weightPct).replace("+", "")}</span>
+                          <span className="h-px w-16 overflow-hidden bg-white/[0.08]" aria-hidden>
+                            <span className="block h-full bg-foreground/60" style={{ width: `${Math.min(100, Math.max(0, pos.weightPct ?? 0))}%` }} />
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell align="right" className="hidden lg:table-cell">
                         <div className="flex flex-col items-end gap-1">
                           <span className="num text-foreground">{formatUSD(pos.costBasis)}</span>
                           <span className="num text-[11px] text-muted-foreground">
@@ -224,7 +235,7 @@ export default function Portfolio() {
           </section>
 
           {/* Allocation and assumptions */}
-          <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Reveal>
               <Panel className="h-full p-6 md:p-7">
                 <span className="label">By issuer</span>

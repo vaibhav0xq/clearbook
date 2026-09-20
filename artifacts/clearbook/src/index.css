@@ -213,6 +213,33 @@
   }
 }
 
+/*
+ * Ledger frame. The wallet pages read like a statement: one measured column, up to 1560px, with
+ * gutters that stay modest so tables keep their width. The stage band and the top bar align their
+ * overlays to the same frame.
+ */
+:root {
+  --ledger-gutter: 1.25rem;
+  --stage-height: max(320px, 46vh);
+}
+@media (min-width: 48rem) {
+  :root {
+    --ledger-gutter: 2rem;
+  }
+}
+@media (min-width: 64rem) {
+  :root {
+    --ledger-gutter: 2.5rem;
+    --stage-height: clamp(300px, 36vh, 440px);
+  }
+}
+@media (min-width: 120rem) {
+  :root {
+    --ledger-gutter: 3rem;
+    --stage-height: clamp(360px, 34vh, 520px);
+  }
+}
+
 @layer utilities {
   .shell {
     width: 100%;
@@ -224,6 +251,15 @@
     .shell {
       max-width: none;
     }
+  }
+  .ledger {
+    width: 100%;
+    max-width: 1560px;
+    margin-inline: auto;
+    padding-inline: var(--ledger-gutter);
+  }
+  .stage-band {
+    height: var(--stage-height);
   }
   /*
    * Landing type scale. Written as plain media queries because stacked breakpoint variants are

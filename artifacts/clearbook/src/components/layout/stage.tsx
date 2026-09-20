@@ -123,8 +123,11 @@ export function useStage(state: StageState) {
   return { hoverMint: ctx.hoverMint, setHoverMint: ctx.setHoverMint, columns: ctx.columns, lotDetail: ctx.lotDetail };
 }
 
-/** The scene plus its overlays. Rendered once by the shell. */
-export function StageView({ address, className }: { address: string; className?: string }) {
+/**
+ * The scene plus its overlays, laid out as a wide band under the top bar. The shell passes the
+ * ledger identity for the top left corner and any controls for the top right.
+ */
+export function StageView({ address, topLeft, topRight, className }: { address: string; topLeft?: ReactNode; topRight?: ReactNode; className?: string }) {
   const { method } = useCostMethod();
   const ctx = useStageContext();
   const [, setLocation] = useLocation();
@@ -159,23 +162,35 @@ export function StageView({ address, className }: { address: string; className?:
         onSelectColumn={onSelect}
       />
       {/* Edge scrims keep the overlays legible without boxing the scene. */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-background via-background/70 to-transparent" />
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-background/80 to-transparent lg:hidden" />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-background via-background/60 to-transparent" />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-20 bg-gradient-to-b from-background/70 to-transparent" />
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-6 px-6 pb-5 md:px-8 md:pb-7">
+      <div className="ledger pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-6 pt-4 md:pt-5">
+        <div className="pointer-events-auto min-w-0">{topLeft}</div>
+        <div className="pointer-events-auto flex shrink-0 items-center gap-4">
+          <span className="hidden text-right text-[11px] leading-relaxed text-foreground/40 xl:block">
+            {rewound ? "Height is cost basis at that date." : "Height is market value."}
+            <br />
+            Click a column to open its lots.
+          </span>
+          {topRight}
+        </div>
+      </div>
+
+      <div className="ledger pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-8 pb-4 md:pb-5">
         <div className="flex min-w-0 flex-col gap-1.5">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={shown?.mint ?? "all"}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.45, ease: EASE_OUT }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.4, ease: EASE_OUT }}
               className="flex flex-col gap-1"
             >
               {shown ? (
                 <>
-                  <span className="display text-[26px] leading-none text-foreground md:text-[32px]">{shown.symbol}</span>
+                  <span className="display text-[20px] leading-none text-foreground md:text-[22px]">{shown.symbol}</span>
                   <span className="num text-[12px] text-foreground/60">
                     {formatQuantity(shown.quantity, 4)} sh, {lotsReady || rewound ? `${shown.layers.length} ${shown.layers.length === 1 ? "lot" : "lots"}` : lotsNote},{" "}
                     {rewound ? `${formatUSD(shown.value)}${costNote([shown])}` : shown.value > 0 ? formatUSD(shown.value) : "unpriced"}
@@ -183,7 +198,7 @@ export function StageView({ address, className }: { address: string; className?:
                 </>
               ) : (
                 <>
-                  <span className="display text-[26px] leading-none text-foreground md:text-[32px]">
+                  <span className="display text-[20px] leading-none text-foreground md:text-[22px]">
                     {columns.length} {columns.length === 1 ? "position" : "positions"}
                   </span>
                   <span className="num text-[12px] text-foreground/60">
@@ -194,22 +209,16 @@ export function StageView({ address, className }: { address: string; className?:
               )}
             </motion.div>
           </AnimatePresence>
-          {/* The method note only fits beside a tall stage. Small screens keep the figures and lose the sentence. */}
           {rewound ? (
-            <span className="hidden max-w-[46ch] text-[12px] leading-relaxed text-foreground/50 lg:inline">
+            <span className="hidden max-w-[60ch] text-[12px] leading-relaxed text-foreground/50 md:inline">
               As of {format(asOf, "MMM d, yyyy")}. Height is cost basis. Approximate: partial sales are undated.
             </span>
           ) : (
-            caption && <span className="hidden max-w-[46ch] text-[12px] leading-relaxed text-foreground/50 lg:inline">{caption}</span>
+            caption && <span className="hidden max-w-[60ch] text-[12px] leading-relaxed text-foreground/50 md:inline">{caption}</span>
           )}
         </div>
-        <span className="hidden shrink-0 text-right text-[11px] leading-relaxed text-foreground/40 md:block">
-          {rewound ? "Height is cost basis." : "Height is market value."}
-          <br />
-          Click a column to open its lots.
-        </span>
+        <Rewind className="hidden w-[300px] shrink-0 md:block xl:w-[340px]" />
       </div>
-      <Rewind />
     </div>
   );
 }

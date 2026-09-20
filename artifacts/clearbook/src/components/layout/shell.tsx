@@ -1,4 +1,4 @@
-import { ReactNode, useId } from "react";
+import { ReactNode, useCallback, useId, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
@@ -65,7 +65,29 @@ export function CostMethodControl({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function SectionTabs({ address, className, layoutId }: { address: string; className?: string; layoutId: string }) {
+const STAGE_PREFERENCE_KEY = "clearbook.stage";
+
+/** Whether the visitor wants the ledger band. Remembered in this browser. */
+function useStagePreference(): [boolean, (shown: boolean) => void] {
+  const [shown, setShownState] = useState(() => {
+    try {
+      return window.localStorage.getItem(STAGE_PREFERENCE_KEY) !== "hidden";
+    } catch {
+      return true;
+    }
+  });
+  const setShown = useCallback((next: boolean) => {
+    setShownState(next);
+    try {
+      window.localStorage.setItem(STAGE_PREFERENCE_KEY, next ? "shown" : "hidden");
+    } catch {
+      // Private mode. The choice lasts for the session.
+    }
+  }, []);
+  return [shown, setShown];
+}
+
+function SectionTabs({ address, className, layoutId, height = "h-14" }: { address: string; className?: string; layoutId: string; height?: string }) {
   const [location] = useLocation();
   const items = [
     { label: "Portfolio", path: `/w/${address}` },
@@ -85,7 +107,8 @@ function SectionTabs({ address, className, layoutId }: { address: string; classN
             key={item.path}
             href={item.path}
             className={cn(
-              "relative shrink-0 px-3 py-3 text-[13px] transition-colors duration-300",
+              "relative flex shrink-0 items-center px-3 text-[13px] transition-colors duration-300",
+              height,
               active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -93,7 +116,7 @@ function SectionTabs({ address, className, layoutId }: { address: string; classN
             {active && (
               <motion.span
                 layoutId={layoutId}
-                className="absolute inset-x-3 -bottom-px h-px bg-primary"
+                className="absolute inset-x-3 bottom-0 h-px bg-primary"
                 transition={{ type: "spring", stiffness: 420, damping: 36 }}
               />
             )}
@@ -212,88 +235,125 @@ export function Shell({ address, children }: ShellProps) {
       </div>
     ) : null;
 
+  const base = `/w/${address}`;
+  // The ledger band belongs to the pages that read from it: positions, lots and the sale preview.
+  // Statements, activity and corporate actions are documents and tables and keep the full height.
+  const stagePage = location === base || location.startsWith(`${base}/lots`) || location.startsWith(`${base}/trade`);
+  const [stagePreferred, setStagePreferred] = useStagePreference();
+  const showStage = stagePage && stagePreferred && !statusError;
+
+  const stageControls = (
+    <>
+      <button
+        type="button"
+        onClick={() => setStagePreferred(false)}
+        className="rounded-full border hairline bg-background/60 px-3 py-1.5 text-[12px] text-muted-foreground backdrop-blur transition-colors hover:border-white/20 hover:text-foreground"
+      >
+        Hide chart
+      </button>
+    </>
+  );
+
   return (
     <StageProvider address={address}>
       <div aria-hidden className="grain-overlay" />
-      {/* The stage takes a larger share on wide monitors so the reading panel keeps a sensible measure. */}
-      <div className="relative min-h-screen lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(360px,40vw,720px)] desk:grid-cols-[minmax(0,1fr)_clamp(720px,44vw,1160px)]">
-
-        {/* Stage. First in the DOM so it sits at the top on small screens and on the right on large ones. */}
-        <aside className="sticky top-0 z-0 h-[46vh] min-h-[320px] lg:order-2 lg:h-screen lg:min-h-0 lg:self-start lg:border-l lg:hairline">
-          <StageView address={address} />
-          {/* Small screens: brand and wallet float over the scene. Large screens: the ledger identity does. */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 px-5 pt-4 md:px-8 md:pt-5 desk:px-10 desk:pt-6">
-            <div className="pointer-events-auto lg:hidden">
-              <Brand />
-            </div>
-            <div className="pointer-events-auto hidden lg:block">{identity}</div>
-            <div className="pointer-events-auto flex shrink-0 items-center gap-3">
-              <div className="hidden lg:block">
+      <div className="relative flex min-h-screen flex-col bg-background">
+        {/* Top bar */}
+        <header className="sticky top-0 z-40 border-b hairline bg-background/85 backdrop-blur-xl">
+          <div className="ledger flex h-14 items-center gap-6 xl:gap-10">
+            <Brand />
+            <SectionTabs address={address} layoutId="nav-active" className="hidden min-w-0 lg:flex" />
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              <div className="hidden md:block">
                 <CostMethodControl />
+              </div>
+              <div className="md:hidden">
+                <CostMethodControl compact />
               </div>
               <WalletConnectButton />
             </div>
           </div>
-        </aside>
+          <div className="ledger border-t hairline lg:hidden">
+            <SectionTabs address={address} layoutId="nav-active-small" height="h-11" className="-mx-3 overflow-x-auto scrollbar-none" />
+          </div>
+        </header>
 
-        {/* Reading panel */}
-        <div className="relative z-10 flex min-h-screen flex-col bg-background lg:order-1 lg:min-h-screen">
-          <header className="sticky top-0 z-40 border-b hairline bg-background/80 backdrop-blur-xl">
-            <div className="hidden items-center gap-8 px-6 md:px-10 lg:flex desk:px-14">
-              <Brand />
-              <SectionTabs address={address} layoutId="nav-active" className="min-w-0 overflow-x-auto scrollbar-none" />
-            </div>
-            <div className="flex items-center justify-between gap-3 px-3 lg:hidden">
-              <SectionTabs address={address} layoutId="nav-active-small" className="min-w-0 overflow-x-auto scrollbar-none" />
-              <div className="shrink-0 py-1.5 pr-1">
-                <CostMethodControl compact />
+        {/* Ledger band */}
+        <AnimatePresence initial={false}>
+          {showStage && (
+            <motion.section
+              key="stage"
+              aria-label="Ledger as columns of lots"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.5, ease: EASE_OUT }}
+              className="relative z-0 overflow-hidden border-b hairline"
+            >
+              <div className="stage-band relative">
+                <StageView address={address} topLeft={identity} topRight={stageControls} />
               </div>
-            </div>
-          </header>
+            </motion.section>
+          )}
+        </AnimatePresence>
 
-          <AnimatePresence initial={false}>
-            {(identity || notices) && (
-              <motion.div
-                key="ledger-strip"
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: EASE_OUT, delay: 0.15 }}
-                className={cn("flex flex-col gap-3 px-6 pt-6 md:px-10 desk:px-14", !notices && "lg:hidden")}
-              >
-                <div className="lg:hidden">{identity}</div>
-                {notices}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <main className="flex flex-1 flex-col px-6 py-8 md:px-10 md:py-10 desk:px-14 desk:py-12">
-            {statusError ? (
-              <PageTransition className="mx-auto my-16 w-full max-w-xl">
-                <div className="flex flex-col items-center gap-4 rounded-2xl border hairline p-10 text-center">
-                  <AlertCircle className="h-7 w-7 text-destructive" />
-                  <h3 className="display text-3xl text-foreground">
-                    {statusError.status === 400 ? "That is not a Solana address" : "Unable to load this ledger"}
-                  </h3>
-                  <p className="max-w-md break-all text-sm leading-relaxed text-muted-foreground">{statusError.data?.message ?? statusError.message}</p>
-                  <Link href="/" className="mt-2 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.12em] text-primary transition-colors hover:text-foreground">
-                    <ArrowLeft className="h-3.5 w-3.5" /> Back to lookup
-                  </Link>
+        {/* Identity strip when the band is not shown, and notices on every page */}
+        <AnimatePresence initial={false}>
+          {((!showStage && identity) || notices) && (
+            <motion.div
+              key="ledger-strip"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease: EASE_OUT }}
+              className="ledger flex flex-col gap-3 pt-5"
+            >
+              {!showStage && identity && (
+                <div className="flex items-start justify-between gap-6">
+                  {identity}
+                  {stagePage && !stagePreferred && (
+                    <button
+                      type="button"
+                      onClick={() => setStagePreferred(true)}
+                      className="shrink-0 text-[12px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                    >
+                      Show chart
+                    </button>
+                  )}
                 </div>
-              </PageTransition>
-            ) : (
-              <PageTransition key={location} className="flex flex-1 flex-col">
-                {children}
-              </PageTransition>
-            )}
-          </main>
+              )}
+              {notices}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-          <footer className="flex flex-col justify-between gap-3 px-6 pb-8 pt-4 text-[12px] text-muted-foreground md:flex-row md:items-center md:px-10 desk:px-14">
-            <span>Figures are rebuilt from public Solana history. Estimates are labeled. Nothing here is tax advice.</span>
-            <Link href="/methodology" className="transition-colors hover:text-foreground">
-              Methodology
-            </Link>
-          </footer>
-        </div>
+        <main className="ledger flex flex-1 flex-col py-8 md:py-10">
+          {statusError ? (
+            <PageTransition className="mx-auto my-16 w-full max-w-xl">
+              <div className="flex flex-col items-center gap-4 rounded-2xl border hairline p-10 text-center">
+                <AlertCircle className="h-7 w-7 text-destructive" />
+                <h3 className="display text-[24px] text-foreground">
+                  {statusError.status === 400 ? "That is not a Solana address" : "Unable to load this ledger"}
+                </h3>
+                <p className="max-w-md break-all text-sm leading-relaxed text-muted-foreground">{statusError.data?.message ?? statusError.message}</p>
+                <Link href="/" className="mt-2 inline-flex items-center gap-2 text-[12px] uppercase tracking-[0.12em] text-primary transition-colors hover:text-foreground">
+                  <ArrowLeft className="h-3.5 w-3.5" /> Back to lookup
+                </Link>
+              </div>
+            </PageTransition>
+          ) : (
+            <PageTransition key={location} className="flex flex-1 flex-col">
+              {children}
+            </PageTransition>
+          )}
+        </main>
+
+        <footer className="ledger flex flex-col justify-between gap-3 border-t hairline py-5 text-[12px] text-muted-foreground md:flex-row md:items-center">
+          <span>Figures are rebuilt from public Solana history. Estimates are labeled. Nothing here is tax advice.</span>
+          <Link href="/methodology" className="transition-colors hover:text-foreground">
+            Methodology
+          </Link>
+        </footer>
       </div>
     </StageProvider>
   );

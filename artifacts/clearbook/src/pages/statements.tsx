@@ -1,15 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link, useRoute, useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
-import { Plus, ShieldCheck, Clock, Loader2, AlertTriangle } from "lucide-react";
+import { ShieldCheck, Clock, Loader2, AlertTriangle } from "lucide-react";
 
 import { useListStatements, useCreateStatement, type CostMethod } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { useStage } from "@/components/layout/stage";
 import { formatUSD, formatDate, truncateHash, formatDay } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
-import { PageHeader, Panel, Skeleton, EmptyState, ErrorState, Pill, MethodologyLink } from "@/components/surface";
-import { Reveal, EASE_OUT } from "@/components/motion/reveal";
+import { PageHeader, Panel, Skeleton, EmptyState, ErrorState, Pill, MethodologyLink, SectionTitle } from "@/components/surface";
+import { Reveal } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
 
 /** YYYY-MM-DD of a moment's UTC day, optionally with the day of month replaced. */
@@ -72,9 +71,6 @@ export default function Statements() {
         : "A statement records holdings, trades and realized gains for a chosen period.",
   });
 
-  // The list reads first. The form opens on request, or by itself when there is nothing to list yet.
-  const [formOpen, setFormOpen] = useState<boolean | null>(null);
-  const showForm = formOpen ?? (statements !== undefined && statements.length === 0);
   // Statement periods are UTC calendar days on the server, so the form works in UTC days as well.
   const today = utcDay(new Date());
   const [newStart, setNewStart] = useState(utcDay(new Date(), { day: 1 }));
@@ -121,7 +117,6 @@ export default function Statements() {
           ...(newTitle.trim() ? { title: newTitle.trim() } : {}),
         },
       });
-      setFormOpen(false);
       setLocation(`/w/${address}/statements/${res.id}`);
     } catch {
       // The mutation state carries the error into the form.
@@ -135,217 +130,187 @@ export default function Statements() {
       <PageHeader
         title="Statements"
         description="A statement fixes holdings, trades and realized gains for a period. Its hash can be notarized on Solana and checked by anyone."
-        actions={
-          !showForm && (
-            <Reveal>
-              <button
-                type="button"
-                onClick={() => setFormOpen(true)}
-                className="group flex items-center gap-2 whitespace-nowrap rounded-full border hairline bg-white/[0.03] px-4 py-2 text-[13px] text-foreground transition-colors hover:border-white/20 hover:bg-white/[0.06]"
-              >
-                <Plus className="h-4 w-4 text-primary" />
-                Generate statement
-              </button>
-            </Reveal>
-          )
-        }
       />
 
-      <div className="flex flex-col gap-10 pb-16">
-        <AnimatePresence initial={false}>
-          {showForm && (
-            <motion.div
-              initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-              animate={{ height: "auto", opacity: 1, marginBottom: 16 }}
-              exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-              transition={{ duration: 0.6, ease: EASE_OUT }}
-              className="overflow-hidden"
-            >
-              <Panel className="flex flex-col gap-8 border-primary/20 bg-primary/[0.02] p-6 md:p-8">
-                <div className="flex items-center justify-between">
-                  <h2 className="display text-[26px] text-foreground md:text-[30px]">New statement</h2>
-                  {count > 0 && (
+      <div className="grid grid-cols-1 gap-10 pb-16 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-12 xl:grid-cols-[minmax(0,1fr)_420px]">
+        {/* List */}
+        <section className="flex min-w-0 flex-col gap-4">
+          <SectionTitle aside={statements && statements.length > 0 ? <span className="num">{statements.length} {statements.length === 1 ? "statement" : "statements"}</span> : null}>
+            Generated statements
+          </SectionTitle>
+          {isLoading ? (
+            <div className="flex flex-col gap-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : error ? (
+            <ErrorState title="Unable to load statements" message={error.data?.message ?? error.message} />
+          ) : statements ? (
+            statements.length === 0 ? (
+              <Reveal>
+                <EmptyState
+                  title="No statements yet"
+                  description="Choose a period to generate the first statement for this ledger."
+                />
+              </Reveal>
+            ) : (
+              <div className="flex flex-col gap-6">
+                <DataTable>
+                  <TableHeader>
+                    <TableHead>Statement</TableHead>
+                    <TableHead className="hidden xl:table-cell">Method</TableHead>
+                    <TableHead className="hidden md:table-cell">Generated</TableHead>
+                    <TableHead className="hidden xl:table-cell">Document hash</TableHead>
+                    <TableHead className="hidden md:table-cell">Proof</TableHead>
+                    <TableHead align="right">Closing value</TableHead>
+                  </TableHeader>
+                  <TableBody>
+                    {statements.map((stmt, i) => {
+                      const proof = PROOF[stmt.proofStatus] ?? PROOF.none;
+                      return (
+                        <TableRow key={stmt.id} index={i} onClick={() => setLocation(`/w/${address}/statements/${stmt.id}`)}>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <Link
+                                href={`/w/${address}/statements/${stmt.id}`}
+                                className="text-[14px] text-foreground transition-colors hover:text-primary focus:outline-none focus-visible:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {stmt.title}
+                              </Link>
+                              <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                <span className="num">
+                                  {formatDay(stmt.periodStart)} to {formatDay(stmt.periodEnd)}
+                                </span>
+                                <Pill className="px-1.5 py-[2px] text-[9px] xl:hidden">{stmt.method}</Pill>
+                              </span>
+                              <span className={cn("flex items-center gap-1.5 text-[11px] md:hidden", proof.className)}>
+                                <proof.Icon className="h-3.5 w-3.5" />
+                                {proof.label}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden xl:table-cell">
+                            <Pill tone="amber">{stmt.method}</Pill>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <div className="flex flex-col gap-1">
+                              <span className="num text-[13px] text-muted-foreground">{formatDate(stmt.generatedAt)}</span>
+                              <span className="num text-[11px] text-muted-foreground/70 xl:hidden" title={stmt.hash}>
+                                {truncateHash(stmt.hash, 4)}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden xl:table-cell">
+                            <span className="num text-[13px] text-muted-foreground" title={stmt.hash}>
+                              {truncateHash(stmt.hash, 6)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <span className={cn("flex items-center gap-1.5 text-[13px]", proof.className)}>
+                              <proof.Icon className="h-4 w-4" />
+                              {proof.label}
+                            </span>
+                          </TableCell>
+                          <TableCell align="right">
+                            <span className="num text-[14px] text-foreground">{formatUSD(stmt.closingValue)}</span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </DataTable>
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  The document hash is the SHA-256 of the statement body. Notarizing posts it in a memo transaction from your wallet and the proof column tracks
+                  that transaction. <MethodologyLink>Read how statements are built</MethodologyLink>
+                </p>
+              </div>
+            )
+          ) : null}
+        </section>
+        {/* Generate */}
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <Reveal>
+            <Panel className="flex flex-col gap-6 p-6">
+              <span className="label">Generate statement</span>
+              <form
+                className="flex flex-col gap-6"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleCreate();
+                }}
+              >
+                <div className="flex flex-wrap gap-2">
+                  {PRESETS.map((preset) => (
                     <button
+                      key={preset.value}
                       type="button"
-                      onClick={() => setFormOpen(false)}
-                      className="text-[13px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      onClick={() => applyPreset(preset.value)}
+                      className="rounded-full border hairline bg-white/[0.03] px-3.5 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
                     >
-                      Cancel
+                      {preset.label}
                     </button>
-                  )}
+                  ))}
                 </div>
 
-                <form
-                  className="flex flex-col gap-6"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void handleCreate();
-                  }}
-                >
-                  <div className="flex flex-wrap gap-2">
-                    {PRESETS.map((preset) => (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        onClick={() => applyPreset(preset.value)}
-                        className="rounded-full border hairline bg-white/[0.03] px-3.5 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                    <div className="flex flex-col gap-2.5">
-                      <label htmlFor="stmt-start" className="label">
-                        Start date
-                      </label>
-                      <input id="stmt-start" type="date" max={today} value={newStart} onChange={(e) => setNewStart(e.target.value)} className={cn(INPUT, "num")} />
-                    </div>
-                    <div className="flex flex-col gap-2.5">
-                      <label htmlFor="stmt-end" className="label">
-                        End date
-                      </label>
-                      <input id="stmt-end" type="date" min={newStart} value={newEnd} onChange={(e) => setNewEnd(e.target.value)} className={cn(INPUT, "num")} />
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <div className="flex flex-col gap-2.5">
-                    <label htmlFor="stmt-title" className="label">
-                      Title, optional
+                    <label htmlFor="stmt-start" className="label">
+                      Start date
                     </label>
-                    <input id="stmt-title" type="text" value={newTitle} maxLength={120} onChange={(e) => setNewTitle(e.target.value)} placeholder={defaultTitle} className={INPUT} />
+                    <input id="stmt-start" type="date" max={today} value={newStart} onChange={(e) => setNewStart(e.target.value)} className={cn(INPUT, "num")} />
                   </div>
-
-                  <div className="mt-2 flex flex-col justify-between gap-4 border-t hairline pt-6 md:flex-row md:items-center">
-                    <div className="text-[13px] text-muted-foreground">
-                      {createStatement.isError ? (
-                        <span className="flex items-center gap-1.5 text-destructive">
-                          <AlertTriangle className="h-4 w-4 shrink-0" />
-                          {createStatement.error?.data?.message || createStatement.error?.message || "The statement could not be generated."}
-                        </span>
-                      ) : problem ? (
-                        <span className="flex items-center gap-1.5 text-primary">
-                          <AlertTriangle className="h-4 w-4 shrink-0" />
-                          {problem}
-                        </span>
-                      ) : endsInFuture ? (
-                        <span>
-                          Costed under {method.toUpperCase()}. The period ends today, since later days have no activity yet.
-                        </span>
-                      ) : (
-                        <span>Costed under {method.toUpperCase()}, the method selected above.</span>
-                      )}
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={createStatement.isPending || problem !== null}
-                      className="group flex items-center justify-center gap-2 rounded-full bg-foreground px-6 py-2 text-[13px] font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-50"
-                    >
-                      {createStatement.isPending && <Loader2 className="h-4 w-4 animate-spin text-background" />}
-                      {createStatement.isPending ? "Generating" : "Generate"}
-                    </button>
+                  <div className="flex flex-col gap-2.5">
+                    <label htmlFor="stmt-end" className="label">
+                      End date
+                    </label>
+                    <input id="stmt-end" type="date" min={newStart} value={newEnd} onChange={(e) => setNewEnd(e.target.value)} className={cn(INPUT, "num")} />
                   </div>
-                </form>
-              </Panel>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                </div>
 
-        {isLoading ? (
-          <div className="flex flex-col gap-4">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : error ? (
-          <ErrorState title="Unable to load statements" message={error.data?.message ?? error.message} />
-        ) : statements ? (
-          statements.length === 0 ? (
-            <Reveal>
-              <EmptyState
-                title="No statements yet"
-                description="Choose a period above to generate the first statement for this ledger."
-                action={
-                  !showForm && (
-                    <button
-                      type="button"
-                      onClick={() => setFormOpen(true)}
-                      className="mt-6 flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-[13px] font-medium text-background transition-colors hover:bg-foreground/90"
-                    >
-                      Generate statement
-                    </button>
-                  )
-                }
-              />
-            </Reveal>
-          ) : (
-            <div className="flex flex-col gap-6">
-              <DataTable>
-                <TableHeader>
-                  <TableHead>Statement</TableHead>
-                  <TableHead>Generated</TableHead>
-                  <TableHead className="hidden desk:table-cell">Document hash</TableHead>
-                  <TableHead>Proof</TableHead>
-                  <TableHead align="right">Closing value</TableHead>
-                </TableHeader>
-                <TableBody>
-                  {statements.map((stmt, i) => {
-                    const proof = PROOF[stmt.proofStatus] ?? PROOF.none;
-                    return (
-                      <TableRow key={stmt.id} index={i} onClick={() => setLocation(`/w/${address}/statements/${stmt.id}`)}>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <Link
-                              href={`/w/${address}/statements/${stmt.id}`}
-                              className="text-[15px] text-foreground transition-colors hover:text-primary focus:outline-none focus-visible:underline"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {stmt.title}
-                            </Link>
-                            <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                              <span className="num">
-                                {formatDay(stmt.periodStart)} to {formatDay(stmt.periodEnd)}
-                              </span>
-                              <Pill className="px-1.5 py-[2px] text-[9px]">{stmt.method}</Pill>
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <span className="num text-[13px] text-muted-foreground">{formatDate(stmt.generatedAt)}</span>
-                            <span className="num text-[11px] text-muted-foreground/70 desk:hidden" title={stmt.hash}>
-                              {truncateHash(stmt.hash, 4)}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden desk:table-cell">
-                          <span className="num text-[12px] text-muted-foreground" title={stmt.hash}>
-                            {truncateHash(stmt.hash, 6)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className={cn("flex items-center gap-1.5 text-[13px]", proof.className)}>
-                            <proof.Icon className="h-4 w-4" />
-                            {proof.label}
-                          </span>
-                        </TableCell>
-                        <TableCell align="right">
-                          <span className="num text-[15px] text-foreground">{formatUSD(stmt.closingValue)}</span>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </DataTable>
-              <p className="text-[12px] leading-relaxed text-muted-foreground">
-                The document hash is the SHA-256 of the statement body. Notarizing posts it in a memo transaction from your wallet and the proof column tracks
-                that transaction. <MethodologyLink>Read how statements are built</MethodologyLink>
-              </p>
-            </div>
-          )
-        ) : null}
+                <div className="flex flex-col gap-2.5">
+                  <label htmlFor="stmt-title" className="label">
+                    Title, optional
+                  </label>
+                  <input id="stmt-title" type="text" value={newTitle} maxLength={120} onChange={(e) => setNewTitle(e.target.value)} placeholder={defaultTitle} className={INPUT} />
+                </div>
+
+                <div className="mt-2 flex flex-col gap-4 border-t hairline pt-6">
+                  <div className="text-[13px] text-muted-foreground">
+                    {createStatement.isError ? (
+                      <span className="flex items-center gap-1.5 text-destructive">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        {createStatement.error?.data?.message || createStatement.error?.message || "The statement could not be generated."}
+                      </span>
+                    ) : problem ? (
+                      <span className="flex items-center gap-1.5 text-primary">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        {problem}
+                      </span>
+                    ) : endsInFuture ? (
+                      <span>
+                        Costed under {method.toUpperCase()}. The period ends today, since later days have no activity yet.
+                      </span>
+                    ) : (
+                      <span>Costed under {method.toUpperCase()}, the method selected above.</span>
+                    )}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={createStatement.isPending || problem !== null}
+                    className="group flex items-center justify-center gap-2 rounded-full bg-foreground px-6 py-2 text-[13px] font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-50"
+                  >
+                    {createStatement.isPending && <Loader2 className="h-4 w-4 animate-spin text-background" />}
+                    {createStatement.isPending ? "Generating" : "Generate"}
+                  </button>
+                </div>
+              </form>
+            </Panel>
+          </Reveal>
+        </aside>
+
       </div>
     </>
   );
