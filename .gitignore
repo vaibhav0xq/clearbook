@@ -55,3 +55,9 @@ Thumbs.db
 
 # capture output
 /out*.png
+
+# python
+__pycache__/
+
+# rust
+/verifier/target/

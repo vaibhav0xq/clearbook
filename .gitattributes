@@ -1,0 +1,8 @@
+# Generated from lib/api-spec/openapi.yaml. Regenerate with pnpm --filter @workspace/api-spec run codegen.
+lib/api-client-react/src/generated/** linguist-generated=true
+lib/api-zod/src/generated/** linguist-generated=true
+lib/db/migrations/meta/** linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+
+# Design preview sandbox scaffold, not part of the product.
+artifacts/mockup-sandbox/** linguist-vendored=true

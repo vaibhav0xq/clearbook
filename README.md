@@ -31,7 +31,9 @@ lib/ledger               Accounting engine: lots, relief methods, multipliers, s
 lib/api-spec             OpenAPI contract (source of truth for the API)
 lib/api-client-react     Generated React Query hooks
 lib/api-zod              Generated Zod schemas used by the server for validation
-lib/db                   Drizzle schema for PostgreSQL
+lib/db                   Drizzle schema for PostgreSQL and the SQL migrations generated from it
+verifier/                Rust command that recomputes a statement hash and checks the memo transaction
+audit/                   Python replay of the ledger that cross checks lots against the API
 docs/                    Demo script, status notes and research
 ```
 
@@ -44,7 +46,7 @@ Requirements: Node 24, pnpm 9 or later, PostgreSQL.
 ```
 pnpm install
 cp .env.example .env            # fill in DATABASE_URL, add keys if you have them
-pnpm --filter @workspace/db run push
+pnpm --filter @workspace/db run migrate   # applies lib/db/migrations to a fresh database
 
 # terminal 1: API
 PORT=8080 pnpm --filter @workspace/api-server run dev
@@ -54,6 +56,8 @@ PORT=5173 BASE_PATH=/ API_PROXY_TARGET=http://localhost:8080 pnpm --filter @work
 ```
 
 Open http://localhost:5173. When both services run behind one origin that routes `/api` to the API server, `API_PROXY_TARGET` is not needed.
+
+During development `pnpm --filter @workspace/db run push` syncs the schema directly. After a schema change run `pnpm --filter @workspace/db run generate <name>` to add a migration under `lib/db/migrations`.
 
 Checks:
 
@@ -99,6 +103,14 @@ Demo ledgers are scripted but priced with the same live pricing pipeline as real
 - Statement hashes cover the statement body without its id. A notarized statement stores the memo transaction signature and the confirmed slot.
 
 The methodology page in the app describes the same rules for end users.
+
+## Cross check
+
+The independent Python accounting check lives in `audit/`. It replays ledger activity and compares open and closed lots with API results. Its unit tests cover relief methods, fees, multipliers and unknown basis transfers.
+
+## Independent verification
+
+The Rust command in `verifier/` independently recomputes a statement hash from an API response. It can also inspect the Solana memo transaction and compare its signer and memo with the statement. It supports local files, API retrieval, offline checks and machine readable output. See `verifier/README.md` for build and usage instructions.
 
 ## Status
 
