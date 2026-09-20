@@ -67,12 +67,15 @@ export interface CreateStatementInput {
 
 export async function createStatement(address: string, input: CreateStatementInput) {
   const periodStart = parseDay(input.periodStart, false);
-  const periodEnd = parseDay(input.periodEnd, true);
-  if (periodEnd < periodStart) throw badRequest("periodEnd must be on or after periodStart.");
+  const requestedEnd = parseDay(input.periodEnd, true);
+  if (requestedEnd < periodStart) throw badRequest("periodEnd must be on or after periodStart.");
   const method = input.method ?? "fifo";
   const ctx = await loadContext(address, method);
   const now = ctx.now;
-  const effectiveEnd = periodEnd > now ? now : periodEnd;
+  if (periodStart > now) throw badRequest("The period cannot start in the future.");
+  // A period cannot run past the moment the statement is generated, since later days have no activity
+  // yet. The stored period, the title and the figures all use the same effective end.
+  const periodEnd = requestedEnd > now ? now : requestedEnd;
 
   const marks = new Map<string, StatementMark>();
   for (const b of ctx.pricing.marks.values()) {
@@ -95,7 +98,7 @@ export async function createStatement(address: string, input: CreateStatementInp
   const data = buildStatement({
     address,
     periodStart,
-    periodEnd: effectiveEnd,
+    periodEnd,
     method,
     events: ctx.events,
     marks,
@@ -238,8 +241,11 @@ function serializeStatementData(data: StatementData): Record<string, unknown> {
 function defaultTitle(start: Date, end: Date): string {
   const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
   const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
+  const lastDayOfMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  // Only a period that covers the whole month is called a statement for that month.
+  const wholeMonth = sameMonth && start.getUTCDate() === 1 && end.getUTCDate() === lastDayOfMonth;
   const monthYear = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-  if (sameMonth) return `Statement for ${monthYear.format(start)}`;
+  if (wholeMonth) return `Statement for ${monthYear.format(start)}`;
   const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const dayYear = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   return `Statement ${sameYear ? day.format(start) : dayYear.format(start)} to ${dayYear.format(end)}`;
@@ -320,10 +326,13 @@ export async function prepareNotarization(id: string, payer?: string): Promise<N
   const proof = (row.proof as unknown as StatementProofView | null) ?? emptyProof(row.hash);
   const base = { statementId: row.id, hash: row.hash, memo, memoProgramId: MEMO_PROGRAM_ID, cluster: env.cluster, proof };
   if (!payer) {
+    const body = row.body as { isDemo?: boolean };
     return {
       ...base,
       mode: "simulated",
-      instructions: "Connect a wallet to write the statement hash to Solana as a memo transaction or record a simulated proof for the demo.",
+      instructions: body.isDemo
+        ? "Demo ledgers cannot sign transactions. Record a simulated proof to see the flow."
+        : "Connect the wallet that owns this ledger to write the statement hash to Solana as a memo transaction.",
       transaction: null,
       lastValidBlockHeight: null,
     };
@@ -334,6 +343,8 @@ export async function prepareNotarization(id: string, payer?: string): Promise<N
   } catch {
     throw badRequest("payer is not a valid public key.", { payer });
   }
+  // The proof is only meaningful when the account itself signs the memo.
+  if (payer !== row.address) throw badRequest("Only the wallet that owns this statement can notarize it.", { payer });
   const { blockhash, lastValidBlockHeight } = await rpc().getLatestBlockhash();
   const ix = new TransactionInstruction({
     programId: new PublicKey(MEMO_PROGRAM_ID),
@@ -355,7 +366,21 @@ export async function submitNotarization(id: string, input: { signature?: string
   const row = await requireStatement(id);
   const memo = memoForHash(row.hash);
   const now = new Date();
+  const current = row.proof as unknown as StatementProofView | null;
+  // A confirmed on-chain proof is final. Nothing may replace it, least of all a simulation. A pending
+  // proof can only be settled by its own transaction.
+  if (current?.status === "confirmed" && (input.simulate || input.signature !== current.signature)) {
+    throw badRequest("This statement already has a confirmed proof.", { statementId: row.id });
+  }
+  if (current?.status === "pending" && (input.simulate || input.signature !== current.signature)) {
+    throw badRequest("A notarization transaction for this statement is still pending.", { statementId: row.id, signature: current.signature });
+  }
   if (input.simulate) {
+    const body = row.body as { isDemo?: boolean };
+    // Simulated proofs exist so the demo can show the flow. A real account only gets a real memo.
+    if (!body.isDemo) {
+      throw badRequest("Simulated proofs are only recorded for demo ledgers. Connect the wallet that owns this ledger to notarize on chain.", { statementId: row.id });
+    }
     const proof: StatementProofView = {
       status: "simulated",
       kind: "simulated",
@@ -395,7 +420,9 @@ export async function submitNotarization(id: string, input: { signature?: string
     return typeof parsed === "string" ? parsed === memo : false;
   }) || (tx.meta?.logMessages ?? []).some((l) => l.includes(`Memo (len ${memo.length}): "${memo}"`));
   const signer = tx.transaction.message.accountKeys.find((k) => k.signer)?.pubkey ?? null;
-  const ok = memoFound && !tx.meta?.err;
+  // A memo signed by another wallet proves nothing about this account.
+  const signedByOwner = tx.transaction.message.accountKeys.some((k) => k.signer && k.pubkey === row.address);
+  const ok = memoFound && signedByOwner && !tx.meta?.err;
   const proof: StatementProofView = {
     status: ok ? "confirmed" : "failed",
     kind: "onchain_memo",
@@ -410,7 +437,9 @@ export async function submitNotarization(id: string, input: { signature?: string
       ? `Memo verified on chain in slot ${tx.slot}, signed by ${signer ? shortAddress(signer) : "unknown"}.`
       : tx.meta?.err
         ? "The transaction failed on chain."
-        : "The transaction does not contain the expected memo.",
+        : !memoFound
+          ? "The transaction does not contain the expected memo."
+          : "The memo was not signed by the wallet that owns this statement.",
   };
   await updateStatementProof(row.id, proof as unknown as Record<string, unknown>);
   return proof;

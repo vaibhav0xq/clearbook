@@ -1071,6 +1071,7 @@ components:
           description: Signed exposure change, positive for inflows
         rawQuantity:
           type: number
+          description: Signed token units divided by decimals, before the multiplier
         pricePerShare:
           type: number
           nullable: true

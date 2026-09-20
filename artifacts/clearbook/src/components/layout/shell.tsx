@@ -4,10 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateWalletQueries } from "@/lib/wallet-queries";
 import { RefreshCw, AlertTriangle, AlertCircle, ArrowLeft } from "lucide-react";
-import { useGetWalletStatus, useIndexWallet, getGetWalletStatusQueryKey, type CostMethod } from "@workspace/api-client-react";
+import { useGetWalletStatus, useIndexWallet, useResetWallet, getGetWalletStatusQueryKey, type CostMethod } from "@workspace/api-client-react";
 import { WalletConnectButton } from "@/components/wallet-connect-button";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { truncateAddress } from "@/lib/format";
+import { truncateAddress, formatTime } from "@/lib/format";
 import { PageTransition } from "@/components/motion/page-transition";
 import { EASE_OUT } from "@/components/motion/reveal";
 import { StageProvider, StageView } from "@/components/layout/stage";
@@ -73,7 +73,7 @@ function SectionTabs({ address, className, layoutId }: { address: string; classN
     { label: "Trade", path: `/w/${address}/trade` },
     { label: "Statements", path: `/w/${address}/statements` },
     { label: "Activity", path: `/w/${address}/activity` },
-    { label: "Events", path: `/w/${address}/events` },
+    { label: "Corporate actions", path: `/w/${address}/events` },
   ];
   const isActive = (path: string) => location === path || (path !== `/w/${address}` && location.startsWith(path));
   return (
@@ -116,9 +116,17 @@ export function Shell({ address, children }: ShellProps) {
   });
 
   const indexWallet = useIndexWallet();
+  const resetWallet = useResetWallet();
 
   const handleRefresh = async () => {
     await indexWallet.mutateAsync({ address });
+    await invalidateWalletQueries(queryClient, address);
+    refetch();
+  };
+
+  // Simulated sales are recorded events, so clearing them is a ledger change and goes through the API.
+  const handleClearSimulated = async () => {
+    await resetWallet.mutateAsync({ address });
     await invalidateWalletQueries(queryClient, address);
     refetch();
   };
@@ -130,11 +138,13 @@ export function Shell({ address, children }: ShellProps) {
         ? "bg-primary"
         : status?.state === "partial"
           ? "bg-primary"
-          : status
-            ? "bg-destructive"
-            : "bg-muted-foreground";
+          : status?.state === "empty" || status?.state === "not_indexed"
+            ? "bg-muted-foreground"
+            : status
+              ? "bg-destructive"
+              : "bg-muted-foreground";
 
-  const busy = indexWallet.isPending || status?.state === "indexing";
+  const busy = indexWallet.isPending || resetWallet.isPending || status?.state === "indexing";
 
   const identity = status && !statusError && (
     <div className="flex flex-col gap-2">
@@ -153,12 +163,20 @@ export function Shell({ address, children }: ShellProps) {
           {status.state === "indexing"
             ? `Indexing. ${status.eventsIndexed} events from ${status.signaturesScanned} signatures`
             : status.lastIndexedAt
-              ? `Indexed ${new Date(status.lastIndexedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+              ? `Indexed ${formatTime(status.lastIndexedAt)}`
               : "Not indexed yet"}
         </span>
         {status.simulatedTrades > 0 && (
-          <span>
-            {status.simulatedTrades} simulated {status.simulatedTrades === 1 ? "sale" : "sales"}
+          <span className="flex items-center gap-1.5">
+            <span className="num">{status.simulatedTrades}</span> simulated {status.simulatedTrades === 1 ? "sale" : "sales"}
+            <button
+              type="button"
+              onClick={handleClearSimulated}
+              disabled={busy}
+              className="pointer-events-auto text-[12px] text-primary underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-50"
+            >
+              Clear
+            </button>
           </span>
         )}
         <button

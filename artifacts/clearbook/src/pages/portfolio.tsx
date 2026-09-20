@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowUpRight } from "lucide-react";
 import { useGetPortfolio } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { useStage } from "@/components/layout/stage";
-import { formatUSD, formatQuantity, formatPercent, formatAge, issuerLabel } from "@/lib/format";
+import { formatUSD, formatQuantity, formatPercent, formatAge, formatMultiplier, formatTime, issuerLabel } from "@/lib/format";
 import { Figure } from "@/components/figure";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Panel, Pill, Skeleton, EmptyState, ErrorState, SectionTitle, MethodologyLink } from "@/components/surface";
@@ -103,7 +103,13 @@ export default function Portfolio() {
 
           {/* Positions */}
           <section>
-            <SectionTitle aside={<span>Marked {new Date(portfolio.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}>
+            <SectionTitle
+              aside={
+                <span>
+                  Marked <span className="num">{formatTime(portfolio.asOf)}</span> with {portfolio.pricing.providerLabel}
+                </span>
+              }
+            >
               Positions
             </SectionTitle>
             {portfolio.positions.length === 0 ? (
@@ -155,7 +161,9 @@ export default function Portfolio() {
                         <div className="flex flex-col items-end gap-1">
                           <span className="num text-foreground">{formatQuantity(pos.quantity)}</span>
                           {pos.multiplier.current !== 1 && (
-                            <span className="num text-[11px] text-muted-foreground">Raw {formatQuantity(pos.rawQuantity)}</span>
+                            <span className="num text-[11px] text-muted-foreground" title="Token units held and the issuer multiplier that turns them into shares">
+                              {formatQuantity(pos.rawQuantity, 4)} tokens, {formatMultiplier(pos.multiplier.current)}
+                            </span>
                           )}
                         </div>
                       </TableCell>
@@ -171,7 +179,9 @@ export default function Portfolio() {
                           </span>
                           {pos.premiumDiscount.differencePct !== null && (
                             <span title={pos.premiumDiscount.referenceLabel} className="num cursor-help text-[11px] text-muted-foreground">
-                              {formatPercent(pos.premiumDiscount.differencePct)} to reference
+                              {Math.abs(pos.premiumDiscount.differencePct) < 0.005
+                                ? `At ${pos.underlyingSymbol} reference`
+                                : `${Math.abs(pos.premiumDiscount.differencePct).toFixed(2)}% ${pos.premiumDiscount.differencePct < 0 ? "below" : "above"} ${pos.underlyingSymbol}`}
                             </span>
                           )}
                         </div>

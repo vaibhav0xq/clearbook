@@ -30,7 +30,7 @@ export function PageHeader({
         <h1 className="display text-[40px] md:text-[56px] desk:text-[64px] text-foreground">{title}</h1>
         {description && <p className="text-[15px] desk:text-[16px] text-muted-foreground max-w-2xl leading-relaxed">{description}</p>}
       </div>
-      {actions && <div className="flex items-center gap-3">{actions}</div>}
+      {actions && <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">{actions}</div>}
     </div>
   );
 }

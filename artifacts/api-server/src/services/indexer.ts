@@ -38,7 +38,7 @@ interface TokenDelta {
   decimals: number;
 }
 
-function tokenDeltasForOwner(tx: ParsedTransaction, owner: string): TokenDelta[] {
+export function tokenDeltasForOwner(tx: ParsedTransaction, owner: string): TokenDelta[] {
   const pre = new Map<string, { amount: bigint; decimals: number; mint: string }>();
   const post = new Map<string, { amount: bigint; decimals: number; mint: string }>();
   for (const b of tx.meta?.preTokenBalances ?? []) {

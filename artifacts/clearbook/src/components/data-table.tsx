@@ -51,10 +51,25 @@ export function TableRow({ children, className, index = 0, active = false, onCli
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.55, ease: EASE_OUT, delay: Math.min(index, 14) * 0.04 }}
-      className={cn("row-hover", active && "bg-white/[0.04]", onClick && "cursor-pointer", className)}
+      className={cn("row-hover", active && "bg-white/[0.04]", onClick && "cursor-pointer focus-visible:bg-white/[0.04] focus-visible:outline-none", className)}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      // A row that opens a page is reachable and operable from the keyboard like a link.
+      role={onClick ? "link" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onFocus={onMouseEnter}
+      onBlur={onMouseLeave}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
       {children}
     </motion.tr>

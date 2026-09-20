@@ -11,6 +11,8 @@ export const tradeQuotesTable = pgTable("trade_quotes", {
   quote: jsonb("quote").$type<Record<string, unknown>>().notNull(),
   routeQuote: jsonb("route_quote").$type<Record<string, unknown>>(),
   status: text("status").notNull().default("open"),
+  /** Signature of the first transaction sent for this quote. Set once and never replaced. */
+  signature: text("signature"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });

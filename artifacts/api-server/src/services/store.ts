@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import {
   db,
   ledgerEventsTable,
@@ -209,4 +209,14 @@ export async function getTradeQuote(id: string): Promise<TradeQuoteRow | undefin
 
 export async function updateTradeQuoteStatus(id: string, status: string): Promise<void> {
   await db.update(tradeQuotesTable).set({ status }).where(eq(tradeQuotesTable.id, id));
+}
+
+/** Records the first signature sent for a quote. Returns false when a different signature is already bound. */
+export async function bindTradeQuoteSignature(id: string, signature: string): Promise<boolean> {
+  const updated = await db
+    .update(tradeQuotesTable)
+    .set({ status: "submitted", signature })
+    .where(and(eq(tradeQuotesTable.id, id), or(isNull(tradeQuotesTable.signature), eq(tradeQuotesTable.signature, signature))))
+    .returning({ id: tradeQuotesTable.id });
+  return updated.length > 0;
 }

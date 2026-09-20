@@ -4,10 +4,10 @@ import { env } from "../lib/env";
 import { badRequest, notFound } from "../lib/errors";
 import { explorerTxUrl, fetchJson } from "../lib/http";
 import { logger } from "../lib/logger";
-import { indexWallet, isValidAddress } from "./indexer";
+import { indexWallet, isValidAddress, tokenDeltasForOwner } from "./indexer";
 import { eventView, loadContext, walletStatusView } from "./portfolio";
 import { rpc } from "./rpc";
-import { getTradeQuote, insertEvent, insertTradeQuote, updateTradeQuoteStatus } from "./store";
+import { bindTradeQuoteSignature, getTradeQuote, insertEvent, insertTradeQuote, updateTradeQuoteStatus } from "./store";
 
 const JUP = "https://lite-api.jup.ag/swap/v1";
 /** Jupiter aggregator v6 program. Confirmed swaps must touch it. */
@@ -185,10 +185,17 @@ async function requireQuote(address: string, quoteId: string) {
   return row;
 }
 
-/** A quote can be acted on once, before it expires. */
+/**
+ * A quote can be acted on once, before it expires. A quote whose transaction was already sent to the
+ * network is "submitted" and can only be confirmed, never prepared or simulated again, so a slow
+ * confirmation cannot turn into a second sale.
+ */
 function assertActionable(row: Awaited<ReturnType<typeof requireQuote>>) {
-  if (row.status === "confirmed" || row.status === "simulated") {
+  if (row.status === "confirmed" || row.status === "simulated" || row.status === "failed") {
     throw badRequest(`This quote was already ${row.status}. Request a new quote.`, { quoteId: row.id });
+  }
+  if (row.status === "submitted" || row.signature) {
+    throw badRequest("A transaction for this quote was already sent. Check its status instead of sending another.", { quoteId: row.id });
   }
   if (row.expiresAt.getTime() < Date.now()) throw badRequest("Quote expired. Request a new quote.", { quoteId: row.id });
 }
@@ -222,16 +229,38 @@ export async function prepareTrade(address: string, input: { quoteId: string; us
   };
 }
 
+/**
+ * Binds a signature to a quote and reads its result. The first signature seen for a quote is the only
+ * one it will ever accept, and a confirmed transaction must sell exactly the quoted amount of the
+ * quoted token from this wallet through Jupiter, so an unrelated swap cannot be attached to a quote.
+ */
 export async function confirmTrade(address: string, input: { quoteId: string; signature: string }) {
   const row = await requireQuote(address, input.quoteId);
   if (row.status === "simulated") throw badRequest("This quote was simulated and cannot be confirmed on chain.", { quoteId: row.id });
+  if (row.signature && row.signature !== input.signature) {
+    throw badRequest("A different transaction was already sent for this quote.", { quoteId: row.id, signature: row.signature });
+  }
   const quote = row.quote as { method?: CostMethod; expectedProceeds?: number };
   const tx = await rpc().getTransaction(input.signature);
-  if (tx && !tx.transaction.message.accountKeys.some((k) => k.signer && k.pubkey === address)) {
-    throw badRequest("The transaction was not signed by this wallet.", { signature: input.signature });
+  if (tx) {
+    if (!tx.transaction.message.accountKeys.some((k) => k.signer && k.pubkey === address)) {
+      throw badRequest("The transaction was not signed by this wallet.", { signature: input.signature });
+    }
+    if (!tx.transaction.message.accountKeys.some((k) => k.pubkey === JUPITER_PROGRAM_ID)) {
+      throw badRequest("The transaction is not a Jupiter swap.", { signature: input.signature });
+    }
+    if (!tx.meta?.err) {
+      const sold = tokenDeltasForOwner(tx, address).find((d) => d.mint === row.mint);
+      if (!sold || sold.raw !== -BigInt(row.rawAmount)) {
+        throw badRequest("The transaction does not sell the quoted amount of the quoted token, so it cannot confirm this quote.", {
+          quoteId: row.id,
+          signature: input.signature,
+        });
+      }
+    }
   }
-  if (tx && !tx.transaction.message.accountKeys.some((k) => k.pubkey === JUPITER_PROGRAM_ID)) {
-    throw badRequest("The transaction is not a Jupiter swap.", { signature: input.signature });
+  if (!(await bindTradeQuoteSignature(row.id, input.signature))) {
+    throw badRequest("A different transaction was already sent for this quote.", { quoteId: row.id });
   }
   if (!tx) {
     const ctx = await loadContext(address, quote.method ?? "fifo");

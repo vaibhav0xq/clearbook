@@ -22,6 +22,62 @@ export function formatPercent(value: number | null | undefined): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
+/** Shares with the unit, for cells that mix quantities and money. */
+export function formatShares(value: number | null | undefined, maxDecimals = 6): string {
+  if (value === null || value === undefined) return "-";
+  return `${formatQuantity(value, maxDecimals)} sh`;
+}
+
+/** Multiplier between token units and shares, four decimals with the x suffix. */
+export function formatMultiplier(value: number | null | undefined, suffix = true): string {
+  if (value === null || value === undefined) return "-";
+  return `${value.toFixed(4)}${suffix ? "x" : ""}`;
+}
+
+const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+const DATE_TIME = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+const TIME = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
+
+const DATE_UTC = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+
+/** "Sep 19, 2026" in the viewer's time zone, for timestamps. */
+export function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(d.getTime()) ? "-" : DATE.format(d);
+}
+
+/**
+ * "Sep 19, 2026" for a calendar day such as a statement period bound. Period days are UTC days on the
+ * server and arrive as midnight UTC, so they are printed as that day everywhere instead of shifting a
+ * day earlier for viewers west of UTC.
+ */
+export function formatDay(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(d.getTime()) ? "-" : DATE_UTC.format(d);
+}
+
+/** "Sep 19, 2026, 2:02 PM" in the viewer's time zone. */
+export function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(d.getTime()) ? "-" : DATE_TIME.format(d);
+}
+
+/** "2:02 PM" in the viewer's time zone. */
+export function formatTime(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(d.getTime()) ? "-" : TIME.format(d);
+}
+
+/** Truncated hash or signature, for table cells. */
+export function truncateHash(value: string, chars = 6): string {
+  if (!value) return "";
+  return value.length <= chars * 2 + 3 ? value : `${value.slice(0, chars)}...${value.slice(-chars)}`;
+}
+
 export function truncateAddress(address: string, chars = 4): string {
   if (!address) return "";
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
@@ -47,4 +103,21 @@ const ISSUER_LABELS: Record<string, string> = {
 export function issuerLabel(issuer: string | null | undefined): string {
   if (!issuer) return "Unknown issuer";
   return ISSUER_LABELS[issuer] ?? issuer;
+}
+
+const KIND_LABELS: Record<string, string> = {
+  buy: "Buy",
+  sell: "Sell",
+  transfer_in: "Transfer in",
+  transfer_out: "Transfer out",
+  wrapper_swap_in: "Wrapper swap in",
+  wrapper_swap_out: "Wrapper swap out",
+  multiplier_change: "Multiplier change",
+  unknown: "Unclassified",
+};
+
+/** Sentence case label for a ledger event kind, matching the API's kindLabel. */
+export function eventKindLabel(kind: string | null | undefined): string {
+  if (!kind) return "Unclassified";
+  return KIND_LABELS[kind] ?? kind.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }

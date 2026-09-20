@@ -201,7 +201,7 @@ export function buildStatement(input: StatementBuildInput): StatementData {
     activity,
     closedLots,
     corporateActions,
-    assumptions: buildAssumptions(input, closingPositions, full.warnings, periodEvents),
+    assumptions: buildAssumptions(input, closingPositions, openingPositions, full.warnings, periodEvents),
     sources: buildSources(input),
   };
 }
@@ -289,6 +289,7 @@ function collectClosedLots(
 function buildAssumptions(
   input: StatementBuildInput,
   positions: PositionValuation[],
+  openingPositions: PositionValuation[],
   warnings: string[],
   periodEvents: ProcessedEvent[],
 ): string[] {
@@ -299,6 +300,19 @@ function buildAssumptions(
   list.push(
     "Quantities are shares of exposure: raw token units scaled by the Token-2022 multiplier in force. Cost basis is attached to raw units, so multiplier increases grow the shares in a lot without changing its cost.",
   );
+  list.push(
+    "Opening and closing values apply the marks available when the statement was generated to the holdings at each date. No historical price series is used, so the opening value is not the value on that day.",
+  );
+  const unmarkedClosing = positions.filter((p) => p.rawQuantity > 0n && p.marketValue === null).length;
+  const unmarkedOpening = openingPositions.filter((p) => p.rawQuantity > 0n && p.marketValue === null).length;
+  if (unmarkedClosing > 0 || unmarkedOpening > 0) {
+    const parts: string[] = [];
+    if (unmarkedOpening > 0) parts.push(`${unmarkedOpening} at the opening date`);
+    if (unmarkedClosing > 0) parts.push(`${unmarkedClosing} at the closing date`);
+    list.push(
+      `Positions without a usable mark (${parts.join(" and ")}) are excluded from the opening and closing values and from unrealized gains. The values shown are therefore partial.`,
+    );
+  }
   const unknown = positions.filter((p) => p.rawQuantity > 0n && p.basisStatus !== "complete");
   if (unknown.length > 0) {
     list.push(

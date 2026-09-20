@@ -2,11 +2,10 @@ import { useMemo, useState } from "react";
 import { useRoute, useSearch, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
-import { format } from "date-fns";
 
 import { useListLots, useGetPortfolio, type LotStatusFilter, type Lot } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { formatUSD, formatQuantity } from "@/lib/format";
+import { formatUSD, formatQuantity, formatDate, eventKindLabel } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Panel, Pill, Skeleton, EmptyState, ErrorState, PageHeader, SectionTitle } from "@/components/surface";
 import { Figure } from "@/components/figure";
@@ -187,7 +186,7 @@ export default function Lots() {
   let caption = METHOD_HINT[method] || "";
   if (activeGroup && activeGroup.order.length > 0 && statusFilter !== "closed") {
     const firstLot = activeGroup.order[0];
-    const date = firstLot.openedAt ? format(new Date(firstLot.openedAt), "MMM d, yyyy") : "opening";
+    const date = firstLot.openedAt ? formatDate(firstLot.openedAt) : "opening";
     if (method === "fifo") caption = `FIFO relieves the oldest layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
     if (method === "lifo") caption = `LIFO relieves the newest layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
     if (method === "hifo") caption = `HIFO relieves the highest cost layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
@@ -203,7 +202,7 @@ export default function Lots() {
     <>
       <PageHeader
         title="Tax lots"
-        description="Acquisition history, cost basis and relief queue."
+        description="Each acquisition as a lot with its cost, holding period and place in the relief queue."
         actions={
           <div className="flex items-center gap-3">
             <AnimatePresence>
@@ -214,7 +213,7 @@ export default function Lots() {
                   exit={{ opacity: 0, scale: 0.9 }}
                 >
                   <Pill tone="amber" className="pr-1 py-1 flex items-center bg-primary/10">
-                    {mintFilter.slice(0, 4)}...{mintFilter.slice(-4)}
+                    {portfolio?.positions.find((p) => p.mint === mintFilter)?.symbol ?? lots?.find((l) => l.mint === mintFilter)?.symbol ?? `${mintFilter.slice(0, 4)}...${mintFilter.slice(-4)}`}
                     <button
                       type="button"
                       onClick={clearMint}
@@ -366,20 +365,28 @@ export default function Lots() {
                         onMouseLeave={() => setHoverLayerId(null)}
                       >
                         <TableCell>
-                          {lot.status !== "closed" && group.ranks.has(lot.id) ? (
-                            <div className="flex items-center gap-2.5">
-                              <div className="flex h-5 w-5 items-center justify-center rounded-sm bg-primary/10 border border-primary/20 num text-[11px] text-primary">
+                          <div className="flex items-center gap-2.5">
+                            {lot.status !== "closed" && group.ranks.has(lot.id) ? (
+                              <span
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-primary/20 bg-primary/10 num text-[11px] text-primary"
+                                title={`Relieved ${group.ranks.get(lot.id)! + 1 === 1 ? "first" : `in position ${group.ranks.get(lot.id)! + 1}`} under ${method.toUpperCase()}`}
+                              >
                                 {group.ranks.get(lot.id)! + 1}
-                              </div>
-                              <span className="text-[12px] text-muted-foreground">in relief order</span>
+                              </span>
+                            ) : (
+                              <span className="h-5 w-5 shrink-0 rounded-sm border hairline bg-white/[0.02]" aria-hidden />
+                            )}
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[14px] text-foreground">{eventKindLabel(lot.openKind)}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {lot.status === "closed" ? "Closed" : lot.status === "partial" ? "Partly relieved" : "Open"}
+                              </span>
                             </div>
-                          ) : (
-                            <span className="label text-muted-foreground">{lot.status}</span>
-                          )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <span className="num text-[14px] text-foreground">{lot.openedAt ? format(new Date(lot.openedAt), "MMM d, yyyy") : "Opening"}</span>
+                            <span className="num text-[14px] text-foreground">{lot.openedAt ? formatDate(lot.openedAt) : "Opening"}</span>
                             <span className="flex items-center gap-1.5 text-[11px]">
                               <span className="num text-muted-foreground">{lot.holdingDays} days</span>
                               <span className="text-muted-foreground/40">|</span>
@@ -414,7 +421,7 @@ export default function Lots() {
                                 {lot.realizedPnl > 0 ? "+" : ""}{formatUSD(lot.realizedPnl)}
                               </span>
                               {lot.closedAt && (
-                                <span className="num text-[11px] text-muted-foreground mt-0.5">Closed {format(new Date(lot.closedAt), "MMM d, yyyy")}</span>
+                                <span className="num text-[11px] text-muted-foreground mt-0.5">Closed {formatDate(lot.closedAt)}</span>
                               )}
                             </div>
                           ) : (
