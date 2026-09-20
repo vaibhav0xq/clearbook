@@ -10,8 +10,9 @@ Last updated 20 September 2026.
 | Asset registry | 934 tokenized stock mints: 828 xStocks, 98 Ondo Global Markets, 8 PreStocks, with issuer, underlying and decimals | Generated from issuer lists into `lib/ledger/src/registry/assets.json` |
 | Multipliers | Token-2022 scaled UI amount extension read from each mint, current and pending multiplier, observations stored so later increases become income events | Live for Ondo and xStocks mints that use the extension |
 | Pricing | Jupiter price API and PreStocks API, session state of the underlying market, premium or discount against the reference | Pyth Pro is the first choice when `PYTH_API_KEY` is set and drops out with a labeled status when it is not |
-| Accounting | Lots, FIFO, LIFO, HIFO, realized and unrealized P/L, income estimate from multiplier growth, holding period | 14 unit tests in `lib/ledger/test` |
+| Accounting | Lots, FIFO, LIFO, HIFO, realized and unrealized P/L, income estimate from multiplier growth, holding period. Long term means sold after the calendar anniversary of the acquisition, so a leap year does not turn a one year hold into a long term one | 26 unit tests in `lib/ledger/test` |
 | Statements | Period statements with SHA-256 hash, CSV and PDF export, assumptions and data sources printed in the document | |
+| Tax lot export | Realized gains by UTC tax year on the Tax lots page and a CSV per year in the Form 1099-B column layout: one row per lot relieved with description, dates, proceeds, basis, gain and term. Rows with an estimated or unknown basis and rows from simulated sales are labeled. Losses with a buy of the same stock within 30 days on either side, in any wrapper, carry a wash sale flag | The flag is a check for the holder to review. No basis is adjusted and nothing is filed. Refused with 409 while a wallet is indexing, like statements |
 | Notarization | Memo transaction built server side for the connected wallet to sign, signature verified against the chain after submission | Only the simulated path has been exercised in this environment because no browser wallet is installed here |
 | Trade | Jupiter quote for a sale, ledger preview of relieved lots and realized P/L, swap transaction built for the connected wallet, confirmation checked on chain | Same caveat as notarization. The simulated sale updates the ledger without a transaction |
 | Demo mode | Three scripted ledgers priced through the live pipeline | |
@@ -34,8 +35,7 @@ Last updated 20 September 2026.
 3. A live wallet test of notarization and the Jupiter sale in a browser with Phantom or Solflare.
 4. Historical multiplier reconstruction from mint account history so income is complete for wallets indexed after an increase.
 5. Owner level history beyond the current token accounts, so stocks held in closed accounts appear in realized P/L.
-6. Tax lot export in a broker style 1099-B layout.
-7. Historical marks for statement boundaries, so opening and closing values reflect the close of the period rather than the mark at generation time.
+6. Historical marks for statement boundaries, so opening and closing values reflect the close of the period rather than the mark at generation time.
 
 ## Environment specific findings
 

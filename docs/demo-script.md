@@ -22,6 +22,7 @@ Open Tax lots.
 
 - Every open lot with acquisition date, cost per share and holding period.
 - Lots opened by a transfer show an estimated or unknown basis rather than a guess.
+- Switch to Closed. The Tax years table sums realized gains per year and the CSV button downloads that year in the Form 1099-B column layout, one row per lot relieved.
 
 Open Activity.
 

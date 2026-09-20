@@ -8,4 +8,5 @@ export * from "./session/schedule";
 export * from "./statement/build";
 export * from "./statement/csv";
 export * from "./statement/hash";
+export * from "./tax/lots";
 export * from "./demo/scenarios";

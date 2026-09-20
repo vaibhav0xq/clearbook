@@ -383,6 +383,38 @@ export interface Portfolio {
   assumptions: string[];
 }
 
+export interface TaxYearSummary {
+  year: number;
+  /** Distinct sales and wrapper swaps in the year */
+  disposals: number;
+  /** Lot rows in the year. A sale that relieves three lots is three rows */
+  rows: number;
+  /** Proceeds of the rows whose proceeds are known */
+  proceeds: number;
+  /** Cost basis of the rows whose basis is known */
+  costBasis: number;
+  /** Gain or loss of the rows whose proceeds and basis are both known */
+  gainLoss: number;
+  shortTermGainLoss: number;
+  longTermGainLoss: number;
+  /** Rows whose sale had no readable cash leg */
+  unknownProceedsRows: number;
+  estimatedBasisRows: number;
+  unknownBasisRows: number;
+  simulatedRows: number;
+  /** Losses with a buy of the same stock within 30 days before or after the sale. A check, not a determination */
+  washSaleFlags: number;
+  csvUrl: string;
+}
+
+export interface TaxLotReport {
+  address: string;
+  method: CostMethod;
+  generatedAt: string;
+  years: TaxYearSummary[];
+  notes: string[];
+}
+
 export type LotOpenKind = typeof LotOpenKind[keyof typeof LotOpenKind];
 
 
@@ -855,6 +887,26 @@ export type ListLotsParams = {
 method?: CostMethodParameter;
 mint?: string;
 status?: LotStatusFilter;
+};
+
+export type GetTaxLotsParams = {
+/**
+ * Lot relief method. FIFO is the default.
+ */
+method?: CostMethodParameter;
+};
+
+export type ExportTaxLotsCsvParams = {
+/**
+ * Lot relief method. FIFO is the default.
+ */
+method?: CostMethodParameter;
+/**
+ * Tax year, the UTC calendar year of the sale date
+ * @minimum 2020
+ * @maximum 2100
+ */
+year: number;
 };
 
 export type ListActivityParams = {

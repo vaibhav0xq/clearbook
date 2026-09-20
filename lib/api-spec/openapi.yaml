@@ -182,6 +182,56 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+  /wallets/{address}/tax-lots:
+    get:
+      operationId: getTaxLots
+      tags: [wallets]
+      summary: Realized gains by tax year with a Form 1099-B style export per year
+      description: One summary per UTC calendar year with at least one sale or wrapper swap. Transfers out are not disposals. Simulated sales of this browser are included and counted separately.
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CostMethod"
+      responses:
+        "200":
+          description: Tax lot report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxLotReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /wallets/{address}/tax-lots/export.csv:
+    get:
+      operationId: exportTaxLotsCsv
+      tags: [wallets]
+      summary: Download one tax year as CSV in the Form 1099-B column layout
+      description: Columns follow boxes 1a to 1e so the figures carry to Form 8949. Rows with estimated or unknown basis and rows from simulated sales are labeled. Refused with 409 while the wallet is indexing.
+      parameters:
+        - $ref: "#/components/parameters/WalletAddress"
+        - $ref: "#/components/parameters/CostMethod"
+        - name: year
+          in: query
+          required: true
+          description: Tax year, the UTC calendar year of the sale date
+          schema:
+            type: integer
+            minimum: 2020
+            maximum: 2100
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /wallets/{address}/activity:
     get:
       operationId: listActivity
@@ -983,6 +1033,64 @@ components:
           items:
             type: string
       required: [address, displayAddress, isDemo, asOf, method, currency, totals, positions, allocation, pricing, walletStatus, assumptions]
+    TaxYearSummary:
+      type: object
+      properties:
+        year:
+          type: integer
+        disposals:
+          type: integer
+          description: Distinct sales and wrapper swaps in the year
+        rows:
+          type: integer
+          description: Lot rows in the year. A sale that relieves three lots is three rows
+        proceeds:
+          type: number
+          description: Proceeds of the rows whose proceeds are known
+        costBasis:
+          type: number
+          description: Cost basis of the rows whose basis is known
+        gainLoss:
+          type: number
+          description: Gain or loss of the rows whose proceeds and basis are both known
+        shortTermGainLoss:
+          type: number
+        longTermGainLoss:
+          type: number
+        unknownProceedsRows:
+          type: integer
+          description: Rows whose sale had no readable cash leg
+        estimatedBasisRows:
+          type: integer
+        unknownBasisRows:
+          type: integer
+        simulatedRows:
+          type: integer
+        washSaleFlags:
+          type: integer
+          description: Losses with a buy of the same stock within 30 days before or after the sale. A check, not a determination
+        csvUrl:
+          type: string
+      required: [year, disposals, rows, proceeds, costBasis, gainLoss, shortTermGainLoss, longTermGainLoss, unknownProceedsRows, estimatedBasisRows, unknownBasisRows, simulatedRows, washSaleFlags, csvUrl]
+    TaxLotReport:
+      type: object
+      properties:
+        address:
+          type: string
+        method:
+          $ref: "#/components/schemas/CostMethod"
+        generatedAt:
+          type: string
+          format: date-time
+        years:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaxYearSummary"
+        notes:
+          type: array
+          items:
+            type: string
+      required: [address, method, generatedAt, years, notes]
     Lot:
       type: object
       properties:

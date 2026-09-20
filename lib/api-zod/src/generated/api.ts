@@ -359,6 +359,63 @@ export const ListLotsResponse = zod.array(ListLotsResponseItem)
 
 
 /**
+ * One summary per UTC calendar year with at least one sale or wrapper swap. Transfers out are not disposals. Simulated sales of this browser are included and counted separately.
+ * @summary Realized gains by tax year with a Form 1099-B style export per year
+ */
+export const GetTaxLotsParams = zod.object({
+  "address": zod.coerce.string().describe('Base58 Solana wallet address or a demo wallet id')
+})
+
+export const GetTaxLotsQueryParams = zod.object({
+  "method": zod.enum(['fifo', 'lifo', 'hifo']).optional().describe('Lot relief method. FIFO is the default.')
+})
+
+export const GetTaxLotsResponse = zod.object({
+  "address": zod.string(),
+  "method": zod.enum(['fifo', 'lifo', 'hifo']),
+  "generatedAt": zod.coerce.date(),
+  "years": zod.array(zod.object({
+  "year": zod.number().int(),
+  "disposals": zod.number().int().describe('Distinct sales and wrapper swaps in the year'),
+  "rows": zod.number().int().describe('Lot rows in the year. A sale that relieves three lots is three rows'),
+  "proceeds": zod.number().describe('Proceeds of the rows whose proceeds are known'),
+  "costBasis": zod.number().describe('Cost basis of the rows whose basis is known'),
+  "gainLoss": zod.number().describe('Gain or loss of the rows whose proceeds and basis are both known'),
+  "shortTermGainLoss": zod.number(),
+  "longTermGainLoss": zod.number(),
+  "unknownProceedsRows": zod.number().int().describe('Rows whose sale had no readable cash leg'),
+  "estimatedBasisRows": zod.number().int(),
+  "unknownBasisRows": zod.number().int(),
+  "simulatedRows": zod.number().int(),
+  "washSaleFlags": zod.number().int().describe('Losses with a buy of the same stock within 30 days before or after the sale. A check, not a determination'),
+  "csvUrl": zod.string()
+})),
+  "notes": zod.array(zod.string())
+})
+
+
+/**
+ * Columns follow boxes 1a to 1e so the figures carry to Form 8949. Rows with estimated or unknown basis and rows from simulated sales are labeled. Refused with 409 while the wallet is indexing.
+ * @summary Download one tax year as CSV in the Form 1099-B column layout
+ */
+export const ExportTaxLotsCsvParams = zod.object({
+  "address": zod.coerce.string().describe('Base58 Solana wallet address or a demo wallet id')
+})
+
+export const exportTaxLotsCsvQueryYearMin = 2020;
+export const exportTaxLotsCsvQueryYearMax = 2100;
+
+
+
+export const ExportTaxLotsCsvQueryParams = zod.object({
+  "method": zod.enum(['fifo', 'lifo', 'hifo']).optional().describe('Lot relief method. FIFO is the default.'),
+  "year": zod.coerce.number().int().min(exportTaxLotsCsvQueryYearMin).max(exportTaxLotsCsvQueryYearMax).describe('Tax year, the UTC calendar year of the sale date')
+})
+
+export const ExportTaxLotsCsvResponse = zod.unknown()
+
+
+/**
  * @summary Ledger activity for a wallet
  */
 export const ListActivityParams = zod.object({

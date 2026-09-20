@@ -7,7 +7,7 @@ import type {
   RegistryAsset,
   ReliefRecord,
 } from "../types";
-import { daysBetween, exposure, proportion } from "../math";
+import { daysBetween, exposure, isLongTerm, proportion } from "../math";
 
 export interface EngineOptions {
   method: CostMethod;
@@ -15,7 +15,7 @@ export interface EngineOptions {
   asOf?: Date;
   /** Current multiplier per mint, used when an event does not carry its own. */
   multipliers?: Map<string, number>;
-  /** Holding period in days after which a disposal counts as long term. */
+  /** Holding period in days after which a disposal counts as long term. Overrides the calendar rule. */
   longTermDays?: number;
   resolveAsset: (mint: string) => RegistryAsset | undefined;
 }
@@ -60,7 +60,11 @@ function orderLots(lots: LotState[], method: CostMethod): LotState[] {
  * options always produce the same lots, reliefs and realized figures.
  */
 export function runLedger(inputs: LedgerEventInput[], options: EngineOptions): EngineResult {
-  const longTermDays = options.longTermDays ?? 365;
+  const longTermDays = options.longTermDays;
+  const termOf = (openedAt: Date, closedAt: Date): "short" | "long" => {
+    const long = longTermDays === undefined ? isLongTerm(openedAt, closedAt) : daysBetween(openedAt, closedAt) > longTermDays;
+    return long ? "long" : "short";
+  };
   const asOf = options.asOf;
   const events = sortEvents(inputs).filter((e) => !asOf || e.blockTime.getTime() <= asOf.getTime());
   const lotsByMint = new Map<string, LotState[]>();
@@ -97,7 +101,7 @@ export function runLedger(inputs: LedgerEventInput[], options: EngineOptions): E
       lotsFor(e.mint).push(lot);
       const pricePerShare =
         lot.costBasisUsd !== null && exposureDelta > 0 ? lot.costBasisUsd / exposureDelta : null;
-      processed.push({ input: e, pricePerShare, realizedUsd: null, reliefs: [] });
+      processed.push({ input: e, multiplier, pricePerShare, realizedUsd: null, reliefs: [] });
       continue;
     }
 
@@ -149,10 +153,11 @@ export function runLedger(inputs: LedgerEventInput[], options: EngineOptions): E
         reliefs.push({
           lotId: lot.id,
           rawQuantity: take,
+          multiplier,
           costBasisUsd: cost,
           proceedsUsd: proceeds,
           realizedUsd: realized,
-          term: daysBetween(lot.openedAt, e.blockTime) > longTermDays ? "long" : "short",
+          term: termOf(lot.openedAt, e.blockTime),
           openedAt: lot.openedAt,
         });
       }
@@ -163,11 +168,11 @@ export function runLedger(inputs: LedgerEventInput[], options: EngineOptions): E
           : reliefs.reduce((acc, r) => acc + (r.realizedUsd ?? 0), 0);
       const pricePerShare =
         proceedsTotal !== null && exposureDelta !== 0 ? proceedsTotal / Math.abs(exposureDelta) : null;
-      processed.push({ input: e, pricePerShare, realizedUsd, reliefs });
+      processed.push({ input: e, multiplier, pricePerShare, realizedUsd, reliefs });
       continue;
     }
 
-    processed.push({ input: e, pricePerShare: null, realizedUsd: null, reliefs: [] });
+    processed.push({ input: e, multiplier, pricePerShare: null, realizedUsd: null, reliefs: [] });
   }
 
   const lots = [...lotsByMint.values()].flat();

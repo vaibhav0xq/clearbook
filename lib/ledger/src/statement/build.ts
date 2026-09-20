@@ -1,4 +1,4 @@
-import type { CostMethod, LedgerEventInput, LotState, ProcessedEvent, RegistryAsset } from "../types";
+import type { CostMethod, LedgerEventInput, ProcessedEvent, RegistryAsset } from "../types";
 import { runLedger } from "../engine/lots";
 import { valuePositions, type MarkInput, type PositionValuation } from "../engine/positions";
 import type { CorporateAction } from "../engine/multiplier";
@@ -153,7 +153,7 @@ export function buildStatement(input: StatementBuildInput): StatementData {
     .filter((e) => e.input.kind !== "multiplier_change")
     .map((e) => toActivityRow(e, resolveAsset));
 
-  const closedLots = collectClosedLots(full, periodEvents, resolveAsset, inPeriod);
+  const closedLots = collectClosedLots(periodEvents, resolveAsset, inPeriod);
 
   const cashIn = periodEvents
     .filter((e) => e.input.kind === "buy" && e.input.grossUsd !== null)
@@ -257,17 +257,14 @@ function toActivityRow(e: ProcessedEvent, resolveAsset: (mint: string) => Regist
 }
 
 function collectClosedLots(
-  full: ReturnType<typeof runLedger>,
   periodEvents: ProcessedEvent[],
   resolveAsset: (mint: string) => RegistryAsset | undefined,
   inPeriod: (d: Date) => boolean,
 ): StatementClosedLotRow[] {
-  const lotIndex = new Map<string, LotState>(full.lots.map((l) => [l.id, l]));
   const rows: StatementClosedLotRow[] = [];
   for (const e of periodEvents) {
     if (!inPeriod(e.input.blockTime)) continue;
     for (const r of e.reliefs) {
-      const lot = lotIndex.get(r.lotId);
       const asset = resolveAsset(e.input.mint);
       const decimals = asset?.decimals ?? 0;
       rows.push({
@@ -275,7 +272,7 @@ function collectClosedLots(
         symbol: asset?.symbol ?? e.input.mint.slice(0, 6),
         openedAt: r.openedAt,
         closedAt: e.input.blockTime,
-        quantity: rawToUi(r.rawQuantity, decimals) * (lot?.multiplierAtOpen ?? e.input.multiplierAtEvent ?? 1),
+        quantity: rawToUi(r.rawQuantity, decimals) * r.multiplier,
         costBasis: r.costBasisUsd === null ? null : roundUsd(r.costBasisUsd),
         proceeds: roundUsd(r.proceedsUsd),
         realized: r.realizedUsd === null ? null : roundUsd(r.realizedUsd),

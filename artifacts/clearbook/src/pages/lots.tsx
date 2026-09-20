@@ -1,9 +1,9 @@
 import { useMemo, useState, type ComponentProps } from "react";
 import { useRoute, useSearch, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
 
-import { useListLots, useGetPortfolio, type LotStatusFilter, type Lot } from "@workspace/api-client-react";
+import { useListLots, useGetPortfolio, useGetTaxLots, type CostMethod, type LotStatusFilter, type Lot, type TaxYearSummary } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { formatUSD, formatQuantity, formatDate, eventKindLabel } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
@@ -15,6 +15,7 @@ import { useHoverActive, useHoverMint, useSetHoverMint, useStage } from "@/compo
 import { cn } from "@/lib/utils";
 import { useWalletIndexing } from "@/hooks/use-wallet-indexing";
 import { IndexingState } from "@/components/layout/indexing-state";
+import { downloadFile } from "@/lib/download";
 
 const FILTERS: { value: LotStatusFilter; label: string }[] = [
   { value: "all", label: "All lots" },
@@ -106,6 +107,134 @@ function LotTableRow({
 }: ComponentProps<typeof TableRow> & { groupMint: string; hoverLayerId: string | null; lotId: string }) {
   const groupActive = useHoverActive(groupMint);
   return <TableRow {...props} active={hoverLayerId === lotId || (groupActive && !hoverLayerId)} />;
+}
+
+function signedUsd(value: number): string {
+  return `${value > 0 ? "+" : ""}${formatUSD(value)}`;
+}
+
+function pnlClass(value: number): string {
+  return value > 0 ? "text-success" : value < 0 ? "text-destructive" : "text-foreground";
+}
+
+function reviewNotes(y: TaxYearSummary): string[] {
+  const notes: string[] = [];
+  if (y.washSaleFlags > 0) notes.push(`${y.washSaleFlags} wash sale ${y.washSaleFlags === 1 ? "flag" : "flags"}`);
+  if (y.unknownProceedsRows > 0) notes.push(`${y.unknownProceedsRows} unknown proceeds`);
+  if (y.unknownBasisRows > 0) notes.push(`${y.unknownBasisRows} unknown basis`);
+  if (y.estimatedBasisRows > 0) notes.push(`${y.estimatedBasisRows} estimated basis`);
+  if (y.simulatedRows > 0) notes.push(`${y.simulatedRows} simulated`);
+  return notes;
+}
+
+/** Realized gains by tax year with a Form 1099-B style export per year. */
+function TaxYears({ address, method, indexing }: { address: string; method: CostMethod; indexing: boolean }) {
+  const { data: report, error: reportError } = useGetTaxLots(address, { method });
+  const [busyYear, setBusyYear] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (reportError) {
+    return (
+      <Reveal as="section" className="flex flex-col gap-5">
+        <SectionTitle>Tax years</SectionTitle>
+        <ErrorState title="Unable to load tax years" message={reportError.data?.message ?? reportError.message} />
+      </Reveal>
+    );
+  }
+  if (!report || report.years.length === 0) return null;
+
+  const download = async (y: TaxYearSummary) => {
+    setBusyYear(y.year);
+    setError(null);
+    try {
+      await downloadFile(y.csvUrl, `clearbook-tax-lots-${y.year}.csv`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Download failed.");
+    } finally {
+      setBusyYear(null);
+    }
+  };
+
+  return (
+    <Reveal as="section" className="flex flex-col gap-5">
+      <SectionTitle aside={<span className="label text-muted-foreground">Form 1099-B layout</span>}>Tax years</SectionTitle>
+      <DataTable>
+        <TableHeader>
+          <TableHead>Year</TableHead>
+          <TableHead align="right">Sales</TableHead>
+          <TableHead align="right" className="hidden md:table-cell">Proceeds</TableHead>
+          <TableHead align="right" className="hidden md:table-cell">Cost basis</TableHead>
+          <TableHead align="right" className="hidden lg:table-cell">Short term</TableHead>
+          <TableHead align="right" className="hidden lg:table-cell">Long term</TableHead>
+          <TableHead align="right">Net</TableHead>
+          <TableHead className="hidden lg:table-cell">Review</TableHead>
+          <TableHead align="right">Export</TableHead>
+        </TableHeader>
+        <TableBody>
+          {report.years.map((y, i) => {
+            const notes = reviewNotes(y);
+            return (
+              <TableRow key={y.year} index={i}>
+                <TableCell>
+                  <span className="num text-[14px] text-foreground">{y.year}</span>
+                </TableCell>
+                <TableCell align="right">
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="num text-[14px] text-foreground">{y.disposals}</span>
+                    <span className="num text-[11px] text-muted-foreground">{y.rows} {y.rows === 1 ? "lot" : "lots"}</span>
+                  </div>
+                </TableCell>
+                <TableCell align="right" className="hidden md:table-cell">
+                  <span className="num text-[14px] text-foreground">{formatUSD(y.proceeds)}</span>
+                </TableCell>
+                <TableCell align="right" className="hidden md:table-cell">
+                  <span className="num text-[14px] text-foreground">{formatUSD(y.costBasis)}</span>
+                </TableCell>
+                <TableCell align="right" className="hidden lg:table-cell">
+                  <span className={cn("num text-[14px]", pnlClass(y.shortTermGainLoss))}>{signedUsd(y.shortTermGainLoss)}</span>
+                </TableCell>
+                <TableCell align="right" className="hidden lg:table-cell">
+                  <span className={cn("num text-[14px]", pnlClass(y.longTermGainLoss))}>{signedUsd(y.longTermGainLoss)}</span>
+                </TableCell>
+                <TableCell align="right">
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={cn("num text-[14px]", pnlClass(y.gainLoss))}>{signedUsd(y.gainLoss)}</span>
+                    {notes.length > 0 && <span className="text-[11px] text-muted-foreground lg:hidden">{notes.join(", ")}</span>}
+                  </div>
+                </TableCell>
+                <TableCell className="hidden lg:table-cell">
+                  {notes.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {notes.map((n) => (
+                        <Pill key={n} tone={n.includes("simulated") ? "neutral" : "amber"}>{n}</Pill>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-[12px] text-muted-foreground">Nothing to review</span>
+                  )}
+                </TableCell>
+                <TableCell align="right">
+                  <button
+                    type="button"
+                    onClick={() => download(y)}
+                    disabled={busyYear !== null || indexing}
+                    title={indexing ? "Available once indexing has finished" : `Download ${y.year} as CSV`}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full border hairline bg-white/[0.03] px-3 text-[11px] uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-white/[0.07] disabled:opacity-50"
+                  >
+                    <Download className="h-3 w-3" />
+                    {busyYear === y.year ? "Preparing" : "CSV"}
+                  </button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </DataTable>
+      {error && <p className="text-[12px] text-destructive">{error}</p>}
+      <p className="max-w-3xl text-[12px] leading-relaxed text-muted-foreground">
+        Columns follow Form 1099-B boxes 1a to 1e so the figures carry to Form 8949. Rows with an estimated or unknown basis and rows from simulated sales are labeled. A wash sale flag marks a loss with a buy of the same stock within 30 days on either side. It is a check, not a determination. Clearbook is not a broker and files nothing.
+      </p>
+    </Reveal>
+  );
 }
 
 export default function Lots() {
@@ -324,7 +453,7 @@ export default function Lots() {
                       size="md"
                       sub={summary.closedIncomplete > 0 ? `${summary.closedIncomplete} without a complete cost` : "Complete basis on every lot"}
                     />
-                    <Figure label="Realized" value={summary.realized} tone size="md" sub="Proceeds net of fees, less cost" />
+                    <Figure label="Realized" value={summary.realized} tone size="md" sub="Fully closed lots only. Tax years below count every relief" />
                   </>
                 ) : (
                   <>
@@ -352,6 +481,7 @@ export default function Lots() {
               </div>
             </Reveal>
           )}
+          {statusFilter !== "open" && !mintFilter && <TaxYears address={address} method={method} indexing={indexing} />}
           {grouped.map((group) => (
             <Reveal key={group.mint} as="section">
               <div 

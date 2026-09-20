@@ -4,5 +4,5 @@ export type * from "./generated/types";
 // TypeScript type with the same name. The explicit re-export below resolves the
 // ambiguity in favour of the zod schema (path params). Query params remain
 // available as <OperationId>QueryParams.
-export { GetPortfolioParams, ListActivityParams, ListLotsParams, PrepareNotarizationParams } from "./generated/api";
+export { ExportTaxLotsCsvParams, GetPortfolioParams, GetTaxLotsParams, ListActivityParams, ListLotsParams, PrepareNotarizationParams } from "./generated/api";
 export * from './generated/types';

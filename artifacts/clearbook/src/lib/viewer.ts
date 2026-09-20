@@ -34,7 +34,12 @@ export function viewerId(): string {
   return cached;
 }
 
+/** The header that names this browser, for requests made outside the generated client. */
+export function viewerHeader(): Record<string, string> {
+  return { [HEADER]: viewerId() };
+}
+
 /** Sends the id with every API request. Called once at startup. */
 export function installViewerHeader(): void {
-  setDefaultHeadersGetter(() => ({ [HEADER]: viewerId() }));
+  setDefaultHeadersGetter(viewerHeader);
 }

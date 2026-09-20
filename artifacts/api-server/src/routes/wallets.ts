@@ -1,10 +1,15 @@
 import { Router, type IRouter } from "express";
 import {
+  ExportTaxLotsCsvParams,
+  ExportTaxLotsCsvQueryParams,
   GetPortfolioParams,
   GetPortfolioQueryParams,
   GetPortfolioResponse,
   GetPricingStatusParams,
   GetPricingStatusResponse,
+  GetTaxLotsParams,
+  GetTaxLotsQueryParams,
+  GetTaxLotsResponse,
   GetWalletStatusParams,
   GetWalletStatusResponse,
   IndexWalletParams,
@@ -33,6 +38,7 @@ import {
   walletStatusView,
 } from "../services/portfolio";
 import { countEvents, deleteEventsBySource, getWallet } from "../services/store";
+import { taxLotReportView, taxLotsCsv } from "../services/tax";
 
 const router: IRouter = Router();
 
@@ -73,6 +79,23 @@ router.get("/wallets/:address/lots", async (req, res) => {
   const { method, mint, status } = ListLotsQueryParams.parse(req.query);
   const ctx = await loadContext(address, method ?? "fifo");
   res.json(ListLotsResponse.parse(lotsView(ctx, { mint, status })));
+});
+
+router.get("/wallets/:address/tax-lots", async (req, res) => {
+  const { address } = GetTaxLotsParams.parse(req.params);
+  const { method } = GetTaxLotsQueryParams.parse(req.query);
+  const ctx = await loadContext(address, method ?? "fifo");
+  res.json(GetTaxLotsResponse.parse(taxLotReportView(ctx)));
+});
+
+router.get("/wallets/:address/tax-lots/export.csv", async (req, res) => {
+  const { address } = ExportTaxLotsCsvParams.parse(req.params);
+  const { method, year } = ExportTaxLotsCsvQueryParams.parse(req.query);
+  const ctx = await loadContext(address, method ?? "fifo");
+  const file = taxLotsCsv(ctx, year);
+  res.setHeader("content-type", "text/csv; charset=utf-8");
+  res.setHeader("content-disposition", `attachment; filename="${file.fileName}"`);
+  res.send(file.body);
 });
 
 router.get("/wallets/:address/activity", async (req, res) => {

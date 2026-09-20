@@ -106,7 +106,10 @@ export interface LotState {
 export interface ReliefRecord {
   lotId: string;
   rawQuantity: bigint;
+  /** Multiplier in force at the disposal, so shares relieved are rawQuantity times this. */
+  multiplier: number;
   costBasisUsd: number | null;
+  /** Zero when the cash leg of the disposal could not be read. The event's grossUsd is null then. */
   proceedsUsd: number;
   realizedUsd: number | null;
   term: "short" | "long";
@@ -115,6 +118,8 @@ export interface ReliefRecord {
 
 export interface ProcessedEvent {
   input: LedgerEventInput;
+  /** Multiplier the engine applied to this event: its own when carried, else the current one. */
+  multiplier: number;
   /** Price per share of exposure implied by the trade, when known. */
   pricePerShare: number | null;
   realizedUsd: number | null;

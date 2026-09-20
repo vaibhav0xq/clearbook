@@ -56,3 +56,17 @@ export function sum(values: Array<number | null | undefined>): number {
 export function daysBetween(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / 86_400_000);
 }
+
+/**
+ * Long term means held for more than one year by the calendar, so a sale on the anniversary of the
+ * acquisition is still short term even when a leap day made that year 366 days long.
+ */
+export function isLongTerm(openedAt: Date, closedAt: Date): boolean {
+  const year = openedAt.getUTCFullYear() + 1;
+  const month = openedAt.getUTCMonth();
+  // A 29 February acquisition has its anniversary on 28 February in a common year.
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const anniversary = Date.UTC(year, month, Math.min(openedAt.getUTCDate(), lastDay));
+  const soldDay = Date.UTC(closedAt.getUTCFullYear(), closedAt.getUTCMonth(), closedAt.getUTCDate());
+  return soldDay > anniversary;
+}

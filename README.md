@@ -15,6 +15,7 @@ Built for the Stocklana hackathon. Main track, Pyth bounty and PreStocks bounty.
 - Corporate actions read from the token itself: multiplier increases on Ondo and xStocks mints are recorded as income or split events and labeled best effort
 - Statements for any period with a SHA-256 hash, opening and closing value, holdings, activity, closed lots, corporate actions and written assumptions
 - CSV and PDF export
+- Tax lot export per tax year in the Form 1099-B column layout, with estimated and unknown basis labeled and a wash sale check on losses
 - Notarization: a memo transaction that writes the statement hash to Solana signed by the visitor's wallet or a clearly labeled simulated proof when no wallet is connected
 - One sell action through Jupiter that relieves lots and updates the ledger, with a simulated path that does the same bookkeeping without a transaction
 - Three demo ledgers so the product can be reviewed without holding any tokenized stock

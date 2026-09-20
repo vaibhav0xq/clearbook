@@ -25,8 +25,10 @@ import type {
   BadRequestResponse,
   ConflictResponse,
   CorporateActionEvent,
+  ExportTaxLotsCsvParams,
   ForbiddenResponse,
   GetPortfolioParams,
+  GetTaxLotsParams,
   HealthStatus,
   Issuer,
   ListActivityParams,
@@ -43,6 +45,7 @@ import type {
   StatementProof,
   StatementRequest,
   StatementSummary,
+  TaxLotReport,
   TradeConfirmRequest,
   TradePrepareRequest,
   TradeQuote,
@@ -784,6 +787,186 @@ export function useListLots<TData = Awaited<ReturnType<typeof listLots>>, TError
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListLotsQueryOptions(address,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTaxLotsUrl = (address: string,
+    params?: GetTaxLotsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/wallets/${address}/tax-lots?${stringifiedParams}` : `/api/wallets/${address}/tax-lots`
+}
+
+/**
+ * One summary per UTC calendar year with at least one sale or wrapper swap. Transfers out are not disposals. Simulated sales of this browser are included and counted separately.
+ * @summary Realized gains by tax year with a Form 1099-B style export per year
+ */
+export const getTaxLots = async (address: string,
+    params?: GetTaxLotsParams, options?: Parameters<typeof customFetch>[1]): Promise<TaxLotReport> => {
+
+  return customFetch<TaxLotReport>(getGetTaxLotsUrl(address,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTaxLotsQueryKey = (address: string,
+    params?: GetTaxLotsParams,) => {
+    return [
+    `/api/wallets/${address}/tax-lots`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTaxLotsQueryOptions = <TData = Awaited<ReturnType<typeof getTaxLots>>, TError = ErrorType<BadRequestResponse | NotFoundResponse>>(address: string,
+    params?: GetTaxLotsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaxLots>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTaxLotsQueryKey(address,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTaxLots>>> = ({ signal }) => getTaxLots(address,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: address !== null && address !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTaxLots>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTaxLotsQueryResult = NonNullable<Awaited<ReturnType<typeof getTaxLots>>>
+export type GetTaxLotsQueryError = ErrorType<BadRequestResponse | NotFoundResponse>
+
+
+/**
+ * @summary Realized gains by tax year with a Form 1099-B style export per year
+ */
+
+export function useGetTaxLots<TData = Awaited<ReturnType<typeof getTaxLots>>, TError = ErrorType<BadRequestResponse | NotFoundResponse>>(
+ address: string,
+    params?: GetTaxLotsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaxLots>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTaxLotsQueryOptions(address,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getExportTaxLotsCsvUrl = (address: string,
+    params: ExportTaxLotsCsvParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/wallets/${address}/tax-lots/export.csv?${stringifiedParams}` : `/api/wallets/${address}/tax-lots/export.csv`
+}
+
+/**
+ * Columns follow boxes 1a to 1e so the figures carry to Form 8949. Rows with estimated or unknown basis and rows from simulated sales are labeled. Refused with 409 while the wallet is indexing.
+ * @summary Download one tax year as CSV in the Form 1099-B column layout
+ */
+export const exportTaxLotsCsv = async (address: string,
+    params: ExportTaxLotsCsvParams, options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getExportTaxLotsCsvUrl(address,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportTaxLotsCsvQueryKey = (address: string,
+    params?: ExportTaxLotsCsvParams,) => {
+    return [
+    `/api/wallets/${address}/tax-lots/export.csv`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportTaxLotsCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportTaxLotsCsv>>, TError = ErrorType<BadRequestResponse | NotFoundResponse | ConflictResponse>>(address: string,
+    params: ExportTaxLotsCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportTaxLotsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportTaxLotsCsvQueryKey(address,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportTaxLotsCsv>>> = ({ signal }) => exportTaxLotsCsv(address,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: address !== null && address !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportTaxLotsCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportTaxLotsCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportTaxLotsCsv>>>
+export type ExportTaxLotsCsvQueryError = ErrorType<BadRequestResponse | NotFoundResponse | ConflictResponse>
+
+
+/**
+ * @summary Download one tax year as CSV in the Form 1099-B column layout
+ */
+
+export function useExportTaxLotsCsv<TData = Awaited<ReturnType<typeof exportTaxLotsCsv>>, TError = ErrorType<BadRequestResponse | NotFoundResponse | ConflictResponse>>(
+ address: string,
+    params: ExportTaxLotsCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportTaxLotsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportTaxLotsCsvQueryOptions(address,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
