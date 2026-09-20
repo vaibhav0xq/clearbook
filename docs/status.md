@@ -1,12 +1,12 @@
 # Status: live, simulated and still needed
 
-Last updated 19 September 2026.
+Last updated 20 September 2026.
 
 ## Live today
 
 | Area | What runs | Notes |
 | --- | --- | --- |
-| Wallet indexing | Token account discovery, signature scan per stock token account, parsed transaction classification into buys, sells, transfers and wrapper swaps | Public RPC by default. 90 second budget and 400 signature cap per run, then the ledger is marked partial with explicit warnings. Verified against mainnet wallets holding xStocks and Ondo tokens |
+| Wallet indexing | Token account discovery, signature scan per stock token account, parsed transaction classification into buys, sells, transfers and wrapper swaps. Runs in the background: opening a wallet starts the run and returns at once, the status endpoint reports signatures read and events found while it runs and the pages fill in when it finishes | Public RPC by default. 90 second budget and 400 signature cap per run, then the ledger is marked partial with explicit warnings. One run per wallet at a time, held in process memory, so a second instance of the server would not share it. Verified against mainnet wallets holding xStocks and Ondo tokens |
 | Asset registry | 934 tokenized stock mints: 828 xStocks, 98 Ondo Global Markets, 8 PreStocks, with issuer, underlying and decimals | Generated from issuer lists into `lib/ledger/src/registry/assets.json` |
 | Multipliers | Token-2022 scaled UI amount extension read from each mint, current and pending multiplier, observations stored so later increases become income events | Live for Ondo and xStocks mints that use the extension |
 | Pricing | Jupiter price API and PreStocks API, session state of the underlying market, premium or discount against the reference | Pyth Pro is the first choice when `PYTH_API_KEY` is set and drops out with a labeled status when it is not |
@@ -19,6 +19,7 @@ Last updated 19 September 2026.
 ## Simulated or best effort
 
 - Simulated proofs and simulated sales are stored with a `simulated` label everywhere they appear, including exports.
+- Simulated sales and generated statements are private to the browser that made them. The browser keeps a random id in local storage and sends it with every request; the server stores it with the event or statement and filters reads by it. Two people opening the same wallet address see the same chain data and their own simulations. The id names a browser, not a person, so clearing site data starts a fresh view. A public deployment could replace it with a signed wallet session without changing the data model.
 - Historical multiplier at the time of a live event is not reconstructed. Income from multiplier increases is computed from observed multiplier changes since the wallet was first indexed, so a wallet indexed today shows no historical income until the next increase.
 - Prices at the time of a historical buy or sell come from the counter asset in the transaction when it was a swap. Transfers in with no counter asset have unknown basis and are excluded from totals.
 - Dividend cash paid outside the multiplier mechanism is not detected.
@@ -34,9 +35,7 @@ Last updated 19 September 2026.
 4. Historical multiplier reconstruction from mint account history so income is complete for wallets indexed after an increase.
 5. Owner level history beyond the current token accounts, so stocks held in closed accounts appear in realized P/L.
 6. Tax lot export in a broker style 1099-B layout.
-7. A background indexing queue. Indexing currently runs inside the request that triggers it.
-8. Viewer scoped simulations. Simulated sales and proofs are stored per wallet address and are visible to anyone who opens that address. They are always labeled and can be reset, but a public deployment should key them to a signed session.
-9. Historical marks for statement boundaries, so opening and closing values reflect the close of the period rather than the mark at generation time.
+7. Historical marks for statement boundaries, so opening and closing values reflect the close of the period rather than the mark at generation time.
 
 ## Environment specific findings
 

@@ -189,7 +189,7 @@ interface SignatureScan {
  * unrelated transactions through a rate limited endpoint. Accounts with a balance are read
  * first so that a deadline cut costs closed positions before open ones.
  */
-async function collectSignatures(owner: string, accounts: TokenAccountRef[], deadline: number): Promise<SignatureScan> {
+async function collectSignatures(owner: string, accounts: TokenAccountRef[], deadline: number, onPage?: (found: number) => void): Promise<SignatureScan> {
   const client = rpc();
   const cap = env.maxSignatures;
   const seen = new Map<string, SignatureInfo>();
@@ -202,6 +202,7 @@ async function collectSignatures(owner: string, accounts: TokenAccountRef[], dea
       if (Date.now() > deadline) return true;
       const page = await client.getSignaturesForAddress(address, Math.min(100, limit - fetched), before);
       for (const s of page) if (!s.err) seen.set(s.signature, s);
+      onPage?.(seen.size);
       fetched += page.length;
       if (page.length < 100) return false;
       before = page[page.length - 1].signature;
@@ -246,25 +247,77 @@ export interface IndexOutcome {
   wallet: Wallet;
 }
 
-/** Indexes a wallet from the chain, or loads a scripted demo wallet. */
-/** In flight runs per address, so two requests for the same wallet share one run instead of racing on the ledger. */
-const inFlight = new Map<string, Promise<Wallet>>();
+/** How often a running index writes its counters, so a client polling the status sees it move. */
+const PROGRESS_WRITE_MS = 1000;
 
-export function indexWallet(address: string): Promise<Wallet> {
-  assertAddress(address);
-  if (isDemoId(address)) return loadDemoWallet(address);
+interface IndexRun {
+  /** Settles once the wallet row shows the run in progress. */
+  started: Promise<Wallet>;
+  /** Settles with the final wallet row. */
+  finished: Promise<Wallet>;
+}
+
+/** In flight runs per address, so two requests for the same wallet share one run instead of racing on the ledger. */
+const inFlight = new Map<string, IndexRun>();
+
+function launch(address: string): IndexRun {
   const running = inFlight.get(address);
   if (running) return running;
-  const run = indexLiveWallet(address).finally(() => inFlight.delete(address));
+  const started = upsertWallet({
+    address,
+    isDemo: false,
+    state: "indexing",
+    source: "live",
+    message: "Reading transaction history.",
+    eventsIndexed: 0,
+    signaturesScanned: 0,
+    unknownTransactions: 0,
+    warnings: [],
+  });
+  const finished = started.then(() => indexLiveWallet(address)).finally(() => inFlight.delete(address));
+  // The run reports its own failures through the wallet row. Only the first write can reject, and
+  // the caller of `started` sees that.
+  finished.catch(() => undefined);
+  const run = { started, finished };
   inFlight.set(address, run);
   return run;
 }
 
-async function indexLiveWallet(address: string): Promise<Wallet> {
+/**
+ * Indexes a wallet from the chain and resolves with the finished ledger. Demo wallets load their
+ * script instead. Used where the caller needs the result, such as confirming a live trade.
+ */
+export function indexWallet(address: string): Promise<Wallet> {
+  assertAddress(address);
+  if (isDemoId(address)) return loadDemoWallet(address);
+  return launch(address).finished;
+}
 
-  await upsertWallet({ address, isDemo: false, state: "indexing", source: "live", message: "Reading transaction history." });
-  const client = rpc();
+/**
+ * Starts indexing in the background and resolves as soon as the wallet reads as indexing. The
+ * request that opened the wallet returns at once and the client follows progress through the
+ * status endpoint. A run already in flight is joined, not restarted.
+ */
+export function startIndexing(address: string): Promise<Wallet> {
+  assertAddress(address);
+  if (isDemoId(address)) return loadDemoWallet(address);
+  return launch(address).started;
+}
+
+async function indexLiveWallet(address: string): Promise<Wallet> {
+  let lastProgressAt = 0;
+  let progressWrite: Promise<unknown> = Promise.resolve();
+  const progress = (signaturesScanned: number, eventsIndexed: number) => {
+    const now = Date.now();
+    if (now - lastProgressAt < PROGRESS_WRITE_MS) return;
+    lastProgressAt = now;
+    // Writes queue behind each other and never fail the run; the final write carries the truth.
+    progressWrite = progressWrite.then(() => upsertWallet({ address, state: "indexing", signaturesScanned, eventsIndexed })).catch((err) => {
+      logger.warn({ err, address }, "Indexing progress write failed");
+    });
+  };
   try {
+    const client = rpc();
     const accounts = await client.getTokenAccountsByOwner(address);
     const stockAccounts = accounts.filter((a) => getAsset(a.mint));
     const startedAt = Date.now();
@@ -273,6 +326,7 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
       address,
       stockAccounts.map((a) => ({ pubkey: a.pubkey, amount: a.amount })),
       deadline,
+      (found) => progress(found, 0),
     );
     let { truncated } = scan;
     const { signatures } = scan;
@@ -284,7 +338,6 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
       warnings.push(`${scan.accountsSkipped} token account${scan.accountsSkipped === 1 ? "" : "s"} could not be read within the time budget. Their history is summarized as opening balances.`);
     }
     let unknownCount = 0;
-    let scanned = 0;
     for (let i = 0; i < signatures.length; i += 50) {
       if (Date.now() > deadline) {
         truncated = true;
@@ -300,7 +353,7 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
         events.push(...c.events);
         if (c.unknown) unknownCount += 1;
       });
-      scanned += slice.length;
+      progress(signatures.length, events.length);
     }
     events.sort((a, b) => a.blockTime.getTime() - b.blockTime.getTime());
 
@@ -365,6 +418,8 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     if (unknownCount > 0) warnings.push(`${unknownCount} transaction${unknownCount === 1 ? "" : "s"} could not be classified.`);
     if (!env.rpcConfigured) warnings.push("Indexed through the public RPC endpoint. Set SOLANA_RPC_URL or HELIUS_API_KEY for deeper history.");
 
+    // The final row must land after any progress write still in flight.
+    await progressWrite;
     await replaceEvents(address, events, "simulated");
     const hasStocks = stockAccounts.length > 0 || events.length > 0;
     const state = !hasStocks ? "empty" : truncated || unknownCount > 0 ? "partial" : "ready";
@@ -373,7 +428,8 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
       : state === "partial"
         ? "Indexed with gaps. See the warnings for what could not be reconstructed."
         : "Indexed from Solana mainnet.";
-    return upsertWallet({
+    // Awaited inside the try so a failed final write still lands the wallet in the error state below.
+    return await upsertWallet({
       address,
       isDemo: false,
       state,
@@ -389,6 +445,8 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
   } catch (err) {
     const message = err instanceof HttpError ? err.message : err instanceof Error ? err.message : "Indexing failed.";
     logger.error({ err, address }, "Indexing failed");
+    await progressWrite;
+    // If this write fails too the row stays "indexing" and the stale rule in ensureWalletRow restarts it.
     return upsertWallet({ address, isDemo: false, state: "error", source: "unavailable", message, lastIndexedAt: new Date(), warnings: [] });
   }
 }
@@ -412,14 +470,31 @@ export async function loadDemoWallet(id: string): Promise<Wallet> {
   });
 }
 
-/** Returns the stored wallet, indexing it first when it has never been seen. */
-export async function ensureWallet(address: string): Promise<{ wallet: Wallet; events: LedgerEventInput[] }> {
+/**
+ * Returns the wallet row, starting whatever work it needs. A live wallet that has never been seen,
+ * was never indexed or whose last run stopped writing progress for longer than INDEX_STALE_MS
+ * starts indexing in the background and comes back as indexing. A running index writes progress
+ * every second, so only a crashed or lost run reads as abandoned. Demo wallets load in place
+ * because their script is local.
+ */
+export async function ensureWalletRow(address: string): Promise<Wallet> {
   assertAddress(address);
-  let wallet = await getWallet(address);
-  const abandoned = wallet?.state === "indexing" && Date.now() - wallet.updatedAt.getTime() > INDEX_STALE_MS;
-  if (!wallet || wallet.state === "not_indexed" || abandoned || (isDemoId(address) && (await countEvents(address, "demo")) === 0 && getDemoWallet(address)!.events.length > 0)) {
-    wallet = await indexWallet(address);
+  const wallet = await getWallet(address);
+  if (isDemoId(address)) {
+    if (!wallet || ((await countEvents(address, "demo")) === 0 && getDemoWallet(address)!.events.length > 0)) return loadDemoWallet(address);
+    return wallet;
   }
+  const abandoned = wallet?.state === "indexing" && !inFlight.has(address) && Date.now() - wallet.updatedAt.getTime() > INDEX_STALE_MS;
+  if (!wallet || wallet.state === "not_indexed" || abandoned) return startIndexing(address);
+  return wallet;
+}
+
+/**
+ * Returns the wallet and its events. While a first index runs the events are empty and the wallet
+ * reads as indexing, so the page can say so instead of waiting on the chain.
+ */
+export async function ensureWallet(address: string): Promise<{ wallet: Wallet; events: LedgerEventInput[] }> {
+  const wallet = await ensureWalletRow(address);
   const events = await listEvents(address);
   return { wallet, events };
 }

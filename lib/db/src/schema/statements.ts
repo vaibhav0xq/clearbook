@@ -15,6 +15,8 @@ export const statementsTable = pgTable(
     hash: text("hash").notNull(),
     body: jsonb("body").$type<Record<string, unknown>>().notNull(),
     proof: jsonb("proof").$type<Record<string, unknown>>(),
+    /** The browser session that generated the statement. Null for statements that belong to every viewer of the wallet. */
+    viewerId: text("viewer_id"),
   },
   (table) => [index("statements_address_idx").on(table.address, table.generatedAt)],
 );

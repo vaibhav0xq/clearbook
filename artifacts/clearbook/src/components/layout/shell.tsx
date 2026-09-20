@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useId, useState } from "react";
+import { ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
@@ -141,11 +141,21 @@ export function Shell({ address, children }: ShellProps) {
   const indexWallet = useIndexWallet();
   const resetWallet = useResetWallet();
 
+  // Indexing runs in the background. The request returns as soon as the run has started. Its
+  // response seeds the status cache so the poll starts at once and the completion below is never
+  // missed. A demo wallet reloads in place and comes back finished, so its ledger refreshes here.
   const handleRefresh = async () => {
-    await indexWallet.mutateAsync({ address });
-    await invalidateWalletQueries(queryClient, address);
-    refetch();
+    const started = await indexWallet.mutateAsync({ address });
+    queryClient.setQueryData(getGetWalletStatusQueryKey(address), started);
+    if (started.state !== "indexing") await invalidateWalletQueries(queryClient, address);
   };
+  // The ledger queries refresh once, when the status leaves indexing.
+  const wasIndexing = useRef(false);
+  useEffect(() => {
+    const indexing = status?.state === "indexing";
+    if (wasIndexing.current && !indexing) void invalidateWalletQueries(queryClient, address);
+    wasIndexing.current = indexing;
+  }, [status?.state, queryClient, address]);
 
   // Simulated sales are recorded events, so clearing them is a ledger change and goes through the API.
   const handleClearSimulated = async () => {
@@ -184,7 +194,7 @@ export function Shell({ address, children }: ShellProps) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
         <span>
           {status.state === "indexing"
-            ? `Indexing. ${status.eventsIndexed} events from ${status.signaturesScanned} signatures`
+            ? `Indexing. ${status.signaturesScanned} signatures read, ${status.eventsIndexed} events so far`
             : status.lastIndexedAt
               ? `Indexed ${formatTime(status.lastIndexedAt)}`
               : "Not indexed yet"}
@@ -256,7 +266,6 @@ export function Shell({ address, children }: ShellProps) {
 
   return (
     <StageProvider address={address}>
-      <div aria-hidden className="grain-overlay" />
       <div className="relative flex min-h-screen flex-col bg-background">
         {/* Top bar */}
         <header className="sticky top-0 z-40 border-b hairline bg-background/85 backdrop-blur-xl">

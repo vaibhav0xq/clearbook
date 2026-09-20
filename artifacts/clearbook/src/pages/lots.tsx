@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import { useRoute, useSearch, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
@@ -11,8 +11,10 @@ import { Pill, Skeleton, EmptyState, ErrorState, PageHeader, SectionTitle } from
 import { Figure } from "@/components/figure";
 import { Reveal, EASE_OUT } from "@/components/motion/reveal";
 import { buildStrata, reliefRank, reliefOrder, type StrataLayer } from "@/components/three/strata-data";
-import { useStage, useStageContext } from "@/components/layout/stage";
+import { useHoverActive, useHoverMint, useSetHoverMint, useStage } from "@/components/layout/stage";
 import { cn } from "@/lib/utils";
+import { useWalletIndexing } from "@/hooks/use-wallet-indexing";
+import { IndexingState } from "@/components/layout/indexing-state";
 
 const FILTERS: { value: LotStatusFilter; label: string }[] = [
   { value: "all", label: "All lots" },
@@ -54,9 +56,62 @@ function Strip({ order, totalValue }: { order: StrataLayer[]; totalValue: number
   );
 }
 
+interface LotGroup {
+  mint: string;
+  symbol: string | undefined;
+  name: string;
+  lots: Lot[];
+  col: ReturnType<typeof buildStrata>[number] | undefined;
+  ranks: Map<string, number>;
+  order: StrataLayer[];
+}
+
+function LotsStage({
+  groups,
+  mintFilter,
+  hoverLayerId,
+  method,
+  statusFilter,
+}: {
+  groups: LotGroup[];
+  mintFilter: string | undefined;
+  hoverLayerId: string | null;
+  method: string;
+  statusFilter: LotStatusFilter;
+}) {
+  const hoverMint = useHoverMint();
+  const activeGroupMint = mintFilter || hoverMint;
+  const activeGroup = activeGroupMint ? groups.find((group) => group.mint === activeGroupMint) : null;
+  let caption = METHOD_HINT[method] || "";
+  if (activeGroup && activeGroup.order.length > 0 && statusFilter !== "closed") {
+    const firstLot = activeGroup.order[0];
+    const date = firstLot.openedAt ? formatDate(firstLot.openedAt) : "opening";
+    if (method === "fifo") caption = `FIFO relieves the oldest layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
+    if (method === "lifo") caption = `LIFO relieves the newest layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
+    if (method === "hifo") caption = `HIFO relieves the highest cost layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
+  }
+  useStage({
+    focusMint: mintFilter || null,
+    highlightLayerId: hoverLayerId,
+    caption,
+  });
+  return null;
+}
+
+function LotTableRow({
+  groupMint,
+  hoverLayerId,
+  lotId,
+  ...props
+}: ComponentProps<typeof TableRow> & { groupMint: string; hoverLayerId: string | null; lotId: string }) {
+  const groupActive = useHoverActive(groupMint);
+  return <TableRow {...props} active={hoverLayerId === lotId || (groupActive && !hoverLayerId)} />;
+}
+
 export default function Lots() {
   const [, params] = useRoute("/w/:address/lots");
   const address = params?.address || "";
+  const indexing = useWalletIndexing(address);
   const { method } = useCostMethod();
   const search = useSearch();
   const [, setLocation] = useLocation();
@@ -176,30 +231,12 @@ export default function Lots() {
     };
   }, [lots]);
 
-  const ctx = useStageContext();
-  const sharedHoverMint = ctx.hoverMint;
+  const setHoverMint = useSetHoverMint();
   const [hoverLayerId, setHoverLayerId] = useState<string | null>(null);
-
-  const activeGroupMint = mintFilter || sharedHoverMint;
-  const activeGroup = activeGroupMint ? grouped.find(g => g.mint === activeGroupMint) : null;
-  
-  let caption = METHOD_HINT[method] || "";
-  if (activeGroup && activeGroup.order.length > 0 && statusFilter !== "closed") {
-    const firstLot = activeGroup.order[0];
-    const date = firstLot.openedAt ? formatDate(firstLot.openedAt) : "opening";
-    if (method === "fifo") caption = `FIFO relieves the oldest layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
-    if (method === "lifo") caption = `LIFO relieves the newest layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
-    if (method === "hifo") caption = `HIFO relieves the highest cost layer first, starting with the ${activeGroup.symbol} lot from ${date}.`;
-  }
-
-  useStage({
-    focusMint: mintFilter || null,
-    highlightLayerId: hoverLayerId,
-    caption
-  });
 
   return (
     <>
+      <LotsStage groups={grouped} mintFilter={mintFilter} hoverLayerId={hoverLayerId} method={method} statusFilter={statusFilter} />
       <PageHeader
         title="Tax lots"
         description="Each acquisition as a lot with its cost, holding period and place in the relief queue."
@@ -259,6 +296,8 @@ export default function Lots() {
         </div>
       ) : error ? (
         <ErrorState title="Unable to load lots" message={error.data?.message ?? error.message} />
+      ) : grouped.length === 0 && indexing && !mintFilter ? (
+        <IndexingState what="Lots" />
       ) : grouped.length === 0 ? (
         <EmptyState
           title={statusFilter === "closed" ? "No closed lots" : statusFilter === "open" ? "No open lots" : "No lots"}
@@ -317,8 +356,8 @@ export default function Lots() {
             <Reveal key={group.mint} as="section">
               <div 
                 className="flex flex-col gap-5"
-                onMouseEnter={() => ctx.setHoverMint(group.mint)}
-                onMouseLeave={() => ctx.setHoverMint(null)}
+                onMouseEnter={() => setHoverMint(group.mint)}
+                onMouseLeave={() => setHoverMint(null)}
               >
                 <div className="flex flex-col gap-3">
                   <SectionTitle
@@ -372,10 +411,12 @@ export default function Lots() {
                   </TableHeader>
                   <TableBody>
                     {group.lots.map((lot, i) => (
-                      <TableRow 
+                      <LotTableRow
                         key={lot.id} 
                         index={i}
-                        active={hoverLayerId === lot.id || (sharedHoverMint === group.mint && !hoverLayerId)}
+                        groupMint={group.mint}
+                        hoverLayerId={hoverLayerId}
+                        lotId={lot.id}
                         onMouseEnter={() => setHoverLayerId(lot.id)}
                         onMouseLeave={() => setHoverLayerId(null)}
                       >
@@ -493,7 +534,7 @@ export default function Lots() {
                             </TableCell>
                           </>
                         )}
-                      </TableRow>
+                      </LotTableRow>
                     ))}
                   </TableBody>
                 </DataTable>

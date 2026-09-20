@@ -30,6 +30,10 @@ export const badRequest = (message: string, details?: Record<string, unknown>): 
   new HttpError(400, "bad_request", message, details);
 export const notFound = (message: string, details?: Record<string, unknown>): HttpError =>
   new HttpError(404, "not_found", message, details);
+export const forbidden = (message: string, details?: Record<string, unknown>): HttpError =>
+  new HttpError(403, "forbidden", message, details);
+export const conflict = (message: string, details?: Record<string, unknown>): HttpError =>
+  new HttpError(409, "conflict", message, details);
 export const upstream = (message: string, details?: Record<string, unknown>): HttpError =>
   new HttpError(502, "upstream_error", message, details);
 export const unauthorizedUpstream = (message: string, details?: Record<string, unknown>): HttpError =>

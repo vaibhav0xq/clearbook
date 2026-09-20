@@ -6,7 +6,6 @@ import { Reveal } from "@/components/motion/reveal";
 export default function NotFound() {
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center p-6 text-center">
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 grain" />
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[520px] grid-lines opacity-40" />
       
       <div className="absolute top-5 left-5 md:top-8 md:left-10">

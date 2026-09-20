@@ -14,7 +14,6 @@ export default function Methodology() {
 
   return (
     <div className="relative min-h-screen flex flex-col">
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 grain" />
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[520px] grid-lines opacity-40" />
 
       <header className="sticky top-0 z-50 pt-5">
@@ -115,6 +114,7 @@ export default function Methodology() {
                 <div className="text-[15px] leading-[1.8] text-muted-foreground max-w-3xl flex flex-col gap-6">
                   <p>A statement covers a chosen period and cost method and contains opening and closing values, holdings, activity, closed lots, corporate actions, assumptions and the data sources used. Its SHA-256 hash covers the statement body, including the generation time, without the statement id. Generating a new statement for the same period produces a new document with its own hash. CSV and PDF exports carry the same figures and the same hash.</p>
                   <p>Notarizing a statement writes its hash to Solana in a memo transaction signed by the connected wallet. Verification checks memo inclusion, not signer identity. It confirms that the transaction succeeded and contains the memo with the hash, then records the signature, the confirmed slot and the signing account. It does not check who that account is, so a proof shows that the hash existed at that slot, not who published it. When no wallet is connected the hash is stored and the proof is labeled simulated. A simulated proof is not evidence of anything on chain.</p>
+                  <p>Simulated sales and the statements you generate are private to your browser. Clearbook keeps a random id in local storage and sends it with each request, so two people opening the same wallet address see the same chain data and their own simulations. The id names a browser, not a person. Clearing site data starts a fresh view and leaves the chain data unchanged.</p>
                 </div>
               </Reveal>
             </section>

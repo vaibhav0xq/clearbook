@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, ne, or, type SQL } from "drizzle-orm";
 import {
   db,
   ledgerEventsTable,
@@ -16,6 +16,7 @@ import {
   type Wallet,
 } from "@workspace/db";
 import type { LedgerEventInput, MultiplierObservation } from "@workspace/ledger";
+import { currentViewer } from "../lib/viewer";
 
 /** Persistence helpers. Everything about a wallet is keyed by its base58 address or demo id. */
 
@@ -77,20 +78,31 @@ export function eventToRow(address: string, e: LedgerEventInput, sequence = 0): 
   };
 }
 
+/**
+ * Simulated events belong to the browser session that recorded them. Everything read from the
+ * chain or a demo script is visible to every viewer of the wallet.
+ */
+function visibleTo(viewer: string | null): SQL {
+  const simulated = eq(ledgerEventsTable.source, "simulated");
+  const own = viewer ? eq(ledgerEventsTable.viewerId, viewer) : isNull(ledgerEventsTable.viewerId);
+  return or(ne(ledgerEventsTable.source, "simulated"), and(simulated, own))!;
+}
+
 export async function listEvents(address: string): Promise<LedgerEventInput[]> {
   const rows = await db
     .select()
     .from(ledgerEventsTable)
-    .where(eq(ledgerEventsTable.address, address))
+    .where(and(eq(ledgerEventsTable.address, address), visibleTo(currentViewer())))
     .orderBy(asc(ledgerEventsTable.blockTime), asc(ledgerEventsTable.sequence));
   return rows.map(rowToEvent);
 }
 
 export async function countEvents(address: string, source?: string): Promise<number> {
+  const scope = source ? and(eq(ledgerEventsTable.address, address), eq(ledgerEventsTable.source, source)) : eq(ledgerEventsTable.address, address);
   const rows = await db
     .select({ id: ledgerEventsTable.id })
     .from(ledgerEventsTable)
-    .where(source ? and(eq(ledgerEventsTable.address, address), eq(ledgerEventsTable.source, source)) : eq(ledgerEventsTable.address, address));
+    .where(and(scope, visibleTo(currentViewer())));
   return rows.length;
 }
 
@@ -112,14 +124,26 @@ export async function replaceEvents(address: string, events: LedgerEventInput[],
   });
 }
 
-export async function insertEvent(address: string, e: LedgerEventInput): Promise<void> {
-  await db.insert(ledgerEventsTable).values(eventToRow(address, e, 0)).onConflictDoNothing();
+/** Records one event. A simulated event is stored under the viewer that recorded it. */
+export async function insertEvent(address: string, e: LedgerEventInput, viewerId: string | null = null): Promise<void> {
+  await db
+    .insert(ledgerEventsTable)
+    .values({ ...eventToRow(address, e, 0), viewerId })
+    .onConflictDoNothing();
 }
 
+/** Deletes the current viewer's events of one source. Used to clear simulated sales. */
 export async function deleteEventsBySource(address: string, source: string): Promise<number> {
+  const viewer = currentViewer();
   const rows = await db
     .delete(ledgerEventsTable)
-    .where(and(eq(ledgerEventsTable.address, address), eq(ledgerEventsTable.source, source)))
+    .where(
+      and(
+        eq(ledgerEventsTable.address, address),
+        eq(ledgerEventsTable.source, source),
+        viewer ? eq(ledgerEventsTable.viewerId, viewer) : isNull(ledgerEventsTable.viewerId),
+      ),
+    )
     .returning({ id: ledgerEventsTable.id });
   return rows.length;
 }
@@ -179,8 +203,12 @@ export async function recordPrices(rows: Array<{ mint: string; price: number; re
   await db.insert(priceObservationsTable).values(rows);
 }
 
+/** Stores a statement under the viewer that generated it. */
 export async function insertStatement(values: InsertStatement): Promise<StatementRow> {
-  const rows = await db.insert(statementsTable).values(values).returning();
+  const rows = await db
+    .insert(statementsTable)
+    .values({ ...values, viewerId: currentViewer() })
+    .returning();
   return rows[0];
 }
 
@@ -189,8 +217,15 @@ export async function getStatement(id: string): Promise<StatementRow | undefined
   return rows[0];
 }
 
+/** Statements generated in this browser, plus any that belong to every viewer of the wallet. */
 export async function listStatements(address: string): Promise<StatementRow[]> {
-  return db.select().from(statementsTable).where(eq(statementsTable.address, address)).orderBy(desc(statementsTable.generatedAt));
+  const viewer = currentViewer();
+  const mine = viewer ? or(isNull(statementsTable.viewerId), eq(statementsTable.viewerId, viewer))! : isNull(statementsTable.viewerId);
+  return db
+    .select()
+    .from(statementsTable)
+    .where(and(eq(statementsTable.address, address), mine))
+    .orderBy(desc(statementsTable.generatedAt));
 }
 
 export async function updateStatementProof(id: string, proof: Record<string, unknown>): Promise<void> {

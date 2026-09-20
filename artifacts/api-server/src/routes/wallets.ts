@@ -21,8 +21,7 @@ import {
   ResetWalletResponse,
 } from "@workspace/api-zod";
 import { isDemoId } from "@workspace/ledger";
-import { shortAddress } from "../lib/http";
-import { assertAddress, indexWallet, loadDemoWallet } from "../services/indexer";
+import { assertAddress, ensureWalletRow, loadDemoWallet, startIndexing } from "../services/indexer";
 import {
   activityView,
   corporateActionView,
@@ -37,9 +36,11 @@ import { countEvents, deleteEventsBySource, getWallet } from "../services/store"
 
 const router: IRouter = Router();
 
+// Indexing runs in the background. The response shows the wallet as indexing and the client polls
+// the status endpoint until the run has finished.
 router.post("/wallets/:address/index", async (req, res) => {
   const { address } = IndexWalletParams.parse(req.params);
-  const wallet = await indexWallet(address);
+  const wallet = await startIndexing(address);
   res.json(IndexWalletResponse.parse(walletStatusView(wallet, await countEvents(address, "simulated"))));
 });
 
@@ -47,34 +48,16 @@ router.post("/wallets/:address/reset", async (req, res) => {
   const { address } = ResetWalletParams.parse(req.params);
   assertAddress(address);
   await deleteEventsBySource(address, "simulated");
-  const wallet = isDemoId(address) ? await loadDemoWallet(address) : ((await getWallet(address)) ?? (await indexWallet(address)));
+  const wallet = isDemoId(address) ? await loadDemoWallet(address) : ((await getWallet(address)) ?? (await startIndexing(address)));
   res.json(ResetWalletResponse.parse(walletStatusView(wallet, 0)));
 });
 
 router.get("/wallets/:address/status", async (req, res) => {
   const { address } = GetWalletStatusParams.parse(req.params);
   assertAddress(address);
-  const wallet = await getWallet(address);
-  if (!wallet) {
-    res.json(
-      GetWalletStatusResponse.parse({
-        address,
-        displayAddress: isDemoId(address) ? address : shortAddress(address),
-        isDemo: isDemoId(address),
-        demoLabel: null,
-        state: "not_indexed",
-        source: "unavailable",
-        message: "This wallet has not been indexed yet.",
-        eventsIndexed: 0,
-        signaturesScanned: 0,
-        unknownTransactions: 0,
-        lastIndexedAt: null,
-        simulatedTrades: 0,
-        warnings: [],
-      }),
-    );
-    return;
-  }
+  // Opening a live wallet is the request to index it, whichever page asks first. The same rule
+  // restarts a run that was lost to a crash, so a client polling here never waits on a dead run.
+  const wallet = await ensureWalletRow(address);
   res.json(GetWalletStatusResponse.parse(walletStatusView(wallet, await countEvents(address, "simulated"))));
 });
 

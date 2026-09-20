@@ -5,12 +5,9 @@
  * Clearbook API. Issuer-aware brokerage statements for tokenized stocks on Solana. Simulated sales and generated statements are private to the browser that made them. Clients send a random id of 8 to 64 letters, digits, underscores or hyphens in the x-clearbook-viewer header on every request. Requests without it see only chain and demo data, and a simulated sale needs one.
  * OpenAPI spec version: 0.1.0
  */
+import type { ApiError } from './apiError';
 
-export type LotStatus = typeof LotStatus[keyof typeof LotStatus];
-
-
-export const LotStatus = {
-  open: 'open',
-  partial: 'partial',
-  closed: 'closed',
-} as const;
+/**
+ * The statement was generated in another browser
+ */
+export type ForbiddenResponse = ApiError;

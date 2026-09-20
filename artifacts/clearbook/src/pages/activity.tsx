@@ -4,13 +4,15 @@ import { ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
 
 import { useListActivity } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { useStageContext, useStage } from "@/components/layout/stage";
+import { useSetHoverMint, useStage } from "@/components/layout/stage";
 import { formatUSD, formatQuantity, formatDate, formatDateTime, truncateHash, issuerLabel } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Skeleton, EmptyState, ErrorState, PageHeader, Pill } from "@/components/surface";
 import { Figure } from "@/components/figure";
 import { Reveal } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
+import { useWalletIndexing } from "@/hooks/use-wallet-indexing";
+import { IndexingState } from "@/components/layout/indexing-state";
 
 const PAGE_SIZE = 50;
 const INFLOWS = new Set(["buy", "wrapper_swap_in"]);
@@ -19,6 +21,7 @@ const OUTFLOWS = new Set(["sell", "wrapper_swap_out"]);
 export default function Activity() {
   const [, params] = useRoute("/w/:address/activity");
   const address = params?.address || "";
+  const indexing = useWalletIndexing(address);
   const { method } = useCostMethod();
   const search = useSearch();
   const [, setLocation] = useLocation();
@@ -68,9 +71,9 @@ export default function Activity() {
     return { purchases, proceeds, fees, trades, transfers, unpricedPurchases, unpricedSales, unknownFees };
   }, [items]);
 
-  const { hoverMint, setHoverMint } = useStageContext();
+  const setHoverMint = useSetHoverMint();
   useStage({
-    focusMint: hoverMint,
+    focusMint: "hover",
     caption:
       activityPage && shown > 0 && first && last
         ? `${shown} of ${activityPage.total} ${activityPage.total === 1 ? "event" : "events"}, ${formatDate(first)} to ${formatDate(last)}.`
@@ -148,6 +151,8 @@ export default function Activity() {
         <Skeleton className="h-[520px] w-full rounded-2xl" />
       ) : error ? (
         <ErrorState title="Unable to load activity" message={error.data?.message ?? error.message} />
+      ) : shown === 0 && indexing && !cursor ? (
+        <IndexingState what="Purchases, sales and transfers" />
       ) : shown === 0 ? (
         <EmptyState
           title="No activity"
@@ -193,7 +198,7 @@ export default function Activity() {
                     <TableRow
                       key={event.id}
                       index={i}
-                      active={hoverMint === event.mint}
+                      mint={event.mint}
                       onMouseEnter={() => event.mint && setHoverMint(event.mint)}
                       onMouseLeave={() => event.mint && setHoverMint(null)}
                     >

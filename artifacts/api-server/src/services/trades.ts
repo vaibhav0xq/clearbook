@@ -4,6 +4,7 @@ import { env } from "../lib/env";
 import { badRequest, notFound } from "../lib/errors";
 import { explorerTxUrl, fetchJson } from "../lib/http";
 import { logger } from "../lib/logger";
+import { requireViewer } from "../lib/viewer";
 import { indexWallet, isValidAddress, tokenDeltasForOwner } from "./indexer";
 import { eventView, loadContext, walletStatusView } from "./portfolio";
 import { rpc } from "./rpc";
@@ -309,6 +310,8 @@ export async function confirmTrade(address: string, input: { quoteId: string; si
 }
 
 export async function simulateTrade(address: string, input: { quoteId: string }) {
+  // A simulated sale is private to the browser that recorded it, so it needs a viewer to belong to.
+  const viewer = requireViewer();
   const row = await requireQuote(address, input.quoteId);
   assertActionable(row);
   const quote = row.quote as {
@@ -344,7 +347,7 @@ export async function simulateTrade(address: string, input: { quoteId: string })
     venue: quote.mode === "live" ? "Jupiter (simulated)" : "Mark price (simulated)",
     note: "Simulated sale. No transaction was sent. Proceeds use the quoted amount.",
   };
-  await insertEvent(address, event);
+  await insertEvent(address, event, viewer);
   await updateTradeQuoteStatus(row.id, "simulated");
   const ctx = await loadContext(address, quote.method ?? "fifo");
   const processed = ctx.engine.events.find((e) => e.input.id === event.id);

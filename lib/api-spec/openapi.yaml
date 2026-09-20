@@ -3,7 +3,12 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: Clearbook API. Issuer-aware brokerage statements for tokenized stocks on Solana.
+  description: >-
+    Clearbook API. Issuer-aware brokerage statements for tokenized stocks on Solana.
+    Simulated sales and generated statements are private to the browser that made them.
+    Clients send a random id of 8 to 64 letters, digits, underscores or hyphens in the
+    x-clearbook-viewer header on every request. Requests without it see only chain and demo data,
+    and a simulated sale needs one.
 servers:
   - url: /api
     description: Base API path
@@ -80,7 +85,7 @@ paths:
       operationId: indexWallet
       tags: [wallets]
       summary: Index or refresh a wallet
-      description: Discovers token accounts, fetches history and rebuilds the ledger. Demo wallets load from a stored scenario.
+      description: Starts a background run that discovers token accounts, fetches history and rebuilds the ledger, and returns at once with the wallet in the indexing state. Poll the status endpoint until the state changes. A run already in progress is joined. Demo wallets load from a stored scenario in place.
       parameters:
         - $ref: "#/components/parameters/WalletAddress"
       responses:
@@ -115,6 +120,7 @@ paths:
       operationId: getWalletStatus
       tags: [wallets]
       summary: Indexing status for a wallet
+      description: Reports the state of the ledger with the signatures read and events found so far while a run is in progress. Opening a live wallet that has never been indexed starts its first run.
       parameters:
         - $ref: "#/components/parameters/WalletAddress"
       responses:
@@ -291,6 +297,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /statements/{statementId}:
     get:
       operationId: getStatement
@@ -345,6 +353,7 @@ paths:
       operationId: prepareNotarization
       tags: [statements]
       summary: Memo payload the wallet signs to notarize the statement
+      description: Only the browser that generated the statement can notarize it. A shared link reads the statement and its exports but cannot write a proof to it.
       parameters:
         - $ref: "#/components/parameters/StatementId"
         - name: payer
@@ -360,12 +369,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotarizationPayload"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     post:
       operationId: submitNotarization
       tags: [statements]
       summary: Record a signed memo transaction or create a simulated proof
+      description: Only the browser that generated the statement can notarize it.
       parameters:
         - $ref: "#/components/parameters/StatementId"
       requestBody:
@@ -383,6 +395,8 @@ paths:
                 $ref: "#/components/schemas/StatementProof"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "502":
@@ -514,6 +528,18 @@ components:
   responses:
     BadRequest:
       description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Forbidden:
+      description: The statement was generated in another browser
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Conflict:
+      description: The wallet is still indexing
       content:
         application/json:
           schema:
@@ -1428,11 +1454,14 @@ components:
             $ref: "#/components/schemas/SourceStatus"
         proof:
           $ref: "#/components/schemas/StatementProof"
+        ownedByViewer:
+          type: boolean
+          description: True when this browser generated the statement and may notarize it. A shared link reads the statement but cannot write a proof.
         csvUrl:
           type: string
         pdfUrl:
           type: string
-      required: [id, address, displayAddress, isDemo, title, periodStart, periodEnd, method, generatedAt, currency, hash, hashAlgorithm, totals, positions, activity, corporateActions, closedLots, pricing, assumptions, dataSources, proof, csvUrl, pdfUrl]
+      required: [id, address, displayAddress, isDemo, title, periodStart, periodEnd, method, generatedAt, currency, hash, hashAlgorithm, totals, positions, activity, corporateActions, closedLots, pricing, assumptions, dataSources, proof, ownedByViewer, csvUrl, pdfUrl]
     NotarizationPayload:
       type: object
       properties:

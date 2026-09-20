@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { errorHandler } from "./lib/errors";
+import { viewerContext } from "./lib/viewer";
 
 const app: Express = express();
 
@@ -32,6 +33,7 @@ app.use(cors());
 app.use(compression({ threshold: 1024 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(viewerContext);
 
 app.use("/api", router);
 app.use(errorHandler);

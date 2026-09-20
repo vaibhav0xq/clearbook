@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { animate, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { formatUSD } from "@/lib/format";
@@ -29,7 +29,12 @@ export function AnimatedNumber({
 }: AnimatedNumberProps) {
   const reduce = useReducedMotion();
   const current = useRef<number>(from);
+  const node = useRef<HTMLSpanElement>(null);
   const [text, setText] = useState(() => format(value === null || value === undefined ? value : reduce ? value : from));
+
+  useLayoutEffect(() => {
+    if (node.current) node.current.textContent = format(value === null || value === undefined || reduce ? value : current.current);
+  }, [value, reduce, format]);
 
   useEffect(() => {
     if (value === null || value === undefined) {
@@ -46,7 +51,7 @@ export function AnimatedNumber({
       ease: EASE_OUT,
       onUpdate: (v) => {
         current.current = v;
-        setText(format(v));
+        if (node.current) node.current.textContent = format(v);
       },
       onComplete: () => {
         current.current = value;
@@ -65,5 +70,5 @@ export function AnimatedNumber({
           : "text-foreground"
       : undefined;
 
-  return <span className={cn("num", toneClass, className)}>{text}</span>;
+  return <span ref={node} className={cn("num", toneClass, className)}>{text}</span>;
 }

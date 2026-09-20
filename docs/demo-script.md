@@ -30,7 +30,7 @@ Open Activity.
 
 ## 1:20 Corporate actions
 
-Open the Long term holder ledger and then Events.
+Open the Long term holder ledger and then Corporate actions.
 
 - Multiplier increases read from the Token-2022 mint, classified as dividend reinvestment, split or reverse split, with the quantity and value effect.
 - Say that this is read from the token itself rather than from an issuer announcement and that it is labeled best effort.
@@ -48,17 +48,17 @@ Open Statements and generate one for this year.
 Open Trade. Sell one share of NVDAx.
 
 - The quote shows expected proceeds, price impact, the reference price and the realized P/L the sale would create under the selected method.
-- Execute. With a wallet this is a Jupiter swap. Here it is a simulated sale and Activity shows the new sell with a simulated label.
+- Execute. With a wallet this is a Jupiter swap. Here it is a simulated sale and Activity shows the new sell with a simulated label. Simulated sales are private to the browser that made them, so a second visitor to the same demo ledger starts clean.
 
 ## 2:45 Live wallets and close
 
-Paste a real address from the clipboard. The status bar shows indexing progress, then either a ready or a partial ledger with the exact warnings about what could not be reconstructed.
+Paste a real address from the clipboard. The page opens at once and the status line counts signatures read and events found while indexing runs in the background. When it finishes the pages fill in with either a ready or a partial ledger and the exact warnings about what could not be reconstructed.
 
 "Everything you saw is the same code path for demo and live data. Add a Helius key and a Pyth Pro key and the fallbacks switch to primary sources. The statement is honest about what it knows and what it does not."
 
 ## Addresses used in rehearsal
 
-- `GToT3ig6vhnULUq84XC8HDkiLjT5LM9JsZx3TmsKRWeK` holds many xStocks accounts, indexes to a ready ledger in about a minute on the public RPC
-- `2Cq2RNFFxxPXL7teNQAji1beA2vFbBDYW5BGPBFvoN9m` holds hundreds of Ondo accounts, indexes to a partial ledger with warnings
+- `m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz` holds about ten xStocks positions. On the public RPC it indexes to a partial ledger in about 90 seconds, with cost basis read from swaps for some positions and opening balances for the rest
+- `2Cq2RNFFxxPXL7teNQAji1beA2vFbBDYW5BGPBFvoN9m` holds hundreds of Ondo accounts and indexes to a partial ledger with warnings. The band draws its 12 largest positions and says so in the caption; the tables list all of them
 
-Both are market making wallets. Their ledgers demonstrate indexing and warnings rather than a retail trading history.
+Both are market making wallets. Their ledgers demonstrate indexing and warnings rather than a retail trading history. Balances on live wallets change, so check them the day before the demo.

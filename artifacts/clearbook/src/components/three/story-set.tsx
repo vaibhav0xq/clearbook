@@ -3,7 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
 import * as THREE from "three";
 import type { MotionValue } from "framer-motion";
-import { MONO_FONT, WIDTH } from "./strata-scene";
+import { MONO_FONT, WIDTH, useSceneSettings } from "./strata-scene";
 import { CHAPTERS, CHAPTER_COUNT, copyVisibility } from "./story-data";
 
 /**
@@ -16,6 +16,8 @@ type TextMesh = THREE.Mesh & { fillOpacity: number };
 /**
  * A warm spotlight that follows the pointer across the floor. The scene is dark by design, so the
  * torch is how a visitor discovers the columns: whatever they point at is lit, the rest recedes.
+ * The light is always present and only its intensity moves: a light that appears later changes
+ * the light count and every shader in the scene compiles again, which is a freeze on any GPU.
  */
 export function Torch({ enabled, reach = 12 }: { enabled: boolean; reach?: number }) {
   const light = useRef<THREE.SpotLight>(null);
@@ -28,6 +30,7 @@ export function Torch({ enabled, reach = 12 }: { enabled: boolean; reach?: numbe
   const goal = useMemo(() => new THREE.Vector3(0, 0, 2), []);
   const inside = useRef(false);
   const power = useRef(0);
+  const { director } = useSceneSettings();
 
   useEffect(() => {
     const el = gl.domElement;
@@ -58,13 +61,14 @@ export function Torch({ enabled, reach = 12 }: { enabled: boolean; reach?: numbe
     const want = enabled && inside.current ? 1 : 0;
     power.current = THREE.MathUtils.damp(power.current, want, 4, delta);
     l.intensity = 340 * power.current;
-    l.visible = power.current > 0.01;
+    // Keep drawing until the lamp has finished swinging and fading.
+    if (Math.abs(power.current - want) > 1e-3 || Math.abs(target.position.x - goal.x) + Math.abs(target.position.z - goal.z) > 1e-3) director.wake(120);
   });
 
   return (
     <>
       <primitive object={target} />
-      <spotLight ref={light} angle={0.42} penumbra={0.9} distance={24} decay={1.6} intensity={0} color="#ffd6a3" visible={false} />
+      <spotLight ref={light} angle={0.42} penumbra={0.9} distance={24} decay={1.6} intensity={0} color="#ffd6a3" />
     </>
   );
 }

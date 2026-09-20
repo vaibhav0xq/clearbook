@@ -277,7 +277,7 @@ export default function Home() {
   // Smooth scrolling ties the scene to the wheel. Reduced motion keeps native scrolling.
   const lenisRef = useRef<Lenis | null>(null);
   useEffect(() => {
-    if (reduce) return;
+    if (reduce || window.matchMedia("(pointer: coarse)").matches) return;
     const lenis = new Lenis({ lerp: 0.085, smoothWheel: true, wheelMultiplier: 0.9 });
     lenisRef.current = lenis;
     let raf = 0;
@@ -308,7 +308,6 @@ export default function Home() {
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip">
-      <div aria-hidden className="grain-overlay" />
       <Cursor />
 
       {/* Header */}

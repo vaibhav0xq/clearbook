@@ -4,7 +4,7 @@ import { ExternalLink, ShieldCheck, Download, Clock, AlertTriangle, Copy, Check,
 
 import { useGetStatement, usePrepareNotarization, useSubmitNotarization, getGetStatementQueryKey, getPrepareNotarizationQueryKey } from "@workspace/api-client-react";
 import { formatUSD, formatQuantity, formatDateTime, formatMultiplier, issuerLabel, formatDay } from "@/lib/format";
-import { useStageContext, useStage } from "@/components/layout/stage";
+import { useSetHoverMint, useStage } from "@/components/layout/stage";
 import { NotarizeButton } from "@/components/notarize-button";
 import { useWalletSession } from "@/lib/wallet";
 import { Figure } from "@/components/figure";
@@ -65,9 +65,9 @@ export default function StatementDetail() {
     query: { queryKey: getGetStatementQueryKey(statementId), enabled: !!statementId },
   });
 
-  const { hoverMint, setHoverMint } = useStageContext();
+  const setHoverMint = useSetHoverMint();
   useStage({
-    focusMint: hoverMint,
+    focusMint: "hover",
     caption: statement ? `Statement for ${formatDay(statement.periodStart)} to ${formatDay(statement.periodEnd)}.` : null,
   });
 
@@ -75,7 +75,10 @@ export default function StatementDetail() {
   const payer = wallet.publicKey && wallet.publicKey === address ? wallet.publicKey : undefined;
   const notarizationParams = payer ? { payer } : {};
 
-  const canNotarize = statement?.proof.status === "none" || statement?.proof.status === "failed";
+  const proofOpen = statement?.proof.status === "none" || statement?.proof.status === "failed";
+  // A shared link reads the statement. Only the browser that generated it can write a proof.
+  const canNotarize = proofOpen && statement?.ownedByViewer;
+  const foreign = proofOpen && statement && !statement.ownedByViewer;
   const {
     data: notarizationPayload,
     error: notarizationError,
@@ -255,6 +258,9 @@ export default function StatementDetail() {
                         <Clock className="h-3.5 w-3.5 animate-spin" /> Preparing the memo transaction
                       </span>
                     )}
+                    {foreign && (
+                      <span className="text-[12px] text-muted-foreground">This statement was generated in another browser. Proofs are recorded from the browser that generated the statement.</span>
+                    )}
                     {canNotarize && !notarizationPayload && notarizationError && (
                       <div className="flex flex-col gap-1.5">
                         <span className="break-words text-[12px] text-destructive">{notarizationError.data?.message ?? notarizationError.message}</span>
@@ -325,7 +331,7 @@ export default function StatementDetail() {
                 </TableHeader>
                 <TableBody>
                   {statement.positions.map((pos, i) => (
-                    <TableRow key={pos.mint} index={i} active={hoverMint === pos.mint} onMouseEnter={() => setHoverMint(pos.mint)} onMouseLeave={() => setHoverMint(null)}>
+                    <TableRow key={pos.mint} index={i} mint={pos.mint} onMouseEnter={() => setHoverMint(pos.mint)} onMouseLeave={() => setHoverMint(null)}>
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <span className="flex items-center gap-2">
@@ -432,7 +438,7 @@ export default function StatementDetail() {
                 </TableHeader>
                 <TableBody>
                   {[...statement.activity].reverse().map((event, i) => (
-                    <TableRow key={event.id} index={i} active={hoverMint === event.mint} onMouseEnter={() => setHoverMint(event.mint)} onMouseLeave={() => setHoverMint(null)}>
+                    <TableRow key={event.id} index={i} mint={event.mint} onMouseEnter={() => setHoverMint(event.mint)} onMouseLeave={() => setHoverMint(null)}>
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <span className="text-[14px] text-foreground">{event.kindLabel}</span>

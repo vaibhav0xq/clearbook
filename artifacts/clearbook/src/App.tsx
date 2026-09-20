@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import { WalletSessionProvider } from '@/lib/wallet';
+import { installViewerHeader } from '@/lib/viewer';
 
 import Home from '@/pages/home';
 import NotFound from '@/pages/not-found';
@@ -13,6 +14,8 @@ import NotFound from '@/pages/not-found';
 // first navigation, so a visitor pays only for the page in front of them.
 const WalletSection = lazy(() => import('@/pages/wallet-section'));
 const Methodology = lazy(() => import('@/pages/methodology'));
+
+installViewerHeader();
 
 const queryClient = new QueryClient({
   defaultOptions: {

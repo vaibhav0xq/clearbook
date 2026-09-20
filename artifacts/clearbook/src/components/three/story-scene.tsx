@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import { Html, useCursor } from "@react-three/drei";
 import * as THREE from "three";
 import type { MotionValue } from "framer-motion";
@@ -9,20 +9,22 @@ import { reliefRank, type StrataColumn } from "./strata-data";
 import {
   COLOR_AMBER,
   COLOR_EDGE,
-  DprGovernor,
   Dust,
   Ground,
   LayerTooltipCard,
   LotBlock,
   LotFace,
+  SceneCanvas,
   SceneEffects,
   SceneLights,
   WIDTH,
+  createLotRegistry,
   faceVisibility,
-  useDprCap,
   useLayout,
+  useSceneSettings,
   type LayerPlacement,
 } from "./strata-scene";
+import { PROFILES, sceneTime, type FrameDirector, type Quality } from "./quality";
 import {
   CHAPTER_COUNT,
   chapterAt,
@@ -49,9 +51,11 @@ export interface StorySceneProps {
   incomeMint: string | null;
   onHoverColumn?: (mint: string | null) => void;
   onSelectColumn?: (mint: string) => void;
-  lowPower?: boolean;
+  /** Quality tier forced by the device, or null to classify the GPU once the context is open. */
+  hint?: Quality | null;
   reduced?: boolean;
-  frameloop?: "always" | "never";
+  /** False while the canvas is off screen, which stops the render loop entirely. */
+  visible?: boolean;
 }
 
 /** Gap between lots once the block has split. Wider than the app scene so the split reads. */
@@ -62,7 +66,6 @@ const COLOR_MONO = new THREE.Color("#72747c");
 const COLOR_MONO_DIM = new THREE.Color("#585b63");
 /** Where the columns sit on wide screens per chapter: 1 right of the copy, -1 left of it, 0 centred. Mirrors home.tsx. */
 export const CHAPTER_SIDE = [1, -1, 1, -1, 0, 0, 0] as const;
-type TextMesh = THREE.Mesh & { fillOpacity: number };
 
 interface LayerState {
   progress: number;
@@ -114,6 +117,7 @@ function StoryRig({
     () => Array.from({ length: CHAPTER_COUNT }, () => ({ position: new THREE.Vector3(), target: new THREE.Vector3() })),
     [],
   );
+  const { director, continuous } = useSceneSettings();
 
   useFrame((state, delta) => {
     const persp = camera as THREE.PerspectiveCamera;
@@ -181,8 +185,8 @@ function StoryRig({
     f5.position.set(-1.4, tallest * 0.3 + 0.4, fitZ * 0.9);
     f5.target.set(0, tallest * 0.42, 0);
 
-    // Open: a slow turntable around the whole ledger.
-    const turn = reduced ? 0.35 : 0.35 + Math.sin(state.clock.elapsedTime * 0.11) * 0.5;
+    // Open: a slow turntable around the whole ledger, only while frames are drawn continuously.
+    const turn = reduced || !continuous ? 0.35 : 0.35 + Math.sin(sceneTime() * 0.11) * 0.5;
     f6.position.set(Math.sin(turn) * fitZ * 1.1, tallest * 0.8 + 2, Math.cos(turn) * fitZ * 1.1);
     f6.target.set(0, tallest * 0.3, 0);
 
@@ -191,9 +195,11 @@ function StoryRig({
     desired.lerpVectors(a.position, b.position, blend);
     lookAt.lerpVectors(a.target, b.target, blend);
 
-    const t = state.clock.elapsedTime;
+    const t = sceneTime();
     const orbitWeight = i === 0 ? 1 - blend : 0;
-    const orbit = reduced ? 0 : Math.sin(t * 0.12) * 0.8 * orbitWeight;
+    // The slow orbit only runs while frames are drawn continuously. On demand it would keep the
+    // scene awake for nothing.
+    const orbit = reduced || !continuous ? 0 : Math.sin(t * 0.12) * 0.8 * orbitWeight;
     const parallax = reduced ? 0 : 0.8;
     desired.x += orbit + state.pointer.x * 0.9 * parallax;
     desired.y += state.pointer.y * 0.45 * parallax;
@@ -203,6 +209,7 @@ function StoryRig({
     camera.position.y = THREE.MathUtils.damp(camera.position.y, desired.y, k, delta);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, desired.z, k, delta);
     camera.lookAt(lookAt);
+    if (camera.position.distanceToSquared(desired) > 1e-6) director.wake(120);
 
     // Fog follows the camera distance so close ups keep depth without hiding the far columns.
     const fog = scene.fog as THREE.Fog | null;
@@ -253,10 +260,17 @@ function useDispose(tex: THREE.Texture) {
   useEffect(() => () => tex.dispose(), [tex]);
 }
 
+/**
+ * The scan line that sweeps the ledger in the pricing chapter. Its light stays in the scene at zero
+ * intensity while it is off: a light that appears later changes the light count and forces every
+ * shader in the scene to compile again, which is a visible freeze on any GPU.
+ */
 function Beam({ progress, minX, maxX, height }: { progress: MotionValue<number>; minX: number; maxX: number; height: number }) {
   const group = useRef<THREE.Group>(null);
   const falloff = useBeamTexture();
   useDispose(falloff);
+  const coreMesh = useRef<THREE.Mesh>(null);
+  const haloMesh = useRef<THREE.Mesh>(null);
   const core = useRef<THREE.MeshBasicMaterial>(null);
   const halo = useRef<THREE.MeshBasicMaterial>(null);
   const light = useRef<THREE.PointLight>(null);
@@ -264,7 +278,9 @@ function Beam({ progress, minX, maxX, height }: { progress: MotionValue<number>;
     const s = scan(progress.get());
     const on = s > 0 && s < 1 ? Math.sin(s * Math.PI) ** 0.35 : 0;
     if (!group.current) return;
-    group.current.visible = on > 0.001;
+    const shown = on > 0.001;
+    if (coreMesh.current) coreMesh.current.visible = shown;
+    if (haloMesh.current) haloMesh.current.visible = shown;
     group.current.position.x = THREE.MathUtils.lerp(minX - 1.6, maxX + 1.6, s);
     if (core.current) core.current.opacity = 1 * on;
     if (halo.current) halo.current.opacity = 0.45 * on;
@@ -272,11 +288,11 @@ function Beam({ progress, minX, maxX, height }: { progress: MotionValue<number>;
   });
   return (
     <group ref={group} position={[0, height / 2 + 0.4, 0.15]}>
-      <mesh>
+      <mesh ref={coreMesh} visible={false}>
         <planeGeometry args={[0.16, height + 2.2]} />
         <meshBasicMaterial ref={core} color="#ffd18a" alphaMap={falloff} transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
       </mesh>
-      <mesh>
+      <mesh ref={haloMesh} visible={false}>
         <planeGeometry args={[1.6, height + 2.2]} />
         <meshBasicMaterial ref={halo} color="#ffa733" alphaMap={falloff} transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
       </mesh>
@@ -293,13 +309,11 @@ function StoryLayers({
   onHoverColumn,
   onSelectColumn,
   reduced = false,
-}: Omit<StorySceneProps, "lowPower" | "frameloop">) {
+}: Omit<StorySceneProps, "hint" | "visible">) {
   const { placements, totalWidth, tallest } = useLayout(columns);
-  const meshes = useRef(new Map<string, THREE.Mesh>());
-  const materials = useRef(new Map<string, THREE.MeshPhysicalMaterial>());
-  const edgeMaterials = useRef(new Map<string, THREE.LineBasicMaterial>());
-  const faceGroups = useRef(new Map<string, THREE.Group>());
-  const faceTexts = useRef(new Map<string, TextMesh>());
+  const { quality, director } = useSceneSettings();
+  const physical = PROFILES[quality].physical;
+  const registry = useMemo(createLotRegistry, []);
   const states = useRef(new Map<string, LayerState>());
   const labelGroups = useRef(new Map<string, THREE.Group>());
   const tagGroups = useRef(new Map<string, THREE.Group>());
@@ -312,6 +326,10 @@ function StoryLayers({
   const dimension = useRef<THREE.Group>(null);
   const dimensionBounds = useRef<number[]>([]);
   useCursor(!!hovered);
+  const onHover = useCallback((p: LayerPlacement, over: boolean) => setHovered((h) => (over ? p : h?.layer.id === p.layer.id ? null : h)), []);
+
+  // Anything that changes what the scene shows asks for frames until the motion has settled.
+  useEffect(() => director.wake(2500), [director, columns, featuredMint, incomeMint, hovered, chapter, reliefMethod]);
 
   const featured = useMemo(() => columns.find((c) => c.mint === featuredMint) ?? null, [columns, featuredMint]);
   const incomeColumn = useMemo(() => columns.find((c) => c.mint === incomeMint) ?? null, [columns, incomeMint]);
@@ -346,7 +364,7 @@ function StoryLayers({
   const maxX = xs.length ? Math.max(...xs) : 0;
 
   useFrame((state, delta) => {
-    const t = state.clock.elapsedTime;
+    const t = sceneTime();
     const p = progress.get();
     const ch = chapterAt(p);
     if (ch !== chapter) setChapter(ch);
@@ -367,6 +385,8 @@ function StoryLayers({
     const activeMint = hovered?.column.mint ?? focusMint;
     const beamX = THREE.MathUtils.lerp(minX - 1.6, maxX + 1.6, sc);
     const beamOn = sc > 0 && sc < 1;
+    // Every eased value keeps the scene awake until it has settled.
+    let moving = false;
 
     const acc = stackHeights.current;
     acc.clear();
@@ -374,17 +394,20 @@ function StoryLayers({
     bounds.length = 0;
     let dimX = 0;
     for (const pl of placements) {
-      const mesh = meshes.current.get(pl.layer.id);
-      const mat = materials.current.get(pl.layer.id);
+      const mesh = registry.meshes.get(pl.layer.id);
+      const mat = registry.materials.get(pl.layer.id);
       if (!mesh || !mat) continue;
       let st = states.current.get(pl.layer.id);
       if (!st) {
         st = { progress: 0, lift: 0, glow: 0, dim: 1, born: null };
         states.current.set(pl.layer.id, st);
       }
-      if (st.born === null) st.born = t + pl.columnIndex * 0.05 + pl.layerIndex * 0.07;
-      const age = Math.max(0, t - st.born);
-      const target = reduced ? 1 : age <= 0 ? 0 : 1 - Math.pow(2, -10 * Math.min(1, age / 0.9));
+      // A lot hidden by the shader gate has not appeared yet, so its entrance waits for it.
+      if (!mesh.visible) st.born = null;
+      else if (st.born === null) st.born = t + pl.columnIndex * 0.05 + pl.layerIndex * 0.07;
+      const age = st.born === null ? 0 : Math.max(0, t - st.born);
+      // Snaps to exactly one at the end so a settled lot stops asking for frames.
+      const target = reduced || age >= 0.9 ? 1 : age <= 0 ? 0 : 1 - Math.pow(2, (-10 * age) / 0.9);
       st.progress = Math.max(st.progress, target);
 
       const isIncome = pl.column.mint === incomeMint;
@@ -412,6 +435,13 @@ function StoryLayers({
       const targetGlow = Math.max(fraction > 0 ? 0.5 + 0.2 * fraction : 0, isHovered ? 0.85 : 0, band * 0.9, flash * 0.55);
       st.lift = THREE.MathUtils.damp(st.lift, targetLift, 6, delta);
       st.glow = THREE.MathUtils.damp(st.glow, targetGlow, 9, delta);
+      if (
+        st.progress < 1 ||
+        Math.abs(st.dim - (inActive ? 1 : idle) * finale) > 2e-3 ||
+        Math.abs(st.lift - targetLift) > 1e-3 ||
+        Math.abs(st.glow - targetGlow) > 2e-3
+      )
+        moving = true;
 
       mesh.position.set(pl.x, centerY, st.lift);
       mesh.scale.set(1, Math.max(0.0001, st.progress * grow), 1);
@@ -425,13 +455,13 @@ function StoryLayers({
       // Unknown basis lots turn translucent once the ledger is marked, so the gap in the books is visible.
       mat.opacity = pl.layer.basisUnknown ? THREE.MathUtils.lerp(0.96, 0.42, col) : 1;
 
-      const edge = edgeMaterials.current.get(pl.layer.id);
+      const edge = registry.edges.get(pl.layer.id);
       if (edge) {
         edge.color.copy(COLOR_EDGE).lerp(COLOR_AMBER, st.glow);
         edge.opacity = (0.06 + 0.1 * sp + st.glow * 0.7) * st.dim;
       }
-      const faceGroup = faceGroups.current.get(pl.layer.id);
-      const face = faceTexts.current.get(pl.layer.id);
+      const faceGroup = registry.faceGroups.get(pl.layer.id);
+      const face = registry.faceTexts.get(pl.layer.id);
       if (faceGroup && face) {
         faceGroup.position.set(pl.x, centerY, WIDTH / 2 + 0.004 + st.lift);
         const dist = state.camera.position.distanceTo(mesh.position);
@@ -460,6 +490,7 @@ function StoryLayers({
       const g = labelGroups.current.get(c.mint);
       if (g) g.position.set(columnX.get(c.mint) ?? 0, (acc.get(c.mint) ?? 0) + 0.42, 0);
     }
+    if (moving) director.wake(150);
   });
 
   const focusMint = chapter === 2 ? featuredMint : chapter === 3 ? incomeMint : null;
@@ -486,45 +517,10 @@ function StoryLayers({
         <DimensionLine />
       </group>
       {placements.map((pl) => (
-        <LotBlock
-          key={pl.layer.id}
-          placement={pl}
-          onMesh={(m) => {
-            if (m) meshes.current.set(pl.layer.id, m);
-            else meshes.current.delete(pl.layer.id);
-          }}
-          onMaterial={(m) => {
-            if (m) materials.current.set(pl.layer.id, m);
-            else materials.current.delete(pl.layer.id);
-          }}
-          onEdges={(m) => {
-            if (m) edgeMaterials.current.set(pl.layer.id, m);
-            else edgeMaterials.current.delete(pl.layer.id);
-          }}
-          onPointerOver={(e) => {
-            e.stopPropagation();
-            setHovered(pl);
-          }}
-          onPointerOut={() => setHovered((h) => (h?.layer.id === pl.layer.id ? null : h))}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelectColumn?.(pl.column.mint);
-          }}
-        />
+        <LotBlock key={pl.layer.id} placement={pl} registry={registry} physical={physical} onHover={onHover} onSelect={onSelectColumn} />
       ))}
       {placements.map((pl) => (
-        <LotFace
-          key={`face-${pl.layer.id}`}
-          placement={pl}
-          onGroup={(g) => {
-            if (g) faceGroups.current.set(pl.layer.id, g);
-            else faceGroups.current.delete(pl.layer.id);
-          }}
-          onText={(m) => {
-            if (m) faceTexts.current.set(pl.layer.id, m as TextMesh);
-            else faceTexts.current.delete(pl.layer.id);
-          }}
-        />
+        <LotFace key={`face-${pl.layer.id}`} placement={pl} registry={registry} />
       ))}
 
       <Beam progress={progress} minX={minX} maxX={maxX} height={tallest} />
@@ -594,24 +590,19 @@ function StoryLayers({
   );
 }
 
-export default function StoryScene({ lowPower = false, reduced = false, frameloop = "always", ...props }: StorySceneProps) {
-  const [dprCap, lowerDpr] = useDprCap(lowPower);
+export default function StoryScene({ hint = null, reduced = false, visible = true, ...props }: StorySceneProps) {
+  const { progress } = props;
+  // Scrolling drives the story, so every change of the progress value asks for frames.
+  const wake = useCallback((director: FrameDirector) => progress.on("change", () => director.wake(600)), [progress]);
   return (
-    <Canvas
-      dpr={[1, dprCap]}
-      frameloop={frameloop}
-      camera={{ position: [0, 3.4, 12], fov: 30, near: 0.1, far: 120 }}
-      gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
-      style={{ background: "transparent" }}
-    >
-      <DprGovernor onSlow={lowerDpr} />
+    <SceneCanvas hint={hint} visible={visible} wake={wake} camera={{ position: [0, 3.4, 12], fov: 30, near: 0.1, far: 120 }}>
       <SceneLights />
       <group position={[0, -0.02, 0]}>
         <StoryLayers {...props} reduced={reduced} />
-        <Ground lowPower={lowPower} />
+        <Ground />
         {!reduced && <Dust />}
       </group>
-      <SceneEffects lowPower={lowPower} />
-    </Canvas>
+      <SceneEffects />
+    </SceneCanvas>
   );
 }

@@ -26,6 +26,8 @@ import { Reveal, EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { reliefPreview, reliefOrder } from "@/components/three/strata-data";
+import { useWalletIndexing } from "@/hooks/use-wallet-indexing";
+import { IndexingState } from "@/components/layout/indexing-state";
 
 /** Execution state is bound to the quote it belongs to, so a late result can never attach to another quote. */
 type Execution =
@@ -45,6 +47,7 @@ const SALE_STEPS: { title: string; detail: string }[] = [
 export default function Trade() {
   const [, params] = useRoute("/w/:address/trade");
   const address = params?.address || "";
+  const indexing = useWalletIndexing(address);
   const { method } = useCostMethod();
   const wallet = useWalletSession();
   const queryClient = useQueryClient();
@@ -293,6 +296,8 @@ export default function Trade() {
         </div>
       ) : portfolioError ? (
         <ErrorState title="Unable to load positions" message={portfolioError.data?.message ?? portfolioError.message} />
+      ) : portfolio && portfolio.positions.length === 0 && indexing ? (
+        <IndexingState what="Positions" />
       ) : portfolio && portfolio.positions.length === 0 ? (
         <EmptyState
           title="Nothing to sell"

@@ -1,32 +1,33 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import type { StrataSceneProps } from "./strata-scene";
+import type { Quality } from "./quality";
 
 const StrataScene = lazy(() => import("./strata-scene"));
 
-let webglSupport: boolean | null = null;
+/**
+ * Whether the browser has WebGL at all. A real probe context costs a few hundred milliseconds on
+ * weak machines, so this only checks the API and leaves failures to the scene boundary.
+ */
 export function hasWebGL(): boolean {
-  if (webglSupport !== null) return webglSupport;
-  try {
-    const canvas = document.createElement("canvas");
-    webglSupport = !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
-  } catch {
-    webglSupport = false;
-  }
-  return webglSupport;
+  return typeof window !== "undefined" && typeof WebGLRenderingContext !== "undefined";
 }
 
-export function useLowPower(reduce: boolean): boolean {
+/**
+ * What the device tells us before a context exists. Touch devices, small screens and reduced
+ * motion always open at the lite tier. Anything else is classified from the GPU once the canvas
+ * has opened its context.
+ */
+export function useDeviceHint(reduce: boolean): Quality | null {
   return useMemo(() => {
-    if (typeof window === "undefined") return true;
+    if (typeof window === "undefined") return "lite";
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const small = window.innerWidth < 768;
-    const cores = navigator.hardwareConcurrency ?? 8;
-    return reduce || coarse || small || cores <= 4;
+    return reduce || coarse || small ? "lite" : null;
   }, [reduce]);
 }
 
-/** A WebGL context that fails after the capability probe must not take the page down. */
+/** A WebGL context that fails to open must not take the page down. */
 export class SceneBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
@@ -49,25 +50,29 @@ export function StrataFallback({ className }: { className?: string }) {
   );
 }
 
+/** Tracks whether an element is near the viewport so an off screen scene can stop drawing. */
+export function useNearViewport(ref: React.RefObject<HTMLElement | null>, margin: string): boolean {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { rootMargin: margin });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref, margin]);
+  return visible;
+}
+
 /**
  * Lazy loaded wrapper around the WebGL scene. Renders a quiet fallback when
  * WebGL is unavailable and pauses the render loop while off screen.
  */
-export function Strata({ className, ...props }: Omit<StrataSceneProps, "lowPower" | "reduced" | "frameloop"> & { className?: string }) {
+export function Strata({ className, ...props }: Omit<StrataSceneProps, "hint" | "reduced" | "visible"> & { className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(true);
-  // Probed synchronously so the Canvas never mounts on a machine without WebGL.
-  const [supported] = useState(() => typeof document !== "undefined" && hasWebGL());
+  const visible = useNearViewport(ref, "200px");
+  const [supported] = useState(() => hasWebGL());
   const reduced = !!useReducedMotion();
-  const lowPower = useLowPower(reduced);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { rootMargin: "200px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
+  const hint = useDeviceHint(reduced);
 
   if (!supported) return <StrataFallback className={className} />;
 
@@ -75,7 +80,7 @@ export function Strata({ className, ...props }: Omit<StrataSceneProps, "lowPower
     <div ref={ref} className={`relative ${className ?? ""}`}>
       <SceneBoundary fallback={<StrataFallback className="absolute inset-0" />}>
         <Suspense fallback={<StrataFallback className="absolute inset-0" />}>
-          <StrataScene {...props} lowPower={lowPower} reduced={reduced} frameloop={visible ? "always" : "never"} />
+          <StrataScene {...props} hint={hint} reduced={reduced} visible={visible} />
         </Suspense>
       </SceneBoundary>
     </div>

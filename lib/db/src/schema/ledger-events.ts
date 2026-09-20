@@ -20,6 +20,8 @@ export const ledgerEventsTable = pgTable(
     multiplierAtEvent: doublePrecision("multiplier_at_event"),
     referencePriceUsd: doublePrecision("reference_price_usd"),
     source: text("source").notNull(),
+    /** The browser session that recorded a simulated event. Null for events read from the chain or a demo script. */
+    viewerId: text("viewer_id"),
     venue: text("venue"),
     note: text("note"),
     payload: jsonb("payload").$type<Record<string, unknown>>(),

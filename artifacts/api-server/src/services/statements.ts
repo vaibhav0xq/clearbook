@@ -13,9 +13,10 @@ import {
 } from "@workspace/ledger";
 import type { StatementRow } from "@workspace/db";
 import { env } from "../lib/env";
-import { badRequest, notFound } from "../lib/errors";
+import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
 import { explorerTxUrl, shortAddress } from "../lib/http";
 import { logger } from "../lib/logger";
+import { currentViewer, requireViewer } from "../lib/viewer";
 import { assetOf, corporateActionsForContext, corporateActionView, eventView, loadContext, pricingStatusView, walletStatusView, type WalletContext } from "./portfolio";
 import { rpc } from "./rpc";
 import { getStatement, insertStatement, listStatements, recordPrices, updateStatementProof } from "./store";
@@ -66,11 +67,15 @@ export interface CreateStatementInput {
 }
 
 export async function createStatement(address: string, input: CreateStatementInput) {
+  // A statement is private to the browser that generated it, so it needs a viewer to belong to.
+  requireViewer();
   const periodStart = parseDay(input.periodStart, false);
   const requestedEnd = parseDay(input.periodEnd, true);
   if (requestedEnd < periodStart) throw badRequest("periodEnd must be on or after periodStart.");
   const method = input.method ?? "fifo";
   const ctx = await loadContext(address, method);
+  // A statement is a record of the ledger, so it waits for the ledger to be complete.
+  if (ctx.wallet.state === "indexing") throw conflict("This wallet is still indexing. Generate the statement once indexing has finished.");
   const now = ctx.now;
   if (periodStart > now) throw badRequest("The period cannot start in the future.");
   // A period cannot run past the moment the statement is generated, since later days have no activity
@@ -259,6 +264,7 @@ export function statementView(row: StatementRow) {
     id: row.id,
     hash: row.hash,
     proof,
+    ownedByViewer: row.viewerId === null || row.viewerId === currentViewer(),
     csvUrl: `/api/statements/${row.id}/export.csv`,
     pdfUrl: `/api/statements/${row.id}/export.pdf`,
   };
@@ -285,6 +291,19 @@ export function statementSummaryView(row: StatementRow) {
 export async function requireStatement(id: string): Promise<StatementRow> {
   const row = await getStatement(id);
   if (!row) throw notFound("Statement not found.", { statementId: id });
+  return row;
+}
+
+/**
+ * A statement link can be shared and read by anyone who has it, exports included. Writing a
+ * proof to it is reserved for the browser that generated it. Statements without an owner predate
+ * viewer scoping and stay open.
+ */
+export async function requireOwnStatement(id: string): Promise<StatementRow> {
+  const row = await requireStatement(id);
+  if (row.viewerId && row.viewerId !== currentViewer()) {
+    throw forbidden("This statement was generated in another browser. Only that browser can notarize it.", { statementId: id });
+  }
   return row;
 }
 
@@ -321,7 +340,7 @@ export interface NotarizationPayloadView {
 }
 
 export async function prepareNotarization(id: string, payer?: string): Promise<NotarizationPayloadView> {
-  const row = await requireStatement(id);
+  const row = await requireOwnStatement(id);
   const memo = memoForHash(row.hash);
   const proof = (row.proof as unknown as StatementProofView | null) ?? emptyProof(row.hash);
   const base = { statementId: row.id, hash: row.hash, memo, memoProgramId: MEMO_PROGRAM_ID, cluster: env.cluster, proof };
@@ -363,7 +382,7 @@ export async function prepareNotarization(id: string, payer?: string): Promise<N
 }
 
 export async function submitNotarization(id: string, input: { signature?: string | null; simulate: boolean }): Promise<StatementProofView> {
-  const row = await requireStatement(id);
+  const row = await requireOwnStatement(id);
   const memo = memoForHash(row.hash);
   const now = new Date();
   const current = row.proof as unknown as StatementProofView | null;

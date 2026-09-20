@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { Html, RoundedBox, Environment, Lightformer, MeshReflectorMaterial, Grid, Text, useCursor } from "@react-three/drei";
+import { Html, RoundedBox, MeshReflectorMaterial, Grid, Text, useCursor } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
@@ -8,6 +8,7 @@ import type { CostMethod } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { formatUSD, formatQuantity, formatPercent } from "@/lib/format";
 import { reliefPreview, reliefRank, type StrataColumn, type StrataLayer } from "./strata-data";
+import { PROFILES, classifyRenderer, createDirector, rendererName, sceneTime, stepDown, type FrameDirector, type Quality } from "./quality";
 
 export type StrataMode = "hero" | "portfolio" | "trade" | "stage";
 
@@ -24,11 +25,31 @@ export interface StrataSceneProps {
   preview?: { mint: string; quantity: number } | null;
   onHoverColumn?: (mint: string | null) => void;
   onSelectColumn?: (mint: string) => void;
-  lowPower?: boolean;
+  /** Quality tier forced by the device, or null to classify the GPU once the context is open. */
+  hint?: Quality | null;
   /** Reduced motion: no orbit, dust, entrance or pulse animation. Hover feedback stays. */
   reduced?: boolean;
-  frameloop?: "always" | "never";
+  /** False while the canvas is off screen, which stops the render loop entirely. */
+  visible?: boolean;
 }
+
+/** Everything the scene needs to know about its render budget, shared with every part of the scene. */
+export interface SceneSettings {
+  quality: Quality;
+  director: FrameDirector;
+  /** Frames are drawn continuously. When false the scene must call `wake` while something moves. */
+  continuous: boolean;
+}
+
+const SettingsContext = createContext<SceneSettings | null>(null);
+
+export function useSceneSettings(): SceneSettings {
+  const ctx = useContext(SettingsContext);
+  if (!ctx) throw new Error("useSceneSettings must be used inside a scene");
+  return ctx;
+}
+
+export const SettingsProvider = SettingsContext.Provider;
 
 export const PITCH = 1.6;
 export const WIDTH = 0.92;
@@ -131,32 +152,66 @@ export function faceCopy(layer: StrataLayer, h: number): { lines: string[]; size
   return { lines: [date, qty, cost], size: 0.072 };
 }
 
+/** Objects the frame loop drives directly, registered by lot id so the React tree never re-renders per frame. */
+export interface LotRegistry {
+  meshes: Map<string, THREE.Mesh>;
+  materials: Map<string, THREE.MeshStandardMaterial>;
+  edges: Map<string, THREE.LineBasicMaterial>;
+  faceGroups: Map<string, THREE.Group>;
+  faceTexts: Map<string, TextMesh>;
+}
+
+export function createLotRegistry(): LotRegistry {
+  return { meshes: new Map(), materials: new Map(), edges: new Map(), faceGroups: new Map(), faceTexts: new Map() };
+}
+
+function register<T>(map: Map<string, T>, id: string) {
+  return (value: T | null) => {
+    if (value) map.set(id, value);
+    else map.delete(id);
+  };
+}
+
 /**
  * One lot. The rounded block carries a hairline edge cage and the engraved face copy in a sibling
  * group, because the block itself is scaled while it grows in and text must never stretch.
+ * Memoised: the frame loop drives position, scale and colour through the registry, so the block
+ * only re-renders when its placement changes.
  */
-export function LotBlock({
+export const LotBlock = memo(function LotBlock({
   placement,
-  onMesh,
-  onMaterial,
-  onEdges,
-  onPointerOver,
-  onPointerOut,
-  onClick,
+  registry,
+  physical,
+  onHover,
+  onSelect,
   children,
 }: {
   placement: LayerPlacement;
-  onMesh: (m: THREE.Mesh | null) => void;
-  onMaterial: (m: THREE.MeshPhysicalMaterial | null) => void;
-  onEdges: (m: THREE.LineBasicMaterial | null) => void;
-  onPointerOver?: (e: ThreeEvent<PointerEvent>) => void;
-  onPointerOut?: (e: ThreeEvent<PointerEvent>) => void;
-  onClick?: (e: ThreeEvent<MouseEvent>) => void;
+  registry: LotRegistry;
+  /** Clearcoat physical material, otherwise a standard material with a much smaller shader. */
+  physical: boolean;
+  /** Pointer entered (over true) or left (over false) this block. */
+  onHover?: (placement: LayerPlacement, over: boolean) => void;
+  onSelect?: (mint: string) => void;
   children?: ReactNode;
 }) {
   const p = placement;
+  const id = p.layer.id;
   const edges = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(WIDTH + 0.006, p.h + 0.006, WIDTH + 0.006)), [p.h]);
   useEffect(() => () => edges.dispose(), [edges]);
+  const onMesh = useMemo(() => register(registry.meshes, id), [registry, id]);
+  const onMaterial = useMemo(() => register(registry.materials, id), [registry, id]);
+  const onEdges = useMemo(() => register(registry.edges, id), [registry, id]);
+  const surface = {
+    color: p.color,
+    emissive: p.color,
+    emissiveIntensity: 0.16,
+    roughness: 0.3,
+    metalness: 0.14,
+    transparent: p.layer.basisUnknown,
+    opacity: p.layer.basisUnknown ? 0.42 : 1,
+    envMapIntensity: 1.25,
+  };
   return (
     <RoundedBox
       ref={onMesh}
@@ -164,41 +219,42 @@ export function LotBlock({
       radius={0.03}
       smoothness={3}
       position={[p.x, p.y + p.h / 2, 0]}
-      onPointerOver={onPointerOver}
-      onPointerOut={onPointerOut}
-      onClick={onClick}
+      onPointerOver={
+        onHover
+          ? (e: ThreeEvent<PointerEvent>) => {
+              e.stopPropagation();
+              onHover(p, true);
+            }
+          : undefined
+      }
+      onPointerOut={onHover ? () => onHover(p, false) : undefined}
+      onClick={
+        onSelect
+          ? (e: ThreeEvent<MouseEvent>) => {
+              e.stopPropagation();
+              onSelect(p.column.mint);
+            }
+          : undefined
+      }
     >
-      <meshPhysicalMaterial
-        ref={onMaterial}
-        color={p.color}
-        emissive={p.color}
-        emissiveIntensity={0.16}
-        roughness={0.3}
-        metalness={0.14}
-        clearcoat={1}
-        clearcoatRoughness={0.14}
-        transparent={p.layer.basisUnknown}
-        opacity={p.layer.basisUnknown ? 0.42 : 1}
-        envMapIntensity={1.25}
-      />
+      {physical ? (
+        <meshPhysicalMaterial ref={onMaterial} {...surface} clearcoat={1} clearcoatRoughness={0.14} />
+      ) : (
+        <meshStandardMaterial ref={onMaterial} {...surface} roughness={0.36} metalness={0.2} />
+      )}
       <lineSegments geometry={edges} raycast={() => null}>
         <lineBasicMaterial ref={onEdges} color={COLOR_EDGE} transparent opacity={0.14} depthWrite={false} toneMapped={false} />
       </lineSegments>
       {children}
     </RoundedBox>
   );
-}
+});
 
 /** Engraved copy on the front face. The owner positions the group and drives `fillOpacity` per frame. */
-export function LotFace({
-  placement,
-  onGroup,
-  onText,
-}: {
-  placement: LayerPlacement;
-  onGroup: (g: THREE.Group | null) => void;
-  onText: (t: THREE.Mesh | null) => void;
-}) {
+export const LotFace = memo(function LotFace({ placement, registry }: { placement: LayerPlacement; registry: LotRegistry }) {
+  const id = placement.layer.id;
+  const onGroup = useMemo(() => register(registry.faceGroups, id), [registry, id]);
+  const onText = useMemo(() => register(registry.faceTexts, id), [registry, id]);
   const copy = faceCopy(placement.layer, placement.h);
   if (!copy) return null;
   return (
@@ -223,9 +279,9 @@ export function LotFace({
       </Text>
     </group>
   );
-}
+});
 
-type TextMesh = THREE.Mesh & { fillOpacity: number };
+export type TextMesh = THREE.Mesh & { fillOpacity: number };
 
 /** Normalised device box the framed points must land in. The bottom is raised for the stage overlays. */
 interface FrameBox {
@@ -333,6 +389,7 @@ function Rig({
     look: new THREE.Vector3(),
   });
   const settled = useRef(false);
+  const { director, continuous } = useSceneSettings();
 
   useFrame((state, delta) => {
     const aspect = size.width / Math.max(1, size.height);
@@ -345,7 +402,7 @@ function Rig({
     const tanH = Math.tan(THREE.MathUtils.degToRad(persp.fov / 2));
     const px = state.pointer.x;
     const py = state.pointer.y;
-    const t = state.clock.elapsedTime;
+    const t = sceneTime();
     const parallax = reduced ? 0.3 : 1;
 
     if (mode === "stage") {
@@ -392,7 +449,9 @@ function Rig({
         fitted.current.pts = pts;
       }
       const { distance: d, look } = fitted.current;
-      const orbit = reduced ? 0 : Math.sin(t * 0.09) * 0.05;
+      // The slow orbit only runs while frames are drawn continuously. On demand it would keep the
+      // scene awake for nothing.
+      const orbit = reduced || !continuous ? 0 : Math.sin(t * 0.09) * 0.05;
       const a = yaw + orbit;
       desired.set(look.x + d * Math.sin(a) * Math.cos(el), look.y + d * Math.sin(el), look.z + d * Math.cos(a) * Math.cos(el));
       desired.x += px * 0.5 * parallax;
@@ -412,6 +471,7 @@ function Rig({
       target.y = THREE.MathUtils.damp(target.y, lookAt.y, k, delta);
       target.z = THREE.MathUtils.damp(target.z, lookAt.z, k, delta);
       camera.lookAt(target);
+      if (camera.position.distanceToSquared(desired) > 1e-6 || target.distanceToSquared(lookAt) > 1e-6) director.wake(120);
       const fog = scene.fog as THREE.Fog | null;
       if (fog) {
         const dist = camera.position.distanceTo(target);
@@ -432,7 +492,7 @@ function Rig({
     const baseY = tallest * 0.5 + 1.6;
     const visibleWidth = 2 * baseZ * tanH * aspect;
     const shift = mode === "hero" && wide ? -visibleWidth * 0.2 : 0;
-    const orbit = mode === "hero" && !reduced ? Math.sin(t * 0.12) * 0.9 : 0;
+    const orbit = mode === "hero" && !reduced && continuous ? Math.sin(t * 0.12) * 0.9 : 0;
     const desiredX = shift + px * 1.1 * parallax + orbit;
     const desiredY = baseY + py * 0.55 * parallax;
     camera.position.x = THREE.MathUtils.damp(camera.position.x, desiredX, 2.2, delta);
@@ -440,11 +500,14 @@ function Rig({
     camera.position.z = THREE.MathUtils.damp(camera.position.z, baseZ, 2.2, delta);
     target.set(shift, tallest * 0.4, 0);
     camera.lookAt(target);
+    if (Math.abs(camera.position.x - desiredX) + Math.abs(camera.position.y - desiredY) + Math.abs(camera.position.z - baseZ) > 1e-3) director.wake(120);
   });
   return null;
 }
 
-export function Dust({ count = 260, spread = 18 }: { count?: number; spread?: number }) {
+export function Dust({ spread = 18 }: { spread?: number }) {
+  const { quality } = useSceneSettings();
+  const count = PROFILES[quality].dust;
   const ref = useRef<THREE.Points>(null);
   const positions = useMemo(() => {
     const arr = new Float32Array(count * 3);
@@ -455,10 +518,11 @@ export function Dust({ count = 260, spread = 18 }: { count?: number; spread?: nu
     }
     return arr;
   }, [count, spread]);
-  useFrame((state) => {
+  useFrame(() => {
     if (!ref.current) return;
-    ref.current.rotation.y = state.clock.elapsedTime * 0.015;
-    ref.current.position.y = Math.sin(state.clock.elapsedTime * 0.2) * 0.15;
+    const t = sceneTime();
+    ref.current.rotation.y = t * 0.015;
+    ref.current.position.y = Math.sin(t * 0.2) * 0.15;
   });
   return (
     <points ref={ref}>
@@ -481,15 +545,13 @@ function Layers({
   onHoverColumn,
   onSelectColumn,
   reduced = false,
-}: Omit<StrataSceneProps, "lowPower" | "frameloop">) {
+}: Omit<StrataSceneProps, "hint" | "visible">) {
   const stageSize = useThree((state) => state.size);
   const stageAspect = stageSize.width / Math.max(1, stageSize.height);
   const { placements, heights, totalWidth, tallest } = useLayout(columns, mode === "stage" && isWideBand(stageAspect) ? 1.6 : 1);
-  const meshes = useRef(new Map<string, THREE.Mesh>());
-  const materials = useRef(new Map<string, THREE.MeshPhysicalMaterial>());
-  const edgeMaterials = useRef(new Map<string, THREE.LineBasicMaterial>());
-  const faceGroups = useRef(new Map<string, THREE.Group>());
-  const faceTexts = useRef(new Map<string, TextMesh>());
+  const { quality, director } = useSceneSettings();
+  const physical = PROFILES[quality].physical;
+  const registry = useMemo(createLotRegistry, []);
   const states = useRef(new Map<string, LayerState>());
   // Reused every frame so the render loop does not allocate.
   const stackHeights = useRef(new Map<string, number>());
@@ -498,6 +560,7 @@ function Layers({
   const lastMethod = useRef(method);
   const camera = useThree((s) => s.camera);
   useCursor(!!hovered);
+  const onHover = useCallback((p: LayerPlacement, over: boolean) => setHovered((h) => (over ? p : h?.layer.id === p.layer.id ? null : h)), []);
 
   useEffect(() => {
     if (lastMethod.current !== method) {
@@ -505,6 +568,9 @@ function Layers({
       pulseStart.current = -1;
     }
   }, [method]);
+
+  // Anything that changes what the scene shows asks for frames until the motion has settled.
+  useEffect(() => director.wake(2500), [director, columns, method, highlightMint, highlightLayerId, focusMint, preview, hovered]);
 
   const ranks = useMemo(() => {
     const m = new Map<string, number>();
@@ -546,28 +612,33 @@ function Layers({
     return columnPoints([focusMint]);
   }, [mode, focusMint, columns, columnPoints]);
 
-  useFrame((state, delta) => {
-    const t = state.clock.elapsedTime;
+  useFrame((_state, delta) => {
+    const t = sceneTime();
     if (pulseStart.current === -1) pulseStart.current = t;
     const sincePulse = t - pulseStart.current;
     const activeMint = hovered?.column.mint ?? highlightMint ?? focusMint ?? null;
     const anyActive = activeMint !== null;
+    // The pulse and every eased value keep the scene awake until they have settled.
+    let moving = !reduced && sincePulse >= 0 && sincePulse < 6.5;
 
     // Stack heights are recomputed every frame from the animated progress of each layer.
     const acc = stackHeights.current;
     acc.clear();
     for (const p of placements) {
-      const mesh = meshes.current.get(p.layer.id);
-      const mat = materials.current.get(p.layer.id);
+      const mesh = registry.meshes.get(p.layer.id);
+      const mat = registry.materials.get(p.layer.id);
       if (!mesh || !mat) continue;
       let st = states.current.get(p.layer.id);
       if (!st) {
         st = { progress: 0, lift: 0, glow: 0, dim: 1, born: null };
         states.current.set(p.layer.id, st);
       }
-      if (st.born === null) st.born = t + p.columnIndex * 0.05 + p.layerIndex * 0.07;
-      const age = Math.max(0, t - st.born);
-      const target = reduced ? 1 : age <= 0 ? 0 : 1 - Math.pow(2, -10 * Math.min(1, age / 0.9));
+      // A lot hidden by the shader gate has not appeared yet, so its entrance waits for it.
+      if (!mesh.visible) st.born = null;
+      else if (st.born === null) st.born = t + p.columnIndex * 0.05 + p.layerIndex * 0.07;
+      const age = st.born === null ? 0 : Math.max(0, t - st.born);
+      // Snaps to exactly one at the end so a settled lot stops asking for frames.
+      const target = reduced || age >= 0.9 ? 1 : age <= 0 ? 0 : 1 - Math.pow(2, (-10 * age) / 0.9);
       st.progress = Math.max(st.progress, target);
 
       const fraction = previewFractions.get(p.layer.id) ?? 0;
@@ -585,6 +656,14 @@ function Layers({
       st.glow = THREE.MathUtils.damp(st.glow, targetGlow, 8, delta);
 
       st.height = st.height === undefined || reduced ? p.h : THREE.MathUtils.damp(st.height, p.h, 7, delta);
+      if (
+        st.progress < 1 ||
+        Math.abs(st.dim - (anyActive && !inActiveColumn ? 0.42 : 1)) > 2e-3 ||
+        Math.abs(st.lift - targetLift) > 1e-3 ||
+        Math.abs(st.glow - targetGlow) > 2e-3 ||
+        Math.abs(st.height - p.h) > 1e-3
+      )
+        moving = true;
       const y0 = acc.get(p.column.mint) ?? 0;
       const h = st.height * st.progress;
       const centerY = y0 + h / 2;
@@ -598,14 +677,14 @@ function Layers({
       mat.emissive.copy(base).lerp(COLOR_AMBER, st.glow);
       mat.emissiveIntensity = (0.16 + st.glow * 1.1) * st.dim;
 
-      const edge = edgeMaterials.current.get(p.layer.id);
+      const edge = registry.edges.get(p.layer.id);
       if (edge) {
         edge.color.copy(COLOR_EDGE).lerp(COLOR_AMBER, st.glow);
         edge.opacity = (0.12 + st.glow * 0.7) * st.dim;
       }
 
-      const faceGroup = faceGroups.current.get(p.layer.id);
-      const face = faceTexts.current.get(p.layer.id);
+      const faceGroup = registry.faceGroups.get(p.layer.id);
+      const face = registry.faceTexts.get(p.layer.id);
       if (faceGroup && face) {
         faceGroup.position.set(p.x, centerY, WIDTH / 2 + 0.004 + st.lift);
         const dist = camera.position.distanceTo(mesh.position);
@@ -614,6 +693,7 @@ function Layers({
         face.fillOpacity = legible * st.progress * emphasis * (0.25 + 0.75 * st.dim);
       }
     }
+    if (moving) director.wake(150);
   });
 
   // Values under the symbols need room. A short stage draws the columns small, so it keeps the symbols only.
@@ -633,45 +713,10 @@ function Layers({
         focusKey={focusPoints ? (focusMint ?? "") : ""}
       />
       {placements.map((p) => (
-        <LotBlock
-          key={p.layer.id}
-          placement={p}
-          onMesh={(m) => {
-            if (m) meshes.current.set(p.layer.id, m);
-            else meshes.current.delete(p.layer.id);
-          }}
-          onMaterial={(m) => {
-            if (m) materials.current.set(p.layer.id, m);
-            else materials.current.delete(p.layer.id);
-          }}
-          onEdges={(m) => {
-            if (m) edgeMaterials.current.set(p.layer.id, m);
-            else edgeMaterials.current.delete(p.layer.id);
-          }}
-          onPointerOver={(e) => {
-            e.stopPropagation();
-            setHovered(p);
-          }}
-          onPointerOut={() => setHovered((h) => (h?.layer.id === p.layer.id ? null : h))}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelectColumn?.(p.column.mint);
-          }}
-        />
+        <LotBlock key={p.layer.id} placement={p} registry={registry} physical={physical} onHover={onHover} onSelect={onSelectColumn} />
       ))}
       {placements.map((p) => (
-        <LotFace
-          key={`face-${p.layer.id}`}
-          placement={p}
-          onGroup={(g) => {
-            if (g) faceGroups.current.set(p.layer.id, g);
-            else faceGroups.current.delete(p.layer.id);
-          }}
-          onText={(m) => {
-            if (m) faceTexts.current.set(p.layer.id, m as TextMesh);
-            else faceTexts.current.delete(p.layer.id);
-          }}
-        />
+        <LotFace key={`face-${p.layer.id}`} placement={p} registry={registry} />
       ))}
 
       {showLabels &&
@@ -751,15 +796,11 @@ export function LayerTooltip({ placement, method, rank, z = 0.9 }: { placement: 
 }
 
 /** A dark reflective slab ruled like a ledger sheet. */
-export function Ground({ lowPower }: { lowPower: boolean }) {
+export function Ground() {
+  const { quality } = useSceneSettings();
   return (
     <group>
-      {lowPower ? (
-        <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
-          <planeGeometry args={[80, 80]} />
-          <meshStandardMaterial color="#0c0c0d" roughness={1} metalness={0} />
-        </mesh>
-      ) : (
+      {PROFILES[quality].reflector ? (
         <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
           <planeGeometry args={[80, 80]} />
           <MeshReflectorMaterial
@@ -775,6 +816,11 @@ export function Ground({ lowPower }: { lowPower: boolean }) {
             metalness={0.42}
             mirror={0.55}
           />
+        </mesh>
+      ) : (
+        <mesh rotation-x={-Math.PI / 2} position-y={-0.001}>
+          <planeGeometry args={[80, 80]} />
+          <meshStandardMaterial color="#0c0c0d" roughness={1} metalness={0} />
         </mesh>
       )}
       <Grid
@@ -796,6 +842,57 @@ export function Ground({ lowPower }: { lowPower: boolean }) {
   );
 }
 
+/** Four soft panels that light the lots: a warm sky, a white strip overhead, amber and blue sides. */
+const LIGHT_PANELS: { color: string; intensity: number; position: [number, number, number]; rotation: [number, number, number]; scale: [number, number] }[] = [
+  { color: "#fff2dc", intensity: 2.4, position: [0, 8, -6], rotation: [0, 0, 0], scale: [16, 5] },
+  { color: "#ffffff", intensity: 3, position: [0, 5, 8], rotation: [Math.PI / 2.4, 0, 0], scale: [18, 0.5] },
+  { color: "#ffa733", intensity: 1.2, position: [-8, 3, 2], rotation: [0, Math.PI / 2, 0], scale: [6, 2] },
+  { color: "#9aa6c8", intensity: 1, position: [8, 2, 2], rotation: [0, -Math.PI / 2, 0], scale: [6, 2] },
+];
+
+/**
+ * The environment map, built before the first frame so the lot shaders are compiled once, with the
+ * map in place, instead of again when it arrives a frame later. It runs in its own task so the
+ * mount of the scene and the map are two short stalls rather than one long one.
+ */
+function LedgerEnvironment() {
+  const { gl, scene } = useThree();
+  const { director } = useSceneSettings();
+  useEffect(() => {
+    const release = director.hold();
+    let target: THREE.WebGLRenderTarget | null = null;
+    const timer = window.setTimeout(() => {
+      const room = new THREE.Scene();
+      const geometry = new THREE.PlaneGeometry(1, 1);
+      for (const panel of LIGHT_PANELS) {
+        const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false });
+        material.color.set(panel.color).multiplyScalar(panel.intensity);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(...panel.position);
+        mesh.rotation.set(...panel.rotation);
+        mesh.scale.set(panel.scale[0], panel.scale[1], 1);
+        room.add(mesh);
+      }
+      const pmrem = new THREE.PMREMGenerator(gl);
+      target = pmrem.fromScene(room, 0, 0.1, 100);
+      scene.environment = target.texture;
+      pmrem.dispose();
+      geometry.dispose();
+      for (const child of room.children) ((child as THREE.Mesh).material as THREE.Material).dispose();
+      release();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      release();
+      if (target) {
+        if (scene.environment === target.texture) scene.environment = null;
+        target.dispose();
+      }
+    };
+  }, [gl, scene, director]);
+  return null;
+}
+
 export function SceneLights() {
   return (
     <>
@@ -808,40 +905,23 @@ export function SceneLights() {
       <directionalLight position={[-9, 7, -9]} intensity={1.7} color="#dfe6ff" />
       <pointLight position={[-7, 3, 4]} intensity={28} distance={22} color="#ffa733" />
       <pointLight position={[9, 2, -4]} intensity={14} distance={24} color="#7f8cb0" />
-      <Environment resolution={256} frames={1}>
-        <group>
-          <Lightformer intensity={2.4} form="rect" position={[0, 8, -6]} scale={[16, 5, 1]} color="#fff2dc" />
-          <Lightformer intensity={3} form="rect" position={[0, 5, 8]} rotation-x={Math.PI / 2.4} scale={[18, 0.5, 1]} color="#ffffff" />
-          <Lightformer intensity={1.2} form="rect" position={[-8, 3, 2]} rotation-y={Math.PI / 2} scale={[6, 2, 1]} color="#ffa733" />
-          <Lightformer intensity={1} form="rect" position={[8, 2, 2]} rotation-y={-Math.PI / 2} scale={[6, 2, 1]} color="#9aa6c8" />
-        </group>
-      </Environment>
+      <LedgerEnvironment />
     </>
   );
 }
 
 /** Shared post chain: soft bloom for the amber pulses, a light vignette and filmic tone mapping last. */
-export function SceneEffects({ lowPower }: { lowPower: boolean }) {
-  if (lowPower) return null;
+export function SceneEffects() {
+  const { quality } = useSceneSettings();
+  const profile = PROFILES[quality];
+  if (!profile.post) return null;
   return (
-    <EffectComposer multisampling={4}>
+    <EffectComposer multisampling={profile.msaa}>
       <Bloom mipmapBlur intensity={0.8} luminanceThreshold={0.7} luminanceSmoothing={0.25} radius={0.66} />
       <Vignette eskil={false} offset={0.16} darkness={0.6} />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
     </EffectComposer>
   );
-}
-
-/**
- * Pixel ratio cap for the canvas. It starts at the full cap and only steps down, by a quarter at a
- * time, when DprGovernor reports a sustained frame rate drop. A strong GPU never sees a change.
- */
-export function useDprCap(lowPower: boolean) {
-  const max = lowPower ? 1.25 : 1.75;
-  const [cap, setCap] = useState(max);
-  useEffect(() => setCap(max), [max]);
-  const lower = useCallback(() => setCap((c) => Math.max(1, Math.round(c * 75) / 100)), []);
-  return [cap, lower] as const;
 }
 
 const GOVERNOR_WARMUP_MS = 4000;
@@ -851,12 +931,14 @@ const GOVERNOR_SLOW_WINDOWS = 3;
 
 /**
  * Watches the frame rate from inside the canvas and calls onSlow after three consecutive seconds
- * under 30 fps. The first seconds are skipped because shader compilation stalls every GPU, windows
- * interrupted by a hidden tab or a paused frameloop are discarded rather than counted as slow, and
- * a display that simply runs at its refresh rate never trips it.
+ * under 30 fps. The first seconds are skipped because shader compilation stalls every GPU. A
+ * window is discarded rather than counted as slow when the tab was hidden, the frameloop paused or
+ * an on demand scene idled between frames, since a pause is not a slow frame. A display that
+ * simply runs at its refresh rate never trips it.
  */
 export function DprGovernor({ onSlow }: { onSlow: () => void }) {
-  const state = useRef({ start: -1, windowStart: 0, frames: 0, slowWindows: 0 });
+  const { director, continuous } = useSceneSettings();
+  const state = useRef({ start: -1, windowStart: 0, frames: 0, slowWindows: 0, idle: false });
   useFrame(() => {
     const s = state.current;
     const now = performance.now();
@@ -868,6 +950,15 @@ export function DprGovernor({ onSlow }: { onSlow: () => void }) {
     if (now - s.start < GOVERNOR_WARMUP_MS) {
       s.windowStart = now;
       s.frames = 0;
+      return;
+    }
+    if (!continuous && (!director.awake() || s.idle)) {
+      // The last frame before an on demand scene idles, or the first one after it woke. The gap
+      // between them is a pause, not a slow frame, so the window starts over.
+      s.idle = !director.awake();
+      s.windowStart = now;
+      s.frames = 0;
+      s.slowWindows = 0;
       return;
     }
     s.frames++;
@@ -893,24 +984,259 @@ export function DprGovernor({ onSlow }: { onSlow: () => void }) {
   return null;
 }
 
-export default function StrataScene({ lowPower = false, reduced = false, frameloop = "always", ...props }: StrataSceneProps) {
-  const [dprCap, lowerDpr] = useDprCap(lowPower);
+/**
+ * Quality tier and pixel ratio cap for a canvas. The tier opens at what the device and GPU
+ * suggest and only steps down, one tier at a time and then a quarter of the pixel ratio at a time,
+ * when the governor reports a sustained frame rate drop. A strong GPU never sees a change.
+ */
+export function useRenderBudget(opening: Quality | null) {
+  const [steps, setSteps] = useState(0);
+  const lower = useCallback(() => setSteps((n) => n + 1), []);
+  let quality: Quality = opening ?? "lite";
+  let used = 0;
+  while (used < steps) {
+    const next = stepDown(quality);
+    if (!next) break;
+    quality = next;
+    used++;
+  }
+  const dprScale = Math.max(0.5, Math.pow(0.75, steps - used));
+  const dprCap = Math.max(1, Math.round(PROFILES[quality].dpr * dprScale * 100) / 100);
+  return { quality, dprCap, lower };
+}
+
+/** The materials the renderer would compile for an object, so the same set it draws with. */
+function materialsOf(object: THREE.Object3D): THREE.Material[] {
+  const o = object as THREE.Object3D & { isMesh?: boolean; isPoints?: boolean; isLine?: boolean; isSprite?: boolean };
+  if (!(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return [];
+  const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+  return !material ? [] : Array.isArray(material) ? material : [material];
+}
+
+/** Time one compile task may spend linking programs that turn out to be cached before it yields. */
+const GATE_TASK_MS = 4;
+
+interface GateState {
+  busy: boolean;
+  ready: boolean;
+  cancelled: boolean;
+  timer: number;
+  /** Objects hidden while their program links, with the visibility they had before. */
+  hidden: Map<THREE.Object3D, boolean>;
+}
+
+/**
+ * Compiles shaders before anything draws with them. Without this the first frame compiles every
+ * program in one stall of a second or more on integrated and mobile GPUs, and anything mounted
+ * later, such as lots arriving with the data, stalls the frame it first appears in. An object whose
+ * material has no program yet is hidden until the program is linked. Drivers that compile in
+ * parallel do it off the main thread; the others link one program per task so the page keeps
+ * responding in between. Lights are never hidden, because the light count is part of every program.
+ */
+function ShaderGate({ onReady }: { onReady: () => void }) {
+  const { gl, scene, camera } = useThree();
+  const { director } = useSceneSettings();
+  const state = useRef<GateState>({ busy: false, ready: false, cancelled: false, timer: 0, hidden: new Map() });
+
+  const pending = useCallback(() => {
+    const out: THREE.Object3D[] = [];
+    scene.traverse((object) => {
+      const materials = materialsOf(object);
+      if (materials.length === 0) return;
+      for (const m of materials) {
+        if ((gl.properties.get(m) as { currentProgram?: unknown }).currentProgram === undefined) {
+          out.push(object);
+          return;
+        }
+      }
+    });
+    return out;
+  }, [gl, scene]);
+
+  const run = useCallback(
+    (fresh: THREE.Object3D[]) => {
+      const st = state.current;
+      st.busy = true;
+      for (const object of fresh) {
+        st.hidden.set(object, object.visible);
+        object.visible = false;
+      }
+      const finish = () => {
+        // Anything the scene showed again on its own keeps that state.
+        for (const [object, visible] of st.hidden) if (!object.visible) object.visible = visible;
+        st.hidden.clear();
+        st.busy = false;
+        if (st.cancelled) return;
+        if (!st.ready) {
+          st.ready = true;
+          onReady();
+        }
+        director.wake(1500);
+      };
+      if (gl.extensions.has("KHR_parallel_shader_compile")) {
+        gl.compileAsync(scene, camera).then(finish, finish);
+        return;
+      }
+      // Every object goes through its own compile, because which materials share a program is the
+      // renderer's decision. A program it has already linked costs a lookup, so cached ones pack
+      // into one task and a new program gets a task to itself.
+      const queue = fresh.slice();
+      const step = () => {
+        if (st.cancelled) return;
+        const start = performance.now();
+        while (queue.length > 0 && performance.now() - start < GATE_TASK_MS) {
+          const object = queue.shift() as THREE.Object3D;
+          // Drivers defer the real work until the link status is read, so read it in this task.
+          for (const material of gl.compile(object, camera, scene)) {
+            const props = gl.properties.get(material) as { currentProgram?: THREE.WebGLProgram };
+            props.currentProgram?.getUniforms();
+          }
+        }
+        if (queue.length > 0) {
+          st.timer = window.setTimeout(step, 0);
+          return;
+        }
+        finish();
+      };
+      st.timer = window.setTimeout(step, 0);
+    },
+    [gl, scene, camera, director, onReady],
+  );
+
+  // The first pass runs before the loop exists, once the environment and other setup are done.
+  useEffect(() => {
+    const st = state.current;
+    st.cancelled = false;
+    director.whenReady(() => {
+      if (!st.cancelled && !st.busy) run(pending());
+    });
+    return () => {
+      st.cancelled = true;
+      window.clearTimeout(st.timer);
+    };
+  }, [director, run, pending]);
+
+  // Later passes catch what mounted since, before the frame that would draw it.
+  useFrame(() => {
+    const st = state.current;
+    if (st.busy) return;
+    const fresh = pending();
+    if (fresh.length > 0) run(fresh);
+  }, -1000);
+  return null;
+}
+
+type Frameloop = "always" | "demand" | "never";
+
+/**
+ * Lets the director schedule frames and, on demand, keeps them coming while it is awake. The
+ * frameloop itself is a canvas prop because the canvas reapplies that prop on every render.
+ */
+function LoopControl({ frameloop }: { frameloop: Frameloop }) {
+  const { director } = useSceneSettings();
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    director.bind(() => invalidate());
+    return () => director.bind(null);
+  }, [director, invalidate]);
+  useEffect(() => {
+    if (frameloop === "demand") director.wake(1500);
+  }, [frameloop, director]);
+  useFrame(() => {
+    director.tick();
+    if (frameloop === "demand" && director.awake()) invalidate();
+  }, -1000);
+  return null;
+}
+
+/** A tier pinned through the `quality` query parameter, for checking a look on any machine. */
+function pinnedQuality(): Quality | null {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("quality");
+  return value === "full" || value === "balanced" || value === "lite" ? value : null;
+}
+
+/** Picks the tier from the GPU behind a fresh context, unless the device already decided. */
+function openingQuality(hint: Quality | null | undefined, gl: THREE.WebGLRenderer): Quality {
+  if (hint) return hint;
+  const cores = navigator.hardwareConcurrency ?? 8;
+  return classifyRenderer(rendererName(gl.getContext()), cores);
+}
+
+/**
+ * Canvas shell shared by the scenes. The scene contents mount once the tier is known, compile,
+ * then start drawing. `children` receives the settings so a scene can pass them on.
+ */
+export function SceneCanvas({
+  hint,
+  visible,
+  camera,
+  wake,
+  children,
+}: {
+  hint: Quality | null | undefined;
+  visible: boolean;
+  camera: { position: [number, number, number]; fov: number; near: number; far: number };
+  /** Extra wake sources outside the canvas, for example a scroll driven progress value. */
+  wake?: (director: FrameDirector) => (() => void) | void;
+  children: ReactNode;
+}) {
+  const director = useMemo(createDirector, []);
+  const pinned = useMemo(pinnedQuality, []);
+  const [opening, setOpening] = useState<Quality | null>(pinned ?? hint ?? null);
+  const budget = useRenderBudget(opening);
+  const [ready, setReady] = useState(false);
+  const onReady = useCallback(() => setReady(true), []);
+  const continuous = PROFILES[budget.quality].loop === "always";
+  const settings = useMemo<SceneSettings>(() => ({ quality: budget.quality, director, continuous }), [budget.quality, director, continuous]);
+  useEffect(() => {
+    if (!wake) return;
+    const stop = wake(director);
+    return () => {
+      if (typeof stop === "function") stop();
+    };
+  }, [wake, director]);
+  // Nothing is drawn until the shaders are compiled, and nothing while the canvas is off screen.
+  const frameloop: Frameloop = !ready || !visible ? "never" : continuous ? "always" : "demand";
   return (
-    <Canvas
-      dpr={[1, dprCap]}
-      frameloop={frameloop}
-      camera={{ position: [4, 3.4, 12], fov: 30, near: 0.1, far: 80 }}
-      gl={{ antialias: !lowPower, alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
-      style={{ background: "transparent" }}
+    <div
+      className="absolute inset-0 transition-opacity duration-700 ease-out"
+      style={{ opacity: ready ? 1 : 0 }}
+      onPointerMove={() => director.wake(700)}
+      onPointerDown={() => director.wake(1200)}
+      onPointerLeave={() => director.wake(1200)}
     >
-      <DprGovernor onSlow={lowerDpr} />
+      <Canvas
+        dpr={[1, budget.dprCap]}
+        frameloop={frameloop}
+        camera={camera}
+        gl={{ antialias: (pinned ?? hint) !== "lite", alpha: true, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping }}
+        style={{ background: "transparent" }}
+        onCreated={({ gl }) => setOpening((q) => q ?? openingQuality(hint, gl))}
+      >
+        {opening && (
+          <SettingsProvider value={settings}>
+            <LoopControl frameloop={frameloop} />
+            {!pinned && <DprGovernor onSlow={budget.lower} />}
+            {children}
+            <ShaderGate onReady={onReady} />
+          </SettingsProvider>
+        )}
+      </Canvas>
+    </div>
+  );
+}
+
+export default function StrataScene({ hint = null, reduced = false, visible = true, ...props }: StrataSceneProps) {
+  return (
+    <SceneCanvas hint={hint} visible={visible} camera={{ position: [4, 3.4, 12], fov: 30, near: 0.1, far: 80 }}>
       <SceneLights />
       <group position={[0, -0.02, 0]}>
         <Layers {...props} reduced={reduced} />
-        <Ground lowPower={lowPower} />
+        <Ground />
         {(props.mode === "hero" || props.mode === "stage") && !reduced && <Dust />}
       </group>
-      <SceneEffects lowPower={lowPower} />
-    </Canvas>
+      <SceneEffects />
+    </SceneCanvas>
   );
 }

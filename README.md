@@ -52,7 +52,7 @@ PORT=8080 pnpm --filter @workspace/api-server run dev
 PORT=5173 BASE_PATH=/ API_PROXY_TARGET=http://localhost:8080 pnpm --filter @workspace/clearbook run dev
 ```
 
-Open http://localhost:5173. On Replit both services start from the configured workflows and the platform proxy routes `/api` to the API server, so `API_PROXY_TARGET` is not needed there.
+Open http://localhost:5173. When both services run behind one origin that routes `/api` to the API server, `API_PROXY_TARGET` is not needed.
 
 Checks:
 
@@ -87,7 +87,7 @@ No key is ever sent to the browser. `GET /api/config` reports which sources are 
 | `demo-trader` | Twelve months of buys and sells across xStocks, Ondo and PreStocks with realized gains and losses, a wrapper swap and pre IPO exposure |
 | `demo-empty` | Wallet with no tokenized stock history |
 
-Demo ledgers are scripted but priced with the same live pricing pipeline as real wallets. Simulated sales and proofs are stored per ledger and `POST /api/wallets/{id}/reset` clears them.
+Demo ledgers are scripted but priced with the same live pricing pipeline as real wallets. Simulated sales and generated statements are private to the browser that made them: the client sends a random id in the `x-clearbook-viewer` header and the server filters by it. `POST /api/wallets/{id}/reset` clears that browser's simulated sales.
 
 ## How the numbers are built
 

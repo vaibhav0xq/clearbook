@@ -4,13 +4,15 @@ import { motion } from "framer-motion";
 import { AlertTriangle, ArrowUpRight } from "lucide-react";
 import { useGetPortfolio } from "@workspace/api-client-react";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { useStage } from "@/components/layout/stage";
+import { useSetHoverMint, useStage } from "@/components/layout/stage";
 import { formatUSD, formatQuantity, formatPercent, formatAge, formatMultiplier, formatTime, issuerLabel } from "@/lib/format";
 import { Figure } from "@/components/figure";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Panel, Pill, Skeleton, EmptyState, ErrorState, SectionTitle, MethodologyLink } from "@/components/surface";
 import { Reveal, EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
+import { useWalletIndexing } from "@/hooks/use-wallet-indexing";
+import { IndexingState } from "@/components/layout/indexing-state";
 
 const METHOD_HINT: Record<string, string> = {
   fifo: "FIFO relieves the oldest layer first, so a sale takes from the bottom of a column.",
@@ -21,9 +23,11 @@ const METHOD_HINT: Record<string, string> = {
 export default function Portfolio() {
   const [, params] = useRoute("/w/:address");
   const address = params?.address || "";
+  const indexing = useWalletIndexing(address);
   const { method } = useCostMethod();
   const [, setLocation] = useLocation();
-  const { hoverMint, setHoverMint } = useStage({ caption: METHOD_HINT[method] });
+  useStage({ caption: METHOD_HINT[method] });
+  const setHoverMint = useSetHoverMint();
 
   const { data: portfolio, isLoading, error } = useGetPortfolio(address, { method });
 
@@ -112,7 +116,9 @@ export default function Portfolio() {
           {/* Positions */}
           <section>
             <SectionTitle aside={<span>Click a position to open its lots</span>}>Positions</SectionTitle>
-            {portfolio.positions.length === 0 ? (
+            {portfolio.positions.length === 0 && indexing ? (
+              <IndexingState what="Positions" />
+            ) : portfolio.positions.length === 0 ? (
               <EmptyState
                 title="No positions found"
                 description="This ledger has no tokenized stock balances. If tokens were transferred recently they may still be indexing. Wait a moment and refresh."
@@ -137,7 +143,7 @@ export default function Portfolio() {
                     <TableRow
                       key={pos.mint}
                       index={i}
-                      active={hoverMint === pos.mint}
+                      mint={pos.mint}
                       onMouseEnter={() => setHoverMint(pos.mint)}
                       onMouseLeave={() => setHoverMint(null)}
                       onClick={() => setLocation(`/w/${address}/lots?mint=${pos.mint}`)}
@@ -152,7 +158,7 @@ export default function Portfolio() {
                               </span>
                             )}
                             <ArrowUpRight
-                              className={cn("h-3.5 w-3.5 transition-all duration-300", hoverMint === pos.mint ? "translate-x-0 text-primary opacity-100" : "-translate-x-1 opacity-0")}
+                              className="h-3.5 w-3.5 -translate-x-1 opacity-0 transition-all duration-300 group-data-[active=true]:translate-x-0 group-data-[active=true]:text-primary group-data-[active=true]:opacity-100"
                             />
                           </span>
                           <span className="text-[12px] text-muted-foreground">

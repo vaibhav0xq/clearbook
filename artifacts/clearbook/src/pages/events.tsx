@@ -3,7 +3,7 @@ import { useRoute } from "wouter";
 import { ExternalLink, ArrowRight } from "lucide-react";
 
 import { useListCorporateActions } from "@workspace/api-client-react";
-import { useStageContext, useStage } from "@/components/layout/stage";
+import { useSetHoverMint, useStage } from "@/components/layout/stage";
 import { formatUSD, formatQuantity, formatDate, formatMultiplier } from "@/lib/format";
 import { DataTable, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/data-table";
 import { Pill, Skeleton, EmptyState, ErrorState, PageHeader } from "@/components/surface";
@@ -62,9 +62,9 @@ export default function Events() {
     };
   }, [events]);
 
-  const { hoverMint, setHoverMint } = useStageContext();
+  const setHoverMint = useSetHoverMint();
   useStage({
-    focusMint: hoverMint,
+    focusMint: "hover",
     caption: "Corporate actions change the multiplier that turns raw token units into shares of exposure."
   });
 
@@ -157,7 +157,7 @@ export default function Events() {
                   <TableRow 
                     key={event.id} 
                     index={i}
-                    active={hoverMint === event.mint}
+                    mint={event.mint}
                     onMouseEnter={() => event.mint && setHoverMint(event.mint)}
                     onMouseLeave={() => event.mint && setHoverMint(null)}
                   >

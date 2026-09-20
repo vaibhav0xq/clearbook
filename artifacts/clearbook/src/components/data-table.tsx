@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { EASE_OUT } from "@/components/motion/reveal";
+import { useHoverActive } from "@/components/layout/stage";
 
 export function DataTable({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -36,6 +37,7 @@ interface TableRowProps {
   className?: string;
   index?: number;
   active?: boolean;
+  mint?: string | null;
   onClick?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -44,14 +46,17 @@ interface TableRowProps {
 /**
  * Rows enter with a short stagger driven by their index.
  */
-export function TableRow({ children, className, index = 0, active = false, onClick, onMouseEnter, onMouseLeave }: TableRowProps) {
+export function TableRow({ children, className, index = 0, active: activeProp, mint, onClick, onMouseEnter, onMouseLeave }: TableRowProps) {
   const reduce = useReducedMotion();
+  const hoverActive = useHoverActive(mint);
+  const active = activeProp ?? (mint !== undefined && hoverActive);
   return (
     <motion.tr
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.55, ease: EASE_OUT, delay: Math.min(index, 14) * 0.04 }}
-      className={cn("row-hover", active && "bg-white/[0.04]", onClick && "cursor-pointer focus-visible:bg-white/[0.04] focus-visible:outline-none", className)}
+      data-active={active ? "true" : undefined}
+      className={cn("group row-hover", active && "bg-white/[0.04]", onClick && "cursor-pointer focus-visible:bg-white/[0.04] focus-visible:outline-none", className)}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
