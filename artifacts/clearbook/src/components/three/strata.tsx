@@ -5,12 +5,26 @@ import type { Quality } from "./quality";
 
 const StrataScene = lazy(() => import("./strata-scene"));
 
+let webglProbe: boolean | null = null;
+
 /**
- * Whether the browser has WebGL at all. A real probe context costs a few hundred milliseconds on
- * weak machines, so this only checks the API and leaves failures to the scene boundary.
+ * Whether the browser can open a WebGL context. Browsers with the GPU disabled still expose the
+ * API, so the first call opens a throwaway context and releases it. The answer is kept for the
+ * page so every scene shares one probe and a machine without WebGL gets the quiet fallback
+ * instead of a renderer error.
  */
 export function hasWebGL(): boolean {
-  return typeof window !== "undefined" && typeof WebGLRenderingContext !== "undefined";
+  if (typeof window === "undefined" || typeof WebGLRenderingContext === "undefined") return false;
+  if (webglProbe !== null) return webglProbe;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+    webglProbe = gl !== null;
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    webglProbe = false;
+  }
+  return webglProbe;
 }
 
 /**

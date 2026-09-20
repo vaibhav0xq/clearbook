@@ -36,8 +36,14 @@ export const env = {
   get pythBaseUrl(): string {
     return read("PYTH_LAZER_URL") ?? "https://pyth-lazer.dourolabs.app";
   },
+  /** Public origin of the app. Deployments publish it in REPLIT_DOMAINS, the workspace in REPLIT_DEV_DOMAIN. */
   get appUrl(): string {
-    return read("APP_URL") ?? (read("REPLIT_DEV_DOMAIN") ? `https://${read("REPLIT_DEV_DOMAIN")}` : "http://localhost:5173");
+    const explicit = read("APP_URL");
+    if (explicit) return explicit;
+    const published = read("REPLIT_DOMAINS")?.split(",")[0]?.trim();
+    if (published) return `https://${published}`;
+    const dev = read("REPLIT_DEV_DOMAIN");
+    return dev ? `https://${dev}` : "http://localhost:5173";
   },
   get cluster(): string {
     return read("SOLANA_CLUSTER") ?? "mainnet-beta";
