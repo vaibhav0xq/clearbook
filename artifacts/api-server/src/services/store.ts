@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, ne, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lt, ne, or, type SQL } from "drizzle-orm";
 import {
   db,
   ledgerEventsTable,
@@ -30,6 +30,26 @@ export async function upsertWallet(values: Partial<Wallet> & { address: string }
     .insert(walletsTable)
     .values(values)
     .onConflictDoUpdate({ target: walletsTable.address, set: { ...values, updatedAt: new Date() } })
+    .returning();
+  return rows[0];
+}
+
+/**
+ * Marks a wallet as indexing and returns the row when this caller now owns the run. The update
+ * applies only while no run is in flight or the last one stopped writing progress for longer
+ * than `staleMs`, and Postgres decides that in one statement, so two processes that start the
+ * same wallet at the same time cannot both win. Returns undefined when another run owns it.
+ */
+export async function claimIndexRun(values: Partial<Wallet> & { address: string }, staleMs: number): Promise<Wallet | undefined> {
+  const staleBefore = new Date(Date.now() - staleMs);
+  const rows = await db
+    .insert(walletsTable)
+    .values(values)
+    .onConflictDoUpdate({
+      target: walletsTable.address,
+      set: { ...values, updatedAt: new Date() },
+      setWhere: or(ne(walletsTable.state, "indexing"), lt(walletsTable.updatedAt, staleBefore)),
+    })
     .returning();
   return rows[0];
 }

@@ -72,13 +72,15 @@ cargo test --manifest-path verifier/Cargo.toml
 
 ## Deploying
 
-The web app is a static build and the API is a long running Node process, so they deploy separately.
+The repository deploys to Vercel as one project: the web app as static files and the API as a single function behind `/api`. `vercel.json` points at `vercel-build.mjs`, which builds both and writes the Vercel build output, so the project needs no framework settings.
 
-1. Database. Create a PostgreSQL database and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`. On Supabase use the Session pooler string (port 5432, user `postgres.<project ref>`) rather than the direct host, which is reachable over IPv6 only. Append `?sslmode=no-verify` to it: the connection is then encrypted and the driver skips the chain check that fails on the Supabase certificate authority. Neon strings work as they are.
-2. API. The `Dockerfile` at the repository root builds the API server. Point Railway, Render or Fly at the repository and set `DATABASE_URL`, `APP_URL` (the public web address) and any RPC or price keys from the table below. The container listens on `PORT`. Indexing runs keep their state in process memory, so run one instance.
-3. Web. Import the repository into Vercel. `vercel.json` carries the install command, the build command and the output directory and Vercel reads the pnpm version from the `packageManager` field, so the project needs no settings. Replace `https://api.clearbook.example` in `vercel.json` with the API address. Vercel then forwards `/api/*` to the API and the browser never talks to a second origin.
+1. Create a PostgreSQL database and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`. On Supabase use the Session pooler string (port 5432, user `postgres.<project ref>`) rather than the direct host, which is reachable over IPv6 only. Append `?sslmode=no-verify` to it: the connection is then encrypted and the driver skips the chain check that fails on the Supabase certificate authority. Neon strings work as they are.
+2. Import the repository into Vercel and set `DATABASE_URL` plus any RPC or price keys from the table below. `APP_URL` is optional there; without it the API uses the project's production domain for statement links.
+3. Open `/api/config` on the deployed domain. It lists which data sources are live and which run as labelled fallbacks.
 
-After the first deploy open `/api/config` on the API address. It lists which data sources are live and which are running as labelled fallbacks.
+An index run keeps working after its response is sent. The function declares this to the host and continues until the run finishes, within the 300 second limit of the free plan and comfortably above the 150 second budget of the public RPC. Progress lives in the database, so any instance can answer the status polls and a run whose process was lost is picked up again after 90 seconds without progress.
+
+The root `Dockerfile` builds the API as a long running server for hosts that run containers (Railway, Render, Fly). It listens on `PORT` and needs the same environment. Serve the web build from `artifacts/clearbook/dist/public` in front of it and route `/api` to the container.
 
 ## Environment variables
 

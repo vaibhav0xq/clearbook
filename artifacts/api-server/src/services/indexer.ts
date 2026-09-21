@@ -12,7 +12,8 @@ import { env } from "../lib/env";
 import { badRequest, HttpError } from "../lib/errors";
 import { logger } from "../lib/logger";
 import { rpc, type ParsedTransaction, type SignatureInfo } from "./rpc";
-import { countEvents, getWallet, listEvents, replaceEvents, upsertWallet } from "./store";
+import { waitUntil } from "@vercel/functions";
+import { claimIndexRun, countEvents, getWallet, listEvents, replaceEvents, upsertWallet } from "./store";
 
 export function isValidAddress(address: string): boolean {
   if (isDemoId(address)) return true;
@@ -243,8 +244,12 @@ interface TokenAccountRef {
  * of hanging. The public endpoint reads about one transaction per second, so it gets a longer budget.
  */
 const INDEX_TIME_BUDGET_MS = env.rpcConfigured ? 90_000 : 150_000;
-/** A wallet stuck in "indexing" longer than this is treated as abandoned and indexed again on the next request. */
-export const INDEX_STALE_MS = 4 * 60_000;
+/**
+ * A wallet stuck in "indexing" longer than this is treated as abandoned and indexed again on the
+ * next request. A live run touches its row at least every 20 seconds even while it waits out a
+ * rate limit, so only a lost process reads as abandoned.
+ */
+export const INDEX_STALE_MS = 90_000;
 
 export interface IndexOutcome {
   wallet: Wallet;
@@ -252,6 +257,8 @@ export interface IndexOutcome {
 
 /** How often a running index writes its counters, so a client polling the status sees it move. */
 const PROGRESS_WRITE_MS = 1000;
+/** Longest quiet stretch before a running index touches its row anyway. Well inside INDEX_STALE_MS. */
+const HEARTBEAT_MS = 20_000;
 
 interface IndexRun {
   /** Settles once the wallet row shows the run in progress. */
@@ -260,27 +267,45 @@ interface IndexRun {
   finished: Promise<Wallet>;
 }
 
-/** In flight runs per address, so two requests for the same wallet share one run instead of racing on the ledger. */
+/**
+ * In flight runs of this process, so two requests for the same wallet share one run instead of
+ * racing on the ledger. Across processes the wallet row is the lock: `claimIndexRun` hands the
+ * run to exactly one caller and everyone else follows it through the status endpoint.
+ */
 const inFlight = new Map<string, IndexRun>();
 
 function launch(address: string): IndexRun {
   const running = inFlight.get(address);
   if (running) return running;
-  const started = upsertWallet({
-    address,
-    isDemo: false,
-    state: "indexing",
-    source: "live",
-    message: "Reading transaction history.",
-    eventsIndexed: 0,
-    signaturesScanned: 0,
-    unknownTransactions: 0,
-    warnings: [],
-  });
-  const finished = started.then(() => indexLiveWallet(address)).finally(() => inFlight.delete(address));
+  const claim = claimIndexRun(
+    {
+      address,
+      isDemo: false,
+      state: "indexing",
+      source: "live",
+      message: "Reading transaction history.",
+      eventsIndexed: 0,
+      signaturesScanned: 0,
+      unknownTransactions: 0,
+      warnings: [],
+    },
+    INDEX_STALE_MS,
+  );
+  const current = async (): Promise<Wallet> => {
+    const wallet = await getWallet(address);
+    if (!wallet) throw new Error(`wallet ${address} disappeared while claiming its index run`);
+    return wallet;
+  };
+  const started = claim.then((claimed) => claimed ?? current());
+  const finished = claim
+    .then((claimed) => (claimed ? indexLiveWallet(address) : current()))
+    .finally(() => inFlight.delete(address));
   // The run reports its own failures through the wallet row. Only the first write can reject, and
   // the caller of `started` sees that.
   finished.catch(() => undefined);
+  // A serverless host ends the invocation once the response is out unless it is told that work is
+  // still running. Outside such a host this call does nothing.
+  waitUntil(finished);
   const run = { started, finished };
   inFlight.set(address, run);
   return run;
@@ -308,17 +333,26 @@ export function startIndexing(address: string): Promise<Wallet> {
 }
 
 async function indexLiveWallet(address: string): Promise<Wallet> {
-  let lastProgressAt = 0;
+  let lastProgressAt = Date.now();
+  let latest = { signaturesScanned: 0, eventsIndexed: 0 };
   let progressWrite: Promise<unknown> = Promise.resolve();
-  const progress = (signaturesScanned: number, eventsIndexed: number) => {
-    const now = Date.now();
-    if (now - lastProgressAt < PROGRESS_WRITE_MS) return;
-    lastProgressAt = now;
+  const write = () => {
+    lastProgressAt = Date.now();
     // Writes queue behind each other and never fail the run; the final write carries the truth.
-    progressWrite = progressWrite.then(() => upsertWallet({ address, state: "indexing", signaturesScanned, eventsIndexed })).catch((err) => {
+    progressWrite = progressWrite.then(() => upsertWallet({ address, state: "indexing", ...latest })).catch((err) => {
       logger.warn({ err, address }, "Indexing progress write failed");
     });
   };
+  const progress = (signaturesScanned: number, eventsIndexed: number) => {
+    latest = { signaturesScanned, eventsIndexed };
+    if (Date.now() - lastProgressAt >= PROGRESS_WRITE_MS) write();
+  };
+  // A run that waits out a rate limit reports nothing for a while. The heartbeat keeps the row
+  // fresh so the stale rule in ensureWalletRow never restarts a live run.
+  const heartbeat = setInterval(() => {
+    if (Date.now() - lastProgressAt >= HEARTBEAT_MS) write();
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
   try {
     const client = rpc();
     const accounts = await client.getTokenAccountsByOwner(address);
@@ -467,6 +501,8 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     await progressWrite;
     // If this write fails too the row stays "indexing" and the stale rule in ensureWalletRow restarts it.
     return upsertWallet({ address, isDemo: false, state: "error", source: "unavailable", message, lastIndexedAt: new Date(), warnings: [] });
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 

@@ -63,10 +63,12 @@ export const env = {
   get pythBaseUrl(): string {
     return read("PYTH_LAZER_URL") ?? "https://pyth-lazer.dourolabs.app";
   },
-  /** Public origin of the app. Deployments publish it in REPLIT_DOMAINS, the workspace in REPLIT_DEV_DOMAIN. */
+  /** Public origin of the app. Hosts that publish their own domain in the environment are read as fallbacks. */
   get appUrl(): string {
     const explicit = read("APP_URL");
     if (explicit) return explicit;
+    const vercel = read("VERCEL_PROJECT_PRODUCTION_URL");
+    if (vercel) return `https://${vercel}`;
     const published = read("REPLIT_DOMAINS")?.split(",")[0]?.trim();
     if (published) return `https://${published}`;
     const dev = read("REPLIT_DEV_DOMAIN");

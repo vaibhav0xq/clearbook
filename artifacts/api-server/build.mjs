@@ -11,11 +11,13 @@ globalThis.require = createRequire(import.meta.url);
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function buildAll() {
-  const distDir = path.resolve(artifactDir, "dist");
+  // API_ENTRY and API_OUT_DIR let a deployment build bundle the request handler instead of the
+  // listening server. The defaults build the server into dist/.
+  const distDir = path.resolve(artifactDir, process.env.API_OUT_DIR ?? "dist");
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [path.resolve(artifactDir, process.env.API_ENTRY ?? "src/index.ts")],
     platform: "node",
     bundle: true,
     format: "esm",
