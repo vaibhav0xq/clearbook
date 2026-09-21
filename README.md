@@ -6,6 +6,8 @@ Paste a wallet or connect one. Clearbook reads its xStocks, Ondo Global Markets 
 
 Live at https://clearbook-gray.vercel.app. Built for the Stocklana hackathon. Main track, Pyth bounty and PreStocks bounty.
 
+![Clearbook landing page](docs/images/landing.png)
+
 ## What it does
 
 - Positions per issuer with quantity, raw token units, multiplier, mark, market value and weight
@@ -21,6 +23,18 @@ Live at https://clearbook-gray.vercel.app. Built for the Stocklana hackathon. Ma
 - Three demo ledgers so the product can be reviewed without holding any tokenized stock
 
 Unknown or estimated figures are always shown as such. Transfers with no known cost are excluded from the totals and listed in the statement assumptions.
+
+![A live wallet in Clearbook](docs/images/wallet.png)
+
+## Try it with your wallet
+
+1. Open https://clearbook-gray.vercel.app and connect a Solana wallet or paste an address to read it without connecting.
+2. Indexing runs in the background. A typical wallet is ready in about ten seconds on the hosted setup and the status line counts signatures and events as they are read. A wallet with a very long history gets a partial ledger with a note about what was left out.
+3. Open Statements, pick a period and generate one. The document hash, the CSV and the PDF are built from the same rows.
+4. Click Sign on chain. Your wallet signs one memo transaction that carries the hash and costs only the network fee. The proof shows the slot and the signer once the network confirms it, usually within a few seconds.
+5. Check the proof anywhere: the memo is visible on any explorer and `verifier/` recomputes the hash from the API response and compares it with the transaction.
+
+Two public wallets with real xStocks positions can be opened by address without connecting anything: `89eKgf8u2B5yjU46N1gNQnE4a6Zu7PTCyWBoxZmYghw3` indexes to a complete ledger and `m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz` to a partial one. Both belong to market makers and their balances change.
 
 ## Repository layout
 
@@ -74,7 +88,7 @@ cargo test --manifest-path verifier/Cargo.toml
 
 The repository deploys to Vercel as one project: the web app as static files and the API as a single function behind `/api`. `vercel.json` points at `vercel-build.mjs`, which builds both and writes the Vercel build output, so the project needs no framework settings.
 
-1. Create a PostgreSQL database and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`. On Supabase use the pooler strings (user `postgres.<project ref>`) rather than the direct host, which is reachable over IPv6 only, and append `?sslmode=no-verify` to them: the connection is then encrypted and the driver skips the chain check that fails on the Supabase certificate authority. Run the migration over the Session pooler (port 5432). Neon strings work as they are.
+1. Create a PostgreSQL database and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`. On Supabase use the pooler strings (user `postgres.<project ref>`) rather than the direct host, which is reachable over IPv6 only. Append `?sslmode=no-verify` to them: the connection is then encrypted and the driver skips the chain check that fails on the Supabase certificate authority. Run the migration over the Session pooler (port 5432). Neon strings work as they are.
 2. Import the repository into Vercel and set `DATABASE_URL` plus any RPC or price keys from the table below. On Supabase give Vercel the Transaction pooler string (port 6543), which shares a small set of database connections between function instances. `APP_URL` is optional there; without it the API uses the project's production domain for statement links. Put the database and the Vercel function region in the same part of the world; the default function region is Washington, D.C.
 3. Open `/api/config` on the deployed domain. It lists which data sources are live and which run as labelled fallbacks.
 
@@ -142,7 +156,7 @@ Each directory has a README with the details.
 
 ## Status
 
-See `docs/status.md` for what is live, what is simulated and what still needs work before this is more than a hackathon build. The short version: indexing, pricing through Jupiter and PreStocks, multiplier reads, statements, exports and simulated flows are live today. Pyth Pro and Helius are wired and switch on when their keys are present. Wallet signed notarization and Jupiter execution are implemented but have only been exercised with the simulated path in this environment.
+See `docs/status.md` for what is live, what is simulated and what still needs work before this is more than a hackathon build. The short version: indexing, pricing through Jupiter and PreStocks, multiplier reads, statements, exports and simulated flows are live today. Pyth Pro and Helius are wired and switch on when their keys are present. Wallet signed notarization has been exercised on mainnet from a Phantom wallet against the hosted site. Jupiter execution is implemented but has only been exercised with the simulated path.
 
 ## Demo
 

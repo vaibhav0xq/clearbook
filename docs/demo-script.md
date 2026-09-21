@@ -42,7 +42,7 @@ Open Statements and generate one for this year.
 
 - Opening and closing value, holdings, activity, closed lots, corporate actions, disclosures and data sources on one document.
 - Download the PDF. Show the hash on the first page.
-- Click the proof button. With a wallet connected this signs a memo transaction that carries the hash. Without one the app records a simulated proof and says so.
+- Click the proof button. On a demo ledger the app records a simulated proof and says so. On a real wallet the button reads Sign on chain: the owning wallet signs one memo transaction that carries the hash and the proof confirms within a few seconds.
 
 ## 2:20 Trade
 
@@ -53,14 +53,16 @@ Open Trade. Sell one share of NVDAx.
 
 ## 2:45 Live wallets and close
 
-Paste a real address from the clipboard. The page opens at once and the status line counts signatures read and events found while indexing runs in the background. When it finishes the pages fill in with either a ready or a partial ledger and the exact warnings about what could not be reconstructed.
+Paste a real address from the clipboard or connect the presenter's own wallet. The page opens at once and the status line counts signatures read and events found while indexing runs in the background. A typical wallet is ready in about ten seconds on the hosted site. When it finishes the pages fill in with either a ready or a partial ledger and the exact warnings about what could not be reconstructed.
 
-"Everything you saw is the same code path for demo and live data. Add a Helius key and a Pyth Pro key and the fallbacks switch to primary sources. The statement is honest about what it knows and what it does not."
+If the presenter's wallet holds a position, this is the moment to generate a statement for it and click Sign on chain, so the video ends on a real proof confirmed on mainnet.
+
+"Everything you saw is the same code path for demo and live data. The hosted site reads the chain through Helius and marks positions through Jupiter and PreStocks. A Pyth Pro key makes Pyth the primary mark. The statement is honest about what it knows and what it does not."
 
 ## Addresses used in rehearsal
 
-- `89eKgf8u2B5yjU46N1gNQnE4a6Zu7PTCyWBoxZmYghw3` holds six xStocks positions built from 42 transactions. On the public RPC it indexes to a complete ledger in about 90 seconds and its events and lots match the independent indexer and replay exactly
-- `m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz` holds about ten xStocks positions. On the public RPC it indexes to a partial ledger in two to three minutes, with cost basis read from swaps for some positions and opening balances for the rest
+- `89eKgf8u2B5yjU46N1gNQnE4a6Zu7PTCyWBoxZmYghw3` holds six xStocks positions built from 42 transactions. On the hosted site it indexes to a complete ledger in about ten seconds, on the public RPC in about 90 seconds, and its events and lots match the independent indexer and replay exactly
+- `m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz` holds about ten xStocks positions. On the hosted site it indexes to a partial ledger in about 90 seconds, with cost basis read from swaps for some positions and opening balances for the rest
 - `2Cq2RNFFxxPXL7teNQAji1beA2vFbBDYW5BGPBFvoN9m` holds hundreds of Ondo accounts and indexes to a partial ledger with warnings. The band draws its 12 largest positions and says so in the caption; the tables list all of them
 
 Both are market making wallets. Their ledgers demonstrate indexing and warnings rather than a retail trading history. Balances on live wallets change, so check them the day before the demo.
