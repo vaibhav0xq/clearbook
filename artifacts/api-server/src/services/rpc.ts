@@ -103,6 +103,16 @@ export interface TransactionRead {
   attempted: number;
 }
 
+/**
+ * Thrown when a request could not start, or a rate limit pause could not be waited out, before
+ * the caller's deadline. Readers treat it as a cut, not as a failed endpoint.
+ */
+export class RpcDeadline extends Error {
+  constructor() {
+    super("The RPC did not answer within the time budget.");
+  }
+}
+
 class RpcClient {
   private lastBatchAt = 0;
 
@@ -112,9 +122,9 @@ class RpcClient {
     return this.url;
   }
 
-  async call<T>(method: string, params: unknown[]): Promise<T> {
+  async call<T>(method: string, params: unknown[], deadline = Number.POSITIVE_INFINITY): Promise<T> {
     const body = { jsonrpc: "2.0", id: idCounter++, method, params };
-    const res = await this.post(body);
+    const res = await this.post(body, deadline);
     const json = (await res.json()) as RpcResponse<T>;
     if (json.error) throw upstream(`RPC ${method} failed: ${json.error.message}`, { code: json.error.code });
     return json.result as T;
@@ -125,10 +135,10 @@ class RpcClient {
    * error while the rest of the batch succeeds, so the row level outcome is returned rather than
    * folded into null.
    */
-  async batch<T>(method: string, paramsList: unknown[][]): Promise<Array<BatchRow<T>>> {
+  async batch<T>(method: string, paramsList: unknown[][], deadline = Number.POSITIVE_INFINITY): Promise<Array<BatchRow<T>>> {
     if (paramsList.length === 0) return [];
     const body = paramsList.map((params) => ({ jsonrpc: "2.0", id: idCounter++, method, params }));
-    const res = await this.post(body);
+    const res = await this.post(body, deadline);
     const json = (await res.json()) as RpcResponse<T>[] | RpcResponse<T>;
     if (!Array.isArray(json)) {
       if (json.error) throw upstream(`RPC batch ${method} failed: ${json.error.message}`, { code: json.error.code });
@@ -143,13 +153,19 @@ class RpcClient {
     });
   }
 
-  /** Public endpoints answer 429 quickly under light load, so retry a few times with a growing pause before giving up. */
-  private async post(body: unknown): Promise<Response> {
+  /**
+   * Public endpoints answer 429 quickly under light load, so retry a few times with a growing
+   * pause before giving up. No attempt starts and no pause is taken past the deadline, so a caller
+   * with a time budget gets control back at the budget and not one retry window later.
+   */
+  private async post(body: unknown, deadline = Number.POSITIVE_INFINITY): Promise<Response> {
     const attempts = env.rpcConfigured ? 2 : 5;
     let retryAfter: number | null = null;
     for (let attempt = 1; ; attempt++) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new RpcDeadline();
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15_000);
+      const timer = setTimeout(() => controller.abort(), Math.min(15_000, remaining));
       try {
         const res = await fetch(this.url, {
           method: "POST",
@@ -168,13 +184,16 @@ class RpcClient {
           if (err.status === 401 || err.status === 403) throw upstream("RPC rejected the request. Check SOLANA_RPC_URL or HELIUS_API_KEY.");
           if (err.status === 429) {
             if (attempt < attempts) {
-              await sleep(retryAfter ?? 1_500 * attempt);
+              const pause = retryAfter ?? 1_500 * attempt;
+              if (Date.now() + pause >= deadline) throw new RpcDeadline();
+              await sleep(pause);
               continue;
             }
             throw upstream("RPC rate limit reached. Configure a dedicated RPC to index wallets reliably.");
           }
           throw upstream(`RPC returned ${err.status}.`);
         }
+        if (controller.signal.aborted && Date.now() >= deadline) throw new RpcDeadline();
         const reason = err instanceof Error ? err.message : String(err);
         throw upstream(`RPC request failed: ${reason}`);
       } finally {
@@ -183,12 +202,13 @@ class RpcClient {
     }
   }
 
-  async getTokenAccountsByOwner(owner: string): Promise<TokenAccount[]> {
+  async getTokenAccountsByOwner(owner: string, deadline = Number.POSITIVE_INFINITY): Promise<TokenAccount[]> {
     const programs = ["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"];
     const results = await mapSequential(programs, (programId) =>
         this.call<{ value: Array<{ pubkey: string; account: { data: { parsed: { info: { mint: string; owner: string; tokenAmount: { amount: string; decimals: number } } } } } }> }>(
           "getTokenAccountsByOwner",
           [owner, { programId }, { encoding: "jsonParsed", commitment: "confirmed" }],
+          deadline,
         ).then((r) => r.value.map((v) => ({
           pubkey: v.pubkey,
           mint: v.account.data.parsed.info.mint,
@@ -202,18 +222,19 @@ class RpcClient {
     return results.flat();
   }
 
-  async getSignaturesForAddress(address: string, limit: number, before?: string): Promise<SignatureInfo[]> {
+  async getSignaturesForAddress(address: string, limit: number, before?: string, deadline = Number.POSITIVE_INFINITY): Promise<SignatureInfo[]> {
     return this.call<SignatureInfo[]>("getSignaturesForAddress", [
       address,
       { limit, before, commitment: "confirmed" },
-    ]);
+    ], deadline);
   }
 
   /**
    * Reads transactions in batches. Rows the endpoint rate limited are retried with a growing
    * pause, because dropping them silently turns real trades into opening balances. Rows that still
    * fail, or fail with another error, come back as null and are counted in `unreadable`. No new
-   * batch starts after the deadline, so a caller can tell attempted signatures from skipped ones.
+   * batch starts after the deadline and a batch the deadline cuts short is not counted as
+   * attempted, so a caller can tell attempted signatures from skipped ones.
    */
   async getParsedTransactions(signatures: string[], deadline = Number.POSITIVE_INFINITY): Promise<TransactionRead> {
     const transactions: Array<ParsedTransaction | null> = new Array<ParsedTransaction | null>(signatures.length).fill(null);
@@ -225,24 +246,39 @@ class RpcClient {
       if (Date.now() > deadline) break;
       let pending = signatures.slice(i, i + chunk).map((signature, j) => ({ signature, index: i + j }));
       attempted += pending.length;
-      for (let attempt = 1; pending.length > 0 && attempt <= 5; attempt++) {
-        if (attempt > 1) {
-          if (Date.now() > deadline) break;
-          // A rate limited row clears when the window has passed, so the public endpoint gets a full window.
-          await sleep(env.rpcConfigured ? 2_000 * attempt : PUBLIC_WINDOW_MS);
-        }
-        await this.spaceBatches();
-        const rows = await this.batch<ParsedTransaction>("getTransaction", pending.map((p) => params(p.signature)));
-        const retry: typeof pending = [];
-        rows.forEach((row, j) => {
-          if (row.rateLimited) {
-            retry.push(pending[j]);
-            return;
+      // Rows the deadline leaves behind count as skipped, not as unreadable.
+      let cut = false;
+      try {
+        for (let attempt = 1; pending.length > 0 && attempt <= 5; attempt++) {
+          if (attempt > 1) {
+            // A rate limited row clears when the window has passed, so the public endpoint gets a full window.
+            const pause = env.rpcConfigured ? 2_000 * attempt : PUBLIC_WINDOW_MS;
+            if (Date.now() + pause > deadline) {
+              cut = true;
+              break;
+            }
+            await sleep(pause);
           }
-          transactions[pending[j].index] = row.result;
-          if (row.error) unreadable += 1;
-        });
-        pending = retry;
+          await this.spaceBatches();
+          const rows = await this.batch<ParsedTransaction>("getTransaction", pending.map((p) => params(p.signature)), deadline);
+          const retry: typeof pending = [];
+          rows.forEach((row, j) => {
+            if (row.rateLimited) {
+              retry.push(pending[j]);
+              return;
+            }
+            transactions[pending[j].index] = row.result;
+            if (row.error) unreadable += 1;
+          });
+          pending = retry;
+        }
+      } catch (err) {
+        if (!(err instanceof RpcDeadline)) throw err;
+        cut = true;
+      }
+      if (cut) {
+        attempted -= pending.length;
+        break;
       }
       unreadable += pending.length;
     }

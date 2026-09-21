@@ -5,7 +5,7 @@ import { badRequest, notFound } from "../lib/errors";
 import { explorerTxUrl, fetchJson } from "../lib/http";
 import { logger } from "../lib/logger";
 import { requireViewer } from "../lib/viewer";
-import { indexWallet, isValidAddress, tokenDeltasForOwner } from "./indexer";
+import { IndexStillRunning, indexWallet, isValidAddress, tokenDeltasForOwner } from "./indexer";
 import { eventView, loadContext, walletStatusView } from "./portfolio";
 import { rpc } from "./rpc";
 import { bindTradeQuoteSignature, getTradeQuote, insertEvent, insertTradeQuote, updateTradeQuoteStatus } from "./store";
@@ -292,10 +292,19 @@ export async function confirmTrade(address: string, input: { quoteId: string; si
       walletStatus: walletStatusView(ctx.wallet, ctx.simulatedTrades),
     };
   }
-  await indexWallet(address);
+  // The chain has settled the sale, so the quote is confirmed whatever the ledger read does next.
   await updateTradeQuoteStatus(row.id, "confirmed");
+  // On a host that limits request time the wait ends early and the run goes on in the background;
+  // the response then says so and the wallet status keeps reporting the run.
+  let indexed = true;
+  try {
+    await indexWallet(address);
+  } catch (err) {
+    if (!(err instanceof IndexStillRunning)) throw err;
+    indexed = false;
+  }
   const ctx = await loadContext(address, quote.method ?? "fifo");
-  const processed = ctx.engine.events.find((e) => e.input.signature === input.signature && e.input.kind === "sell");
+  const processed = indexed ? ctx.engine.events.find((e) => e.input.signature === input.signature && e.input.kind === "sell") : undefined;
   return {
     status: "confirmed" as const,
     mode: "live" as const,
@@ -304,7 +313,11 @@ export async function confirmTrade(address: string, input: { quoteId: string; si
     event: processed ? eventView(processed, ctx) : null,
     realizedPnl: processed?.realizedUsd ?? null,
     proceeds: processed?.input.grossUsd ?? quote.expectedProceeds ?? 0,
-    message: processed ? "Swap confirmed and recorded in the ledger." : "Swap confirmed. The ledger was re-indexed but the sale was not recognized as a sell; check the activity list.",
+    message: !indexed
+      ? "Swap confirmed. The ledger is still being indexed; refresh the wallet in a moment to see the sale."
+      : processed
+        ? "Swap confirmed and recorded in the ledger."
+        : "Swap confirmed. The ledger was re-indexed but the sale was not recognized as a sell; check the activity list.",
     walletStatus: walletStatusView(ctx.wallet, ctx.simulatedTrades),
   };
 }

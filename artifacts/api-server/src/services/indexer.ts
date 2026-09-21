@@ -11,8 +11,8 @@ import type { Wallet } from "@workspace/db";
 import { env } from "../lib/env";
 import { badRequest, HttpError } from "../lib/errors";
 import { logger } from "../lib/logger";
-import { rpc, type ParsedTransaction, type SignatureInfo } from "./rpc";
-import { waitUntil } from "@vercel/functions";
+import { rpc, RpcDeadline, type ParsedTransaction, type SignatureInfo } from "./rpc";
+import { getDeadline, waitUntil } from "@vercel/functions";
 import { claimIndexRun, countEvents, finishOwnedRun, getWallet, listEvents, replaceEvents, updateOwnedRun, upsertWallet } from "./store";
 import { randomUUID } from "node:crypto";
 
@@ -202,7 +202,13 @@ async function collectSignatures(owner: string, accounts: TokenAccountRef[], dea
     let fetched = 0;
     while (fetched < limit) {
       if (Date.now() > deadline) return true;
-      const page = await client.getSignaturesForAddress(address, Math.min(100, limit - fetched), before);
+      let page: SignatureInfo[];
+      try {
+        page = await client.getSignaturesForAddress(address, Math.min(100, limit - fetched), before, deadline);
+      } catch (err) {
+        if (err instanceof RpcDeadline) return true;
+        throw err;
+      }
       for (const s of page) if (!s.err) seen.set(s.signature, s);
       onPage?.(seen.size);
       fetched += page.length;
@@ -211,9 +217,15 @@ async function collectSignatures(owner: string, accounts: TokenAccountRef[], dea
     }
     return true;
   };
-  const ownerPage = await client.getSignaturesForAddress(owner, 100);
-  const ownerHistoryRead = ownerPage.length < 100;
-  if (ownerHistoryRead) for (const s of ownerPage) if (!s.err) seen.set(s.signature, s);
+  let ownerHistoryRead = false;
+  try {
+    const ownerPage = await client.getSignaturesForAddress(owner, 100, undefined, deadline);
+    ownerHistoryRead = ownerPage.length < 100;
+    if (ownerHistoryRead) for (const s of ownerPage) if (!s.err) seen.set(s.signature, s);
+  } catch (err) {
+    if (!(err instanceof RpcDeadline)) throw err;
+    truncated = true;
+  }
   const ordered = [...accounts].sort((a, b) => Number(BigInt(b.amount) > 0n) - Number(BigInt(a.amount) > 0n));
   const perAccount = Math.max(50, Math.floor(cap / Math.max(1, ordered.length)));
   for (const account of ordered) {
@@ -246,9 +258,9 @@ interface TokenAccountRef {
  */
 const INDEX_TIME_BUDGET_MS = env.rpcConfigured ? 90_000 : 150_000;
 /**
- * Wall clock cap for a whole run, counted from before the token accounts are read. The RPC
- * client may wait out several rate limit windows past a deadline before it checks it again, up to
- * about 75 seconds, so this keeps the run inside the 300 second limit of a serverless host.
+ * Wall clock cap for a whole run, counted from before the token accounts are read. Every RPC
+ * request of the run carries it, so no rate limit pause runs past it, and the rest of the 300
+ * second limit of a serverless host is left for pricing and the final write.
  */
 const RUN_HARD_STOP_MS = 200_000;
 /**
@@ -270,16 +282,29 @@ const HEARTBEAT_MS = 20_000;
 interface IndexRun {
   /** Settles once the wallet row shows the run in progress. */
   started: Promise<Wallet>;
-  /** Settles with the final wallet row. */
-  finished: Promise<Wallet>;
+  /** Settles with the final wallet row. Only callers that need the result ask for it. */
+  finished: () => Promise<Wallet>;
 }
 
 /**
- * In flight runs of this process, so two requests for the same wallet share one run instead of
- * racing on the ledger. Across processes the wallet row is the lock: `claimIndexRun` hands the
- * run to exactly one caller and everyone else follows it through the status endpoint.
+ * Runs this process owns, so two requests for the same wallet share one run instead of racing on
+ * the ledger. Across processes the wallet row is the lock: `claimIndexRun` hands the run to
+ * exactly one caller and everyone else follows it through the row.
  */
 const inFlight = new Map<string, IndexRun>();
+
+/** Time a request keeps for its own response after it stops waiting for a run. */
+const RESPONSE_MARGIN_MS = 5_000;
+
+/**
+ * Thrown to a caller that cannot wait for the run any longer. The run itself continues and the
+ * wallet row keeps reporting it.
+ */
+export class IndexStillRunning extends HttpError {
+  constructor() {
+    super(503, "index_running", "The wallet is still being indexed. Try again in a minute.");
+  }
+}
 
 async function currentRow(address: string): Promise<Wallet> {
   const wallet = await getWallet(address);
@@ -288,14 +313,17 @@ async function currentRow(address: string): Promise<Wallet> {
 }
 
 /**
- * Follows a run owned by another process through its row and resolves with the final row, or
- * with the row as it stands once the run looks abandoned or has taken longer than any run may.
+ * Follows a run owned by another process through its row and resolves with the final row. A run
+ * that stops writing progress is abandoned, so this process claims the wallet and runs it. A run
+ * that outlives the longest run allowed is not waited for.
  */
 async function followRun(address: string): Promise<Wallet> {
   const giveUpAt = Date.now() + RUN_HARD_STOP_MS + INDEX_STALE_MS;
   for (;;) {
     const wallet = await currentRow(address);
-    if (wallet.state !== "indexing" || Date.now() - wallet.updatedAt.getTime() > INDEX_STALE_MS || Date.now() > giveUpAt) return wallet;
+    if (wallet.state !== "indexing") return wallet;
+    if (Date.now() - wallet.updatedAt.getTime() > INDEX_STALE_MS) return launch(address).finished();
+    if (Date.now() > giveUpAt) throw new IndexStillRunning();
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 }
@@ -320,32 +348,46 @@ function launch(address: string): IndexRun {
     INDEX_STALE_MS,
   );
   const started = claim.then((claimed) => claimed ?? currentRow(address));
-  const finished = claim
-    .then((claimed) => {
-      if (!claimed) return followRun(address);
-      const run = indexLiveWallet(address, token);
-      // A serverless host ends the invocation once the response is out unless it is told that
-      // work is still running. Outside such a host this call does nothing.
-      waitUntil(run);
-      return run;
-    })
-    .finally(() => inFlight.delete(address));
-  // The run reports its own failures through the wallet row. Only the first write can reject, and
-  // the caller of `started` sees that.
-  finished.catch(() => undefined);
-  const run = { started, finished };
-  inFlight.set(address, run);
-  return run;
+  // Set when this process wins the claim; another process holds the wallet otherwise.
+  let run: Promise<Wallet> | undefined;
+  const won = claim.then((claimed) => {
+    if (!claimed) return false;
+    run = indexLiveWallet(address, token);
+    // A serverless host ends the invocation once the response is out unless it is told that
+    // work is still running. Outside such a host this call does nothing.
+    waitUntil(run);
+    return true;
+  });
+  // A lost claim has nothing to share, so its entry goes as soon as the claim is decided. An
+  // owned run keeps the entry until it is over. The run reports its own failures through the
+  // wallet row; only the claim itself can reject, and the caller of `started` sees that.
+  const release = () => inFlight.delete(address);
+  won.then((owner) => (owner && run ? run.then(release, release) : release()), release);
+  let following: Promise<Wallet> | undefined;
+  const finished = () => (following ??= won.then((owner) => (owner && run ? run : followRun(address))));
+  const entry = { started, finished };
+  inFlight.set(address, entry);
+  return entry;
 }
 
 /**
  * Indexes a wallet from the chain and resolves with the finished ledger. Demo wallets load their
- * script instead. Used where the caller needs the result, such as confirming a live trade.
+ * script instead. Used where the caller needs the result, such as confirming a live trade. On a
+ * host that limits how long a request may run the wait ends before that limit with
+ * `IndexStillRunning`, while the run itself goes on.
  */
 export function indexWallet(address: string): Promise<Wallet> {
   assertAddress(address);
   if (isDemoId(address)) return loadDemoWallet(address);
-  return launch(address).finished;
+  const result = launch(address).finished();
+  const requestDeadline = getDeadline();
+  if (!requestDeadline) return result;
+  const waitMs = requestDeadline.getTime() - RESPONSE_MARGIN_MS - Date.now();
+  let timer: NodeJS.Timeout | undefined;
+  const cutoff = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new IndexStillRunning()), Math.max(0, waitMs));
+  });
+  return Promise.race([result, cutoff]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -406,10 +448,12 @@ async function indexLiveWallet(address: string, token: string): Promise<Wallet> 
   };
   try {
     const client = rpc();
-    const accounts = await client.getTokenAccountsByOwner(address);
+    const hardStop = runStartedAt + RUN_HARD_STOP_MS;
+    const accounts = await client.getTokenAccountsByOwner(address, hardStop);
     const stockAccounts = accounts.filter((a) => getAsset(a.mint));
     const startedAt = Date.now();
-    const deadline = Math.min(startedAt + INDEX_TIME_BUDGET_MS, runStartedAt + RUN_HARD_STOP_MS);
+    const deadline = Math.min(startedAt + INDEX_TIME_BUDGET_MS, hardStop);
+    const budgetSeconds = Math.round((deadline - startedAt) / 1000);
     const scan = await collectSignatures(
       address,
       stockAccounts.map((a) => ({ pubkey: a.pubkey, amount: a.amount })),
@@ -430,7 +474,7 @@ async function indexLiveWallet(address: string, token: string): Promise<Wallet> 
     for (let i = 0; i < signatures.length; i += 50) {
       if (Date.now() > deadline) {
         truncated = true;
-        warnings.push(`Indexing stopped after ${Math.round(INDEX_TIME_BUDGET_MS / 1000)} seconds. Older activity is summarized as an opening balance.`);
+        warnings.push(`Indexing stopped after ${budgetSeconds} seconds. Older activity is summarized as an opening balance.`);
         break;
       }
       // Newest first, so that a time budget cut drops the oldest history.
@@ -451,7 +495,7 @@ async function indexLiveWallet(address: string, token: string): Promise<Wallet> 
       progress(signatures.length, events.length);
       if (attempted < slice.length) {
         truncated = true;
-        warnings.push(`Indexing stopped after ${Math.round(INDEX_TIME_BUDGET_MS / 1000)} seconds. Older activity is summarized as an opening balance.`);
+        warnings.push(`Indexing stopped after ${budgetSeconds} seconds. Older activity is summarized as an opening balance.`);
         break;
       }
     }
