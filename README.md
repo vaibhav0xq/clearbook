@@ -42,7 +42,7 @@ The API contract lives in `lib/api-spec/openapi.yaml`. After a change run `pnpm 
 
 ## Running it
 
-Requirements: Node 24, pnpm 9 or later, PostgreSQL.
+Requirements: Node 22.12 or later, pnpm 10, PostgreSQL.
 
 ```
 pnpm install
@@ -69,6 +69,16 @@ python3 -m unittest discover -s audit       # replay engine tests
 cargo test --manifest-path indexer/Cargo.toml
 cargo test --manifest-path verifier/Cargo.toml
 ```
+
+## Deploying
+
+The web app is a static build and the API is a long running Node process, so they deploy separately.
+
+1. Database. Create a PostgreSQL database (Neon works on the free tier) and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`.
+2. API. The `Dockerfile` at the repository root builds the API server. Point Railway, Render or Fly at the repository and set `DATABASE_URL`, `APP_URL` (the public web address) and any RPC or price keys from the table below. The container listens on `PORT`. Indexing runs keep their state in process memory, so run one instance.
+3. Web. Import the repository into Vercel. `vercel.json` carries the install command, the build command and the output directory and Vercel reads the pnpm version from the `packageManager` field, so the project needs no settings. Replace `https://api.clearbook.example` in `vercel.json` with the API address. Vercel then forwards `/api/*` to the API and the browser never talks to a second origin.
+
+After the first deploy open `/api/config` on the API address. It lists which data sources are live and which are running as labelled fallbacks.
 
 ## Environment variables
 
