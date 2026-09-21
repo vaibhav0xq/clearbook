@@ -4,7 +4,7 @@ Brokerage statements for tokenized stocks on Solana.
 
 Paste a wallet or connect one. Clearbook reads its xStocks, Ondo Global Markets and PreStocks balances, rebuilds the tax lots from on-chain history, marks every position against a reference price, reads dividends and splits from the Token-2022 multiplier and produces a statement that exports to CSV and PDF and can be notarized on chain.
 
-Built for the Stocklana hackathon. Main track, Pyth bounty and PreStocks bounty.
+Live at https://clearbook-gray.vercel.app. Built for the Stocklana hackathon. Main track, Pyth bounty and PreStocks bounty.
 
 ## What it does
 
