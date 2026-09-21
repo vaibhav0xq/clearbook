@@ -59,7 +59,8 @@ Paste a real address from the clipboard. The page opens at once and the status l
 
 ## Addresses used in rehearsal
 
-- `m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz` holds about ten xStocks positions. On the public RPC it indexes to a partial ledger in about 90 seconds, with cost basis read from swaps for some positions and opening balances for the rest
+- `89eKgf8u2B5yjU46N1gNQnE4a6Zu7PTCyWBoxZmYghw3` holds six xStocks positions built from 42 transactions. On the public RPC it indexes to a complete ledger in about 90 seconds and its events and lots match the independent indexer and replay exactly
+- `m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz` holds about ten xStocks positions. On the public RPC it indexes to a partial ledger in two to three minutes, with cost basis read from swaps for some positions and opening balances for the rest
 - `2Cq2RNFFxxPXL7teNQAji1beA2vFbBDYW5BGPBFvoN9m` holds hundreds of Ondo accounts and indexes to a partial ledger with warnings. The band draws its 12 largest positions and says so in the caption; the tables list all of them
 
 Both are market making wallets. Their ledgers demonstrate indexing and warnings rather than a retail trading history. Balances on live wallets change, so check them the day before the demo.

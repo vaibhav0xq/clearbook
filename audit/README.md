@@ -27,4 +27,6 @@ python3 audit/audit.py --events activity.json --tax-lots tax-rows.json --method 
 
 Events may be an activity page or its item array. Lots use the API lot array. Tax lot JSON may be a row array or an object with a `rows` array.
 
+An indexer history document may be passed to `--events`. Combine it with `--api` and `--wallet` to check it against the app. The document must belong to the same wallet. The check first compares event ids and kinds between the document and the app activity, then replays the document events and compares the lots. Reported document multipliers are used first and API observations fill any gaps. Document notes and completeness are printed before the comparison.
+
 Exit code 0 means every comparison matched. Exit code 1 means at least one value differed. Exit code 2 means the input was invalid or unavailable.

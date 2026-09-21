@@ -238,8 +238,11 @@ interface TokenAccountRef {
   amount: string;
 }
 
-/** Wall clock budget for one indexing run. Public endpoints are slow, so the run degrades to a partial ledger instead of hanging. */
-const INDEX_TIME_BUDGET_MS = 90_000;
+/**
+ * Wall clock budget for one indexing run, after which the run degrades to a partial ledger instead
+ * of hanging. The public endpoint reads about one transaction per second, so it gets a longer budget.
+ */
+const INDEX_TIME_BUDGET_MS = env.rpcConfigured ? 90_000 : 150_000;
 /** A wallet stuck in "indexing" longer than this is treated as abandoned and indexed again on the next request. */
 export const INDEX_STALE_MS = 4 * 60_000;
 
@@ -338,6 +341,7 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
       warnings.push(`${scan.accountsSkipped} token account${scan.accountsSkipped === 1 ? "" : "s"} could not be read within the time budget. Their history is summarized as opening balances.`);
     }
     let unknownCount = 0;
+    let unreadableCount = 0;
     for (let i = 0; i < signatures.length; i += 50) {
       if (Date.now() > deadline) {
         truncated = true;
@@ -345,15 +349,26 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
         break;
       }
       // Newest first, so that a time budget cut drops the oldest history.
-      const slice = signatures.slice(Math.max(0, signatures.length - i - 50), signatures.length - i);
-      const txs = await client.getParsedTransactions(slice.map((s) => s.signature));
+      const slice = signatures.slice(Math.max(0, signatures.length - i - 50), signatures.length - i).reverse();
+      const { transactions: txs, unreadable, attempted } = await client.getParsedTransactions(slice.map((s) => s.signature), deadline);
+      unreadableCount += unreadable;
       txs.forEach((tx, j) => {
-        if (!tx || !tx.meta || tx.meta.err) return;
+        if (!tx) return;
+        if (!tx.meta) {
+          unreadableCount += 1;
+          return;
+        }
+        if (tx.meta.err) return;
         const c = classify(slice[j], tx, address);
         events.push(...c.events);
         if (c.unknown) unknownCount += 1;
       });
       progress(signatures.length, events.length);
+      if (attempted < slice.length) {
+        truncated = true;
+        warnings.push(`Indexing stopped after ${Math.round(INDEX_TIME_BUDGET_MS / 1000)} seconds. Older activity is summarized as an opening balance.`);
+        break;
+      }
     }
     events.sort((a, b) => a.blockTime.getTime() - b.blockTime.getTime());
 
@@ -364,7 +379,8 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     for (const a of stockAccounts) heldByMint.set(a.mint, (heldByMint.get(a.mint) ?? 0n) + BigInt(a.amount));
     const earliest = events.reduce<Date | null>((acc, e) => (!acc || e.blockTime < acc ? e.blockTime : acc), null) ?? new Date();
     const latest = events.reduce<Date | null>((acc, e) => (!acc || e.blockTime > acc ? e.blockTime : acc), null) ?? new Date();
-    for (const [mint, held] of new Set([...heldByMint.keys(), ...indexedByMint.keys()].map((m) => [m, heldByMint.get(m) ?? 0n] as const))) {
+    for (const mint of new Set([...heldByMint.keys(), ...indexedByMint.keys()])) {
+      const held = heldByMint.get(mint) ?? 0n;
       const indexed = indexedByMint.get(mint) ?? 0n;
       const diff = held - indexed;
       if (diff === 0n) continue;
@@ -413,6 +429,9 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     }
     warnings.push(...summariseSymbols(openingSymbols, "part of the balance predates the indexed history. Its cost basis is unknown."));
     warnings.push(...summariseSymbols(closingSymbols, "some tokens left the wallet outside the indexed history. Recorded as a transfer out."));
+    if (unreadableCount > 0) {
+      warnings.push(`${unreadableCount} transaction${unreadableCount === 1 ? "" : "s"} could not be read from the RPC endpoint. Stock that moved in them is only covered by the balance reconciliation.`);
+    }
     if (truncated && !warnings.some((w) => w.startsWith("Indexing stopped"))) warnings.push(`History capped at ${env.maxSignatures} signatures. Older activity is summarized as an opening balance.`);
     if (!scan.ownerHistoryRead) warnings.push("Only transactions touching the current tokenized stock accounts were read. Stocks held in closed token accounts are not included.");
     if (unknownCount > 0) warnings.push(`${unknownCount} transaction${unknownCount === 1 ? "" : "s"} could not be classified.`);
@@ -422,7 +441,7 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     await progressWrite;
     await replaceEvents(address, events, "simulated");
     const hasStocks = stockAccounts.length > 0 || events.length > 0;
-    const state = !hasStocks ? "empty" : truncated || unknownCount > 0 ? "partial" : "ready";
+    const state = !hasStocks ? "empty" : truncated || unknownCount > 0 || unreadableCount > 0 ? "partial" : "ready";
     const message = !hasStocks
       ? "No tokenized stocks found in this wallet."
       : state === "partial"

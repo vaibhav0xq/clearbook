@@ -1,6 +1,12 @@
+import contextlib
+import io
+import json
 import unittest
 from decimal import Decimal
+from pathlib import Path
+from unittest.mock import patch
 
+import audit as audit_cli
 from lots import replay
 
 
@@ -85,6 +91,72 @@ class LotReplayTests(unittest.TestCase):
         self.assertEqual([row.lot_id for row in result.closed], ["a", "b"])
         self.assertEqual([row.cost for row in result.closed], [Decimal("40.00"), Decimal("120.00")])
         self.assertEqual(result.open_lots({"mint": Decimal("1")})[0]["quantity"], Decimal("2"))
+
+
+class HistoryDocumentTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        path = Path(__file__).parent / "fixtures" / "history.json"
+        cls.document = json.loads(path.read_text(encoding="utf-8"))
+
+    def test_document_shape_is_read(self):
+        events = audit_cli.normalize_events(self.document)
+        self.assertEqual(len(events), 3)
+        self.assertEqual(events[0]["counterAsset"], "USDC")
+        self.assertEqual(events[1]["counterAsset"], "USDT")
+
+    def test_document_multiplier_fills_events(self):
+        events = audit_cli.normalize_events(self.document)
+        reported = audit_cli.history_multipliers(self.document)
+        audit_cli.fill_event_multipliers(events, reported, [], {})
+        self.assertEqual(events[0]["multiplierAtEvent"], "1.25")
+        result = replay(events)
+        self.assertEqual(result.closed[0].quantity, Decimal("1.25"))
+        self.assertEqual(result.open_lots(reported)[0]["quantity"], Decimal("1.25"))
+
+    def test_combined_mode_accepts_api_and_events(self):
+        empty_api = ({"items": [], "total": 0}, [], [], {}, [])
+        with patch.object(audit_cli, "api_inputs", return_value=empty_api) as mocked:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = audit_cli.run(
+                    [
+                        "--api",
+                        "http://example.invalid/api",
+                        "--wallet",
+                        "fixture-wallet",
+                        "--events",
+                        str(Path(__file__).parent / "fixtures" / "history.json"),
+                        "--method",
+                        "fifo",
+                    ]
+                )
+        self.assertEqual(code, 1)
+        mocked.assert_called_once()
+
+    def test_combined_mode_rejects_a_document_for_another_wallet(self):
+        with patch.object(audit_cli, "api_inputs") as mocked:
+            with self.assertRaises(audit_cli.InputError):
+                audit_cli.run(
+                    [
+                        "--api",
+                        "http://example.invalid/api",
+                        "--wallet",
+                        "other-wallet",
+                        "--events",
+                        str(Path(__file__).parent / "fixtures" / "history.json"),
+                    ]
+                )
+        mocked.assert_not_called()
+
+    def test_event_comparison_reports_both_sides(self):
+        document = [{"id": "a", "kind": "buy"}, {"id": "b", "kind": "sell"}]
+        app = [{"id": "a", "kind": "buy"}, {"id": "b", "kind": "transfer_out"}, {"id": "c", "kind": "buy"}]
+        differences = audit_cli.compare_events(document, app)
+        self.assertEqual(
+            differences,
+            ["Event b kind: document sell app transfer_out.", "Event c is only in the app."],
+        )
+        self.assertEqual(audit_cli.compare_events(app, app), [])
 
 
 if __name__ == "__main__":

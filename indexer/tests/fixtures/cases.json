@@ -1,0 +1,10 @@
+[
+  {"name":"buy with USDC","stocks":[["stock-a","100"]],"cash":["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","-2500000"],"kind":["buy"]},
+  {"name":"sell with USDT","stocks":[["stock-a","-100"]],"cash":["Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCdF9y4ffN","2500000"],"kind":["sell"]},
+  {"name":"transfer in","stocks":[["stock-a","100"]],"kind":["transfer_in"]},
+  {"name":"transfer out","stocks":[["stock-a","-100"]],"kind":["transfer_out"]},
+  {"name":"SOL buy","stocks":[["stock-a","100"]],"lamports":-1000000000,"kind":["buy"]},
+  {"name":"wrapper swap","stocks":[["stock-a","-100"],["stock-b","200"]],"kind":["wrapper_swap_out","wrapper_swap_in"]},
+  {"name":"failed transaction dropped","stocks":[["stock-a","100"]],"failed":true,"kind":[]},
+  {"name":"unknown multi stock flow","stocks":[["stock-a","100"],["stock-b","200"]],"kind":["unknown","unknown"]}
+]

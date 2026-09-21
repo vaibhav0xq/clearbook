@@ -71,10 +71,41 @@ export interface MintMultiplierState {
 
 let idCounter = 1;
 
+export interface BatchRow<T> {
+  result: T | null;
+  error: string | null;
+  rateLimited: boolean;
+}
+
 export /** Mainnet now carries version 1 transactions. Asking for version 0 only makes getTransaction fail with -32015. */
 const MAX_TX_VERSION = 1;
 
+/**
+ * The public endpoint counts calls of one method per ten second window and a batch counts each
+ * row. The window is shared by everyone behind the same address, so the usable rate varies.
+ */
+const PUBLIC_BATCH_SPACING_MS = 3_200;
+const PUBLIC_WINDOW_MS = 10_000;
+const MAX_RETRY_AFTER_MS = 15_000;
+
+/** Pause the endpoint asked for after a 429 response, when it named one. */
+function retryAfterMs(res: Response): number | null {
+  const seconds = Number(res.headers.get("retry-after"));
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, MAX_RETRY_AFTER_MS) : null;
+}
+
+export interface TransactionRead {
+  /** One entry per requested signature. Null when the endpoint has no such transaction or could not deliver it. */
+  transactions: Array<ParsedTransaction | null>;
+  /** Signatures the endpoint failed to deliver after retries. */
+  unreadable: number;
+  /** How many signatures were attempted before the deadline stopped the read. */
+  attempted: number;
+}
+
 class RpcClient {
+  private lastBatchAt = 0;
+
   constructor(private readonly url: string = env.rpcUrl) {}
 
   get endpoint(): string {
@@ -89,26 +120,33 @@ class RpcClient {
     return json.result as T;
   }
 
-  async batch<T>(method: string, paramsList: unknown[][]): Promise<Array<T | null>> {
+  /**
+   * One answer per request. The public endpoint rate limits single rows of a batch with a 429
+   * error while the rest of the batch succeeds, so the row level outcome is returned rather than
+   * folded into null.
+   */
+  async batch<T>(method: string, paramsList: unknown[][]): Promise<Array<BatchRow<T>>> {
     if (paramsList.length === 0) return [];
     const body = paramsList.map((params) => ({ jsonrpc: "2.0", id: idCounter++, method, params }));
     const res = await this.post(body);
     const json = (await res.json()) as RpcResponse<T>[] | RpcResponse<T>;
     if (!Array.isArray(json)) {
       if (json.error) throw upstream(`RPC batch ${method} failed: ${json.error.message}`, { code: json.error.code });
-      return [json.result ?? null];
+      return [{ result: json.result ?? null, error: null, rateLimited: false }];
     }
     const byId = new Map(json.map((r) => [r.id, r]));
     return body.map((req) => {
       const r = byId.get(req.id);
-      if (!r || r.error) return null;
-      return r.result ?? null;
+      if (!r) return { result: null, error: "The batch response has no row for this request.", rateLimited: false };
+      if (r.error) return { result: null, error: r.error.message, rateLimited: r.error.code === 429 };
+      return { result: r.result ?? null, error: null, rateLimited: false };
     });
   }
 
   /** Public endpoints answer 429 quickly under light load, so retry a few times with a growing pause before giving up. */
   private async post(body: unknown): Promise<Response> {
     const attempts = env.rpcConfigured ? 2 : 5;
+    let retryAfter: number | null = null;
     for (let attempt = 1; ; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 15_000);
@@ -121,6 +159,7 @@ class RpcClient {
         });
         if (!res.ok) {
           const text = await res.text().catch(() => "");
+          retryAfter = retryAfterMs(res);
           throw new UpstreamStatusError(this.url, res.status, text.slice(0, 300));
         }
         return res;
@@ -129,7 +168,7 @@ class RpcClient {
           if (err.status === 401 || err.status === 403) throw upstream("RPC rejected the request. Check SOLANA_RPC_URL or HELIUS_API_KEY.");
           if (err.status === 429) {
             if (attempt < attempts) {
-              await sleep(1_500 * attempt);
+              await sleep(retryAfter ?? 1_500 * attempt);
               continue;
             }
             throw upstream("RPC rate limit reached. Configure a dedicated RPC to index wallets reliably.");
@@ -170,18 +209,52 @@ class RpcClient {
     ]);
   }
 
-  async getParsedTransactions(signatures: string[]): Promise<Array<ParsedTransaction | null>> {
-    const out: Array<ParsedTransaction | null> = [];
+  /**
+   * Reads transactions in batches. Rows the endpoint rate limited are retried with a growing
+   * pause, because dropping them silently turns real trades into opening balances. Rows that still
+   * fail, or fail with another error, come back as null and are counted in `unreadable`. No new
+   * batch starts after the deadline, so a caller can tell attempted signatures from skipped ones.
+   */
+  async getParsedTransactions(signatures: string[], deadline = Number.POSITIVE_INFINITY): Promise<TransactionRead> {
+    const transactions: Array<ParsedTransaction | null> = new Array<ParsedTransaction | null>(signatures.length).fill(null);
     const chunk = env.rpcConfigured ? 25 : 10;
+    const params = (signature: string) => [signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: MAX_TX_VERSION, commitment: "confirmed" }];
+    let unreadable = 0;
+    let attempted = 0;
     for (let i = 0; i < signatures.length; i += chunk) {
-      const slice = signatures.slice(i, i + chunk);
-      const results = await this.batch<ParsedTransaction>(
-        "getTransaction",
-        slice.map((s) => [s, { encoding: "jsonParsed", maxSupportedTransactionVersion: MAX_TX_VERSION, commitment: "confirmed" }]),
-      );
-      out.push(...results);
+      if (Date.now() > deadline) break;
+      let pending = signatures.slice(i, i + chunk).map((signature, j) => ({ signature, index: i + j }));
+      attempted += pending.length;
+      for (let attempt = 1; pending.length > 0 && attempt <= 5; attempt++) {
+        if (attempt > 1) {
+          if (Date.now() > deadline) break;
+          // A rate limited row clears when the window has passed, so the public endpoint gets a full window.
+          await sleep(env.rpcConfigured ? 2_000 * attempt : PUBLIC_WINDOW_MS);
+        }
+        await this.spaceBatches();
+        const rows = await this.batch<ParsedTransaction>("getTransaction", pending.map((p) => params(p.signature)));
+        const retry: typeof pending = [];
+        rows.forEach((row, j) => {
+          if (row.rateLimited) {
+            retry.push(pending[j]);
+            return;
+          }
+          transactions[pending[j].index] = row.result;
+          if (row.error) unreadable += 1;
+        });
+        pending = retry;
+      }
+      unreadable += pending.length;
     }
-    return out;
+    return { transactions, unreadable, attempted };
+  }
+
+  private async spaceBatches(): Promise<void> {
+    if (!env.rpcConfigured) {
+      const wait = this.lastBatchAt + PUBLIC_BATCH_SPACING_MS - Date.now();
+      if (wait > 0) await sleep(wait);
+    }
+    this.lastBatchAt = Date.now();
   }
 
   async getTransaction(signature: string): Promise<ParsedTransaction | null> {

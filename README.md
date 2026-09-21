@@ -32,6 +32,7 @@ lib/api-spec             OpenAPI contract (source of truth for the API)
 lib/api-client-react     Generated React Query hooks
 lib/api-zod              Generated Zod schemas used by the server for validation
 lib/db                   Drizzle schema for PostgreSQL and the SQL migrations generated from it
+indexer/                 Rust command that builds wallet history from Solana
 verifier/                Rust command that recomputes a statement hash and checks the memo transaction
 audit/                   Python replay of the ledger that cross checks lots against the API
 docs/                    Demo script, status notes and research
@@ -64,6 +65,9 @@ Checks:
 ```
 pnpm run typecheck                          # every package
 pnpm --filter @workspace/ledger run test    # accounting engine tests
+python3 -m unittest discover -s audit       # replay engine tests
+cargo test --manifest-path indexer/Cargo.toml
+cargo test --manifest-path verifier/Cargo.toml
 ```
 
 ## Environment variables
@@ -104,13 +108,22 @@ Demo ledgers are scripted but priced with the same live pricing pipeline as real
 
 The methodology page in the app describes the same rules for end users.
 
-## Cross check
-
-The independent Python accounting check lives in `audit/`. It replays ledger activity and compares open and closed lots with API results. Its unit tests cover relief methods, fees, multipliers and unknown basis transfers.
-
 ## Independent verification
 
-The Rust command in `verifier/` independently recomputes a statement hash from an API response. It can also inspect the Solana memo transaction and compare its signer and memo with the statement. It supports local files, API retrieval, offline checks and machine readable output. See `verifier/README.md` for build and usage instructions.
+Two commands outside the application rebuild its results from public data. The Python replay ties them together.
+
+- `indexer/` reads the tokenized stock history of a wallet straight from a Solana RPC endpoint and writes a history document in the ledger event shape. It shares no code with the application.
+- `verifier/` recomputes a statement hash from an API response and checks the memo transaction that notarized it.
+- `audit/` replays either the application's own activity or an indexer document through an independent lot engine and compares the lots with the API.
+
+```
+cargo build --manifest-path indexer/Cargo.toml --release
+indexer/target/release/clearbook-index <address> --out history.json
+python3 audit/audit.py --events history.json --api http://localhost:8080/api --wallet <address>
+cargo run --manifest-path verifier/Cargo.toml -- --api http://localhost:8080/api --id <statement-id>
+```
+
+Each directory has a README with the details.
 
 ## Status
 

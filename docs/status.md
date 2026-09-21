@@ -6,7 +6,7 @@ Last updated 20 September 2026.
 
 | Area | What runs | Notes |
 | --- | --- | --- |
-| Wallet indexing | Token account discovery, signature scan per stock token account, parsed transaction classification into buys, sells, transfers and wrapper swaps. Runs in the background: opening a wallet starts the run and returns at once, the status endpoint reports signatures read and events found while it runs and the pages fill in when it finishes | Public RPC by default. 90 second budget and 400 signature cap per run, then the ledger is marked partial with explicit warnings. One run per wallet at a time, held in process memory, so a second instance of the server would not share it. Verified against mainnet wallets holding xStocks and Ondo tokens |
+| Wallet indexing | Token account discovery, signature scan per stock token account, parsed transaction classification into buys, sells, transfers and wrapper swaps. Runs in the background: opening a wallet starts the run and returns at once, the status endpoint reports signatures read and events found while it runs and the pages fill in when it finishes | Public RPC by default. 150 second budget there, 90 seconds on a dedicated endpoint, and a 400 signature cap per run, then the ledger is marked partial with explicit warnings. Rate limited rows inside a batch are retried and counted when they still fail. One run per wallet at a time, held in process memory, so a second instance of the server would not share it. Verified against mainnet wallets holding xStocks and Ondo tokens |
 | Asset registry | 934 tokenized stock mints: 828 xStocks, 98 Ondo Global Markets, 8 PreStocks, with issuer, underlying and decimals | Generated from issuer lists into `lib/ledger/src/registry/assets.json` |
 | Multipliers | Token-2022 scaled UI amount extension read from each mint, current and pending multiplier, observations stored so later increases become income events | Live for Ondo and xStocks mints that use the extension |
 | Pricing | Jupiter price API and PreStocks API, session state of the underlying market, premium or discount against the reference | Pyth Pro is the first choice when `PYTH_API_KEY` is set and drops out with a labeled status when it is not |
@@ -16,6 +16,7 @@ Last updated 20 September 2026.
 | Notarization | Memo transaction built server side for the connected wallet to sign, signature verified against the chain after submission | Only the simulated path has been exercised in this environment because no browser wallet is installed here |
 | Trade | Jupiter quote for a sale, ledger preview of relieved lots and realized P/L, swap transaction built for the connected wallet, confirmation checked on chain | Same caveat as notarization. The simulated sale updates the ledger without a transaction |
 | Demo mode | Three scripted ledgers priced through the live pipeline | |
+| Independent checks | A Rust indexer that rebuilds wallet history from RPC without application code, a Python replay that compares its events and lots with the API and a Rust verifier for statement hashes and memo transactions | Run against a mainnet wallet with 42 transactions: every event id, kind and lot matched under FIFO, LIFO and HIFO |
 
 ## Simulated or best effort
 
@@ -30,7 +31,7 @@ Last updated 20 September 2026.
 
 ## Still needed
 
-1. A paid RPC for the demo. The public endpoint rate limits token account and signature reads and turns a 20 second index into 90 seconds with gaps.
+1. A paid RPC for the demo. The public endpoint rate limits every read and turns a 20 second index into two minutes or more, with gaps on busy wallets.
 2. A Pyth Pro key to make the Pyth path the primary mark and to show confidence intervals.
 3. A live wallet test of notarization and the Jupiter sale in a browser with Phantom or Solflare.
 4. Historical multiplier reconstruction from mint account history so income is complete for wallets indexed after an increase.

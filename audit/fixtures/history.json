@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "wallet": "fixture-wallet",
+  "generatedAt": "2026-09-20T12:00:00Z",
+  "rpc": "https://rpc.example.invalid",
+  "complete": true,
+  "ownerHistoryRead": true,
+  "notes": [],
+  "accounts": [
+    {
+      "address": "fixture-account-a",
+      "mint": "mint-a",
+      "symbol": "STKA",
+      "tokenProgram": "TokenzQdY",
+      "rawBalance": "100000000",
+      "decimals": 8,
+      "signaturesRead": 3,
+      "complete": true
+    },
+    {
+      "address": "fixture-account-b",
+      "mint": "mint-b",
+      "symbol": "STKB",
+      "tokenProgram": "TokenzQdY",
+      "rawBalance": "200000000",
+      "decimals": 8,
+      "signaturesRead": 1,
+      "complete": true
+    }
+  ],
+  "multipliers": {
+    "mint-a": {
+      "multiplier": "1.25",
+      "pendingMultiplier": null,
+      "pendingEffectiveAt": null,
+      "decimals": 8
+    },
+    "mint-b": {
+      "multiplier": "1.0",
+      "pendingMultiplier": null,
+      "pendingEffectiveAt": null,
+      "decimals": 8
+    }
+  },
+  "events": [
+    {
+      "id": "fixture-wallet:buy-signature:0",
+      "signature": "buy-signature",
+      "slot": 101,
+      "blockTime": "2026-01-10T12:00:00Z",
+      "kind": "buy",
+      "mint": "mint-a",
+      "symbol": "STKA",
+      "issuer": "xstocks",
+      "rawDelta": "200000000",
+      "decimals": 8,
+      "grossUsd": 200,
+      "feeUsd": 1,
+      "counterAsset": "USDC",
+      "counterAmount": 201,
+      "multiplierAtEvent": null,
+      "referencePriceUsd": null,
+      "source": "live",
+      "venue": "jupiter",
+      "note": null
+    },
+    {
+      "id": "fixture-wallet:sell-signature:0",
+      "signature": "sell-signature",
+      "slot": 102,
+      "blockTime": "2026-02-10T12:00:00Z",
+      "kind": "sell",
+      "mint": "mint-a",
+      "symbol": "STKA",
+      "issuer": "xstocks",
+      "rawDelta": "-100000000",
+      "decimals": 8,
+      "grossUsd": 140,
+      "feeUsd": 1,
+      "counterAsset": "USDT",
+      "counterAmount": 139,
+      "multiplierAtEvent": null,
+      "referencePriceUsd": null,
+      "source": "live",
+      "venue": "jupiter",
+      "note": null
+    },
+    {
+      "id": "fixture-wallet:transfer-signature:0",
+      "signature": "transfer-signature",
+      "slot": 103,
+      "blockTime": "2026-03-10T12:00:00Z",
+      "kind": "transfer_in",
+      "mint": "mint-b",
+      "symbol": "STKB",
+      "issuer": "ondo",
+      "rawDelta": "200000000",
+      "decimals": 8,
+      "grossUsd": null,
+      "feeUsd": null,
+      "counterAsset": null,
+      "counterAmount": null,
+      "multiplierAtEvent": null,
+      "referencePriceUsd": null,
+      "source": "live",
+      "venue": null,
+      "note": "Received from another wallet."
+    }
+  ]
+}

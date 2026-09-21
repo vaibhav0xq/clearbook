@@ -75,9 +75,59 @@ def tax_rows_from_csv(text: str) -> list[dict[str, Any]]:
 def normalize_events(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, dict) and isinstance(data.get("items"), list):
         return data["items"]
+    if isinstance(data, dict) and isinstance(data.get("events"), list):
+        return data["events"]
     if isinstance(data, list):
         return data
-    raise InputError("Events JSON must be an array or an activity page.")
+    raise InputError("Events JSON must be an array, an activity page or a history document.")
+
+
+def history_multipliers(data: Any) -> dict[str, Decimal]:
+    if not isinstance(data, dict):
+        return {}
+    reported = data.get("multipliers")
+    if not isinstance(reported, dict):
+        return {}
+    result = {}
+    for mint, observation in reported.items():
+        if not isinstance(observation, dict):
+            continue
+        value = decimal(observation.get("multiplier"))
+        if value is not None:
+            result[str(mint)] = value
+    return result
+
+
+def fill_event_multipliers(
+    events: list[dict[str, Any]],
+    document: dict[str, Decimal],
+    actions: list[dict[str, Any]],
+    current: dict[str, Decimal],
+) -> None:
+    for event in events:
+        if decimal(event.get("multiplierAtEvent")) is not None:
+            continue
+        mint = str(event["mint"])
+        value = document.get(mint)
+        if value is None:
+            value = multiplier_at(mint, instant(event["blockTime"]), actions, current)
+        if value is not None:
+            event["multiplierAtEvent"] = str(value)
+
+
+def compare_events(document: list[dict[str, Any]], app: list[dict[str, Any]]) -> list[str]:
+    """Lists events that only one side knows or that the two sides classify differently."""
+    differences: list[str] = []
+    reported = {str(row.get("id")): row for row in app}
+    for row in document:
+        found = reported.pop(str(row.get("id")), None)
+        if found is None:
+            differences.append(f"Event {row.get('id')} is only in the history document.")
+        elif str(found.get("kind")) != str(row.get("kind")):
+            differences.append(f"Event {row.get('id')} kind: document {row.get('kind')} app {found.get('kind')}.")
+    for event_id in reported:
+        differences.append(f"Event {event_id} is only in the app.")
+    return differences
 
 
 def close_enough(left: Any, right: Any) -> bool:
@@ -205,7 +255,7 @@ def api_inputs(
     method: str,
     year: int | None,
     viewer: str | None,
-) -> tuple[Any, Any, list[dict[str, Any]], dict[str, Decimal]]:
+) -> tuple[Any, Any, list[dict[str, Any]], dict[str, Decimal], list[dict[str, Any]]]:
     activity = fetch_activity(base, wallet, method, viewer)
     lots = fetch_json(endpoint(base, wallet, "lots", method=method), viewer)
     actions = fetch_json(endpoint(base, wallet, "events"), viewer)
@@ -219,23 +269,18 @@ def api_inputs(
             portfolio_multipliers[str(position["mint"])] = value
     current = current_multipliers(actions)
     current.update(portfolio_multipliers)
-    for event in activity["items"]:
-        value = multiplier_at(str(event["mint"]), instant(event["blockTime"]), actions, current)
-        if value is not None:
-            event["multiplierAtEvent"] = str(value)
     years = [year] if year is not None else [item["year"] for item in report.get("years", [])]
     tax_rows: list[dict[str, Any]] = []
     for tax_year in years:
         text = fetch_text(endpoint(base, wallet, "tax-lots/export.csv", method=method, year=tax_year), viewer)
         tax_rows.extend(tax_rows_from_csv(text))
-    return activity, lots, tax_rows, current
+    return activity, lots, tax_rows, current, actions
 
 
 def run(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Cross check Clearbook tax lots.")
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--api")
-    source.add_argument("--events")
+    parser.add_argument("--api", help="Base URL for app comparison data.")
+    parser.add_argument("--events", help="Ledger events or an indexer history document.")
     parser.add_argument("--wallet")
     parser.add_argument("--lots")
     parser.add_argument("--tax-lots")
@@ -244,31 +289,60 @@ def run(argv: list[str] | None = None) -> int:
     parser.add_argument("--viewer")
     args = parser.parse_args(argv)
 
+    if not args.api and not args.events:
+        raise InputError("--api or --events is required.")
     if args.api and not args.wallet:
         raise InputError("--wallet is required with --api.")
-    if args.events and not (args.lots or args.tax_lots):
+    if args.events and not args.api and not (args.lots or args.tax_lots):
         raise InputError("--events requires --lots or --tax-lots.")
 
     methods = [args.method] if args.method else ["fifo", "lifo", "hifo"]
     any_difference = False
     saved_events = load_json(args.events) if args.events else None
+    document_multipliers = history_multipliers(saved_events)
+    is_document = isinstance(saved_events, dict) and isinstance(saved_events.get("events"), list)
+    if is_document:
+        document_wallet = saved_events.get("wallet")
+        if args.wallet and document_wallet != args.wallet:
+            raise InputError(f"The history document belongs to {document_wallet}, not {args.wallet}.")
+        if saved_events.get("complete") is False:
+            print("Notice: The history document reports incomplete history.")
+        if saved_events.get("ownerHistoryRead") is False:
+            print("Notice: The history document did not read the wallet's own history, so closed token accounts are not covered.")
+        for note in saved_events.get("notes", []):
+            print(f"  {note}")
+    event_differences: list[str] | None = None
     for method in methods:
         if args.api:
-            event_data, lot_data, tax_data, multipliers = api_inputs(
+            api_event_data, lot_data, tax_data, multipliers, actions = api_inputs(
                 args.api, args.wallet, method, args.tax_year, args.viewer
             )
+            event_data = saved_events if saved_events is not None else api_event_data
+            if is_document and event_differences is None:
+                event_differences = compare_events(saved_events["events"], api_event_data["items"])
+                print(f"events: {len(saved_events['events'])} in the history document and {len(api_event_data['items'])} in the app.")
+                for difference in event_differences:
+                    print(f"  {difference}")
+                if event_differences:
+                    any_difference = True
         else:
             event_data = saved_events
             lot_data = load_json(args.lots) if args.lots else []
             tax_data = normalized_saved_tax(load_json(args.tax_lots)) if args.tax_lots else []
             multipliers = {}
-        result = replay(normalize_events(event_data), method)
+            actions = []
+        multipliers.update(document_multipliers)
+        normalized = normalize_events(event_data)
+        fill_event_multipliers(normalized, document_multipliers, actions, multipliers)
+        result = replay(normalized, method)
         if args.tax_year is not None:
             result.closed = [row for row in result.closed if row.closed_at.year == args.tax_year]
         open_count, open_differences, open_notices = compare_open(result.open_lots(multipliers), lot_data) if args.lots or args.api else (0, [], [])
         closed_count, closed_differences, closed_notices = compare_closed(result.closed, tax_data) if args.tax_lots or args.api else (0, [], [])
         differences = open_differences + closed_differences
         print(f"{method}: {open_count} open lots and {closed_count} closed lots compared.")
+        if open_count == 0 and closed_count == 0 and normalized:
+            print("  No lots were compared although the history has events.")
         for notice in open_notices + closed_notices:
             print(f"  {notice}")
         for difference in differences:
