@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { getDeadline } from "@vercel/functions";
 import {
   MEMO_PROGRAM_ID,
   buildStatement,
@@ -18,7 +20,7 @@ import { explorerTxUrl, shortAddress } from "../lib/http";
 import { logger } from "../lib/logger";
 import { currentViewer, requireViewer } from "../lib/viewer";
 import { assetOf, corporateActionsForContext, corporateActionView, eventView, loadContext, pricingStatusView, walletStatusView, type WalletContext } from "./portfolio";
-import { rpc } from "./rpc";
+import { rpc, type ParsedTransaction } from "./rpc";
 import { getStatement, insertStatement, listStatements, recordPrices, updateStatementProof } from "./store";
 
 export interface StatementProofView {
@@ -381,11 +383,42 @@ export async function prepareNotarization(id: string, payer?: string): Promise<N
   };
 }
 
-export async function submitNotarization(id: string, input: { signature?: string | null; simulate: boolean }): Promise<StatementProofView> {
+/**
+ * A memo transaction carries a blockhash that stays valid for about a minute. A signature that has
+ * not appeared on chain this long after it was submitted can no longer land, so the proof is
+ * marked failed and the owner can sign again.
+ */
+const PENDING_PROOF_TTL_MS = 3 * 60_000;
+/** How long a submission waits for the transaction to confirm before it answers pending. */
+const CONFIRM_WAIT_MS = 20_000;
+/** Time a request keeps for its own response when it waits for a confirmation on a host with a deadline. */
+const RESPONSE_MARGIN_MS = 10_000;
+
+/** The stored proof also remembers when its signature was first submitted, which the API does not expose. */
+interface StoredProof extends StatementProofView {
+  submittedAt?: string;
+}
+
+/** Reads the transaction, polling for up to `waitMs` while the network confirms it. */
+async function findTransaction(signature: string, waitMs: number): Promise<ParsedTransaction | null> {
+  const hostDeadline = getDeadline()?.getTime() ?? Number.POSITIVE_INFINITY;
+  const until = Math.min(Date.now() + waitMs, hostDeadline - RESPONSE_MARGIN_MS);
+  for (;;) {
+    const tx = await rpc().getTransaction(signature);
+    if (tx || Date.now() >= until) return tx;
+    await sleep(1_500);
+  }
+}
+
+export async function submitNotarization(
+  id: string,
+  input: { signature?: string | null; simulate: boolean },
+  options: { wait?: boolean } = {},
+): Promise<StatementProofView> {
   const row = await requireOwnStatement(id);
   const memo = memoForHash(row.hash);
   const now = new Date();
-  const current = row.proof as unknown as StatementProofView | null;
+  const current = row.proof as unknown as StoredProof | null;
   // A confirmed on-chain proof is final. Nothing may replace it, least of all a simulation. A pending
   // proof can only be settled by its own transaction.
   if (current?.status === "confirmed" && (input.simulate || input.signature !== current.signature)) {
@@ -416,10 +449,15 @@ export async function submitNotarization(id: string, input: { signature?: string
     return proof;
   }
   if (!input.signature) throw badRequest("signature is required unless simulate is true.");
-  const tx = await rpc().getTransaction(input.signature);
+  // A re-check of a pending signature keeps its first submission time, so the expiry is measured
+  // from the moment the wallet sent the transaction and not from the latest page load.
+  const submittedAt =
+    current?.status === "pending" && current.signature === input.signature && current.submittedAt ? current.submittedAt : now.toISOString();
+  const tx = await findTransaction(input.signature, options.wait ? CONFIRM_WAIT_MS : 0);
   if (!tx) {
-    const proof: StatementProofView = {
-      status: "pending",
+    const expired = now.getTime() - Date.parse(submittedAt) > PENDING_PROOF_TTL_MS;
+    const proof: StoredProof = {
+      status: expired ? "failed" : "pending",
       kind: "onchain_memo",
       hash: row.hash,
       memo,
@@ -428,7 +466,10 @@ export async function submitNotarization(id: string, input: { signature?: string
       signer: null,
       confirmedAt: null,
       explorerUrl: explorerTxUrl(input.signature, env.cluster),
-      message: "Transaction not confirmed yet. Verification will be retried when you reopen the statement.",
+      message: expired
+        ? "No transaction with this signature reached the network within three minutes, so it can no longer confirm. Sign again to send a new one."
+        : "Transaction not confirmed yet. This page checks again every few seconds.",
+      submittedAt,
     };
     await updateStatementProof(row.id, proof as unknown as Record<string, unknown>);
     return proof;

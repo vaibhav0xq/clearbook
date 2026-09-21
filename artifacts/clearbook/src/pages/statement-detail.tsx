@@ -62,7 +62,12 @@ export default function StatementDetail() {
   const statementId = params?.statementId || "";
 
   const { data: statement, isLoading, error, refetch: refetchStatement } = useGetStatement(statementId, {
-    query: { queryKey: getGetStatementQueryKey(statementId), enabled: !!statementId },
+    query: {
+      queryKey: getGetStatementQueryKey(statementId),
+      enabled: !!statementId,
+      // Reading the statement re-checks a pending proof on the server, so polling settles it.
+      refetchInterval: (query) => (query.state.data?.proof.status === "pending" ? 4000 : false),
+    },
   });
 
   const setHoverMint = useSetHoverMint();
@@ -91,9 +96,10 @@ export default function StatementDetail() {
   const submitNotarization = useSubmitNotarization();
 
   const handleNotarizeSubmit = async (params: { statementId: string; data: { signature?: string | null; simulate: boolean } }) => {
-    await submitNotarization.mutateAsync(params);
+    const proof = await submitNotarization.mutateAsync(params);
     await refetchStatement();
     await refetchPayload();
+    return proof;
   };
 
   // Transfers without a price at receipt or exit carry no value, so a plain zero would overstate what is known.
@@ -247,7 +253,7 @@ export default function StatementDetail() {
                   </div>
 
                   <div className="flex shrink-0 flex-col gap-2">
-                    {canNotarize && notarizationPayload && (statement.isDemo || payer) && <NotarizeButton payload={notarizationPayload} onSubmit={handleNotarizeSubmit} />}
+                    {canNotarize && notarizationPayload && (statement.isDemo || payer) && <NotarizeButton payload={notarizationPayload} refresh={async () => (await refetchPayload()).data} onSubmit={handleNotarizeSubmit} />}
                     {canNotarize && notarizationPayload && !statement.isDemo && !payer && (
                       <span className="text-[12px] leading-relaxed text-muted-foreground">
                         {wallet.connected ? "The connected wallet does not own this ledger." : "Connect the wallet that owns this ledger to sign the memo."}

@@ -82,7 +82,7 @@ router.get("/statements/:statementId/notarization", async (req, res) => {
 router.post("/statements/:statementId/notarization", async (req, res) => {
   const { statementId } = SubmitNotarizationParams.parse(req.params);
   const body = SubmitNotarizationBody.parse(req.body);
-  res.json(SubmitNotarizationResponse.parse(await submitNotarization(statementId, { signature: body.signature ?? null, simulate: body.simulate })));
+  res.json(SubmitNotarizationResponse.parse(await submitNotarization(statementId, { signature: body.signature ?? null, simulate: body.simulate }, { wait: true })));
 });
 
 export default router;

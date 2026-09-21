@@ -6,13 +6,18 @@ import { cn } from "@/lib/utils";
 
 interface NotarizeButtonProps {
   payload: NotarizationPayload;
-  onSubmit: (params: { statementId: string; data: { signature?: string | null; simulate: boolean } }) => Promise<any>;
+  /**
+   * Fetches the payload again. The transaction inside carries a blockhash that expires about a
+   * minute after it was built, so the one built when the page opened is not signed; a fresh one is.
+   */
+  refresh: () => Promise<NotarizationPayload | undefined>;
+  onSubmit: (params: { statementId: string; data: { signature?: string | null; simulate: boolean } }) => Promise<{ status: string } | void>;
 }
 
-export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
+export function NotarizeButton({ payload, refresh, onSubmit }: NotarizeButtonProps) {
   const wallet = useWalletSession();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [outcome, setOutcome] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
   const isSimulated = !wallet.connected || payload.mode === "simulated" || !payload.transaction;
@@ -26,14 +31,17 @@ export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
           statementId: payload.statementId,
           data: { simulate: true },
         });
+        setOutcome("Simulated");
       } else {
-        const txSig = await wallet.signAndSendTransaction(payload.transaction!);
-        await onSubmit({
+        const fresh = (await refresh()) ?? payload;
+        if (!fresh.transaction) throw new Error("The transaction could not be prepared. Try again.");
+        const txSig = await wallet.signAndSendTransaction(fresh.transaction);
+        const proof = await onSubmit({
           statementId: payload.statementId,
           data: { signature: txSig, simulate: false },
         });
+        setOutcome(proof?.status === "confirmed" ? "Confirmed" : "Sent, waiting for confirmation");
       }
-      setSuccess(true);
     } catch (e) {
       setFailure(e instanceof Error ? e.message : "Notarization failed");
     } finally {
@@ -41,13 +49,11 @@ export function NotarizeButton({ payload, onSubmit }: NotarizeButtonProps) {
     }
   };
 
-  if (success) {
+  if (outcome) {
     return (
       <span className="inline-flex items-center gap-2">
         <CheckCircle2 className="h-4 w-4 text-success" />
-        <span className="num text-[12px] text-success">
-          {isSimulated ? "Simulated" : "Confirmed"}
-        </span>
+        <span className="num text-[12px] text-success">{outcome}</span>
       </span>
     );
   }
