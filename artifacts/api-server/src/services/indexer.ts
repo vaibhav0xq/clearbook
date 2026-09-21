@@ -278,6 +278,8 @@ export interface IndexOutcome {
 
 /** How often a running index writes its counters, so a client polling the status sees it move. */
 const PROGRESS_WRITE_MS = 1000;
+/** Signatures read per pass of the transaction loop. Progress is reported after each pass. */
+const READ_SLICE = 10;
 /** Longest quiet stretch before a running index touches its row anyway. Well inside INDEX_STALE_MS. */
 const HEARTBEAT_MS = 20_000;
 
@@ -473,14 +475,16 @@ async function indexLiveWallet(address: string, token: string): Promise<Wallet> 
     }
     let unknownCount = 0;
     let unreadableCount = 0;
-    for (let i = 0; i < signatures.length; i += 50) {
+    // Ten signatures per pass, so the counters a client polls move every couple of seconds at
+    // the default provider pace instead of once per fifty.
+    for (let i = 0; i < signatures.length; i += READ_SLICE) {
       if (Date.now() > deadline) {
         truncated = true;
         warnings.push(`Indexing stopped after ${budgetSeconds} seconds. Older activity is summarized as an opening balance.`);
         break;
       }
       // Newest first, so that a time budget cut drops the oldest history.
-      const slice = signatures.slice(Math.max(0, signatures.length - i - 50), signatures.length - i).reverse();
+      const slice = signatures.slice(Math.max(0, signatures.length - i - READ_SLICE), signatures.length - i).reverse();
       const { transactions: txs, unreadable, attempted } = await client.getParsedTransactions(slice.map((s) => s.signature), deadline);
       unreadableCount += unreadable;
       txs.forEach((tx, j) => {
