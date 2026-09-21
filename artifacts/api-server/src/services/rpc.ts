@@ -115,32 +115,45 @@ export class RpcDeadline extends Error {
 
 /**
  * Paces requests to a configured provider. Providers count every row of a batch against a per
- * second allowance and reject the whole response once it is spent, so the bucket holds rows: a
- * request takes as many tokens as it has rows and waits for them when the bucket is short. A 429
- * empties the bucket and holds the next request for the pause the provider asked for.
+ * second allowance and reject the whole response once it is spent, so the bucket holds rows. A
+ * request reserves its rows the moment it asks, which puts concurrent callers in a queue behind
+ * each other instead of letting them read the same balance and send together. A 429 empties the
+ * bucket and holds every caller for the pause the provider asked for.
  */
 class RowBucket {
   private tokens = 0;
   private refilledAt = 0;
   private holdUntil = 0;
 
-  /** Milliseconds a request of `rows` rows has to wait before it may start. */
-  wait(rows: number, now: number): number {
-    this.refill(now);
-    const rate = env.rpcRequestsPerSecond;
-    const forRows = this.tokens >= rows ? 0 : ((rows - this.tokens) / rate) * 1000;
-    return Math.max(0, this.holdUntil - now, forRows);
-  }
-
-  take(rows: number, now: number): void {
+  /**
+   * Reserves `rows` and returns the milliseconds the caller has to wait before sending. A negative
+   * balance is rows already promised to earlier callers, so a new caller waits for those first.
+   */
+  reserve(rows: number, now: number): number {
     this.refill(now);
     this.tokens -= rows;
+    const deficit = this.tokens < 0 ? (-this.tokens / env.rpcRequestsPerSecond) * 1000 : 0;
+    return Math.max(0, this.holdUntil - now, deficit);
   }
 
+  /** Gives back a reservation whose caller stopped before sending. */
+  release(rows: number): void {
+    this.tokens += rows;
+  }
+
+  /** Milliseconds left of a hold. A hold can start while a caller sleeps, so it is checked again after every wait. */
+  holdLeft(now: number): number {
+    return Math.max(0, this.holdUntil - now);
+  }
+
+  /**
+   * The provider answered 429: its allowance is spent. Nothing is sent for `holdMs`, the balance
+   * starts again from zero and rows other callers already reserved stay owed.
+   */
   drain(holdMs: number, now: number): void {
     this.refill(now);
-    this.tokens = 0;
-    this.holdUntil = now + holdMs;
+    this.tokens = Math.min(this.tokens, 0);
+    this.holdUntil = Math.max(this.holdUntil, now + holdMs);
   }
 
   private refill(now: number): void {
@@ -161,15 +174,21 @@ class RpcClient {
     return this.url;
   }
 
-  /** Public endpoints pace themselves per batch below. Configured providers are paced by rows. */
+  /**
+   * Public endpoints pace themselves per batch below. Configured providers are paced by rows. A
+   * caller whose turn would come after its deadline gives its rows back and reports the cut.
+   */
   private async pace(rows: number, deadline: number): Promise<void> {
     if (!env.rpcConfigured) return;
-    const wait = this.bucket.wait(rows, Date.now());
-    if (wait > 0) {
-      if (Date.now() + wait >= deadline) throw new RpcDeadline();
+    let wait = this.bucket.reserve(rows, Date.now());
+    while (wait > 0) {
+      if (Date.now() + wait >= deadline) {
+        this.bucket.release(rows);
+        throw new RpcDeadline();
+      }
       await sleep(wait);
+      wait = this.bucket.holdLeft(Date.now());
     }
-    this.bucket.take(rows, Date.now());
   }
 
   async call<T>(method: string, params: unknown[], deadline = Number.POSITIVE_INFINITY): Promise<T> {
@@ -293,8 +312,9 @@ class RpcClient {
    */
   async getParsedTransactions(signatures: string[], deadline = Number.POSITIVE_INFINITY): Promise<TransactionRead> {
     const transactions: Array<ParsedTransaction | null> = new Array<ParsedTransaction | null>(signatures.length).fill(null);
-    // A batch never asks for more rows than one second of the provider's allowance.
-    const chunk = env.rpcConfigured ? Math.min(25, Math.max(5, Math.floor(env.rpcRequestsPerSecond))) : 10;
+    // A batch never asks for more rows than one second of the provider's allowance, and never for
+    // more than the 20 rows the Helius free plan accepts in one request.
+    const chunk = env.rpcConfigured ? Math.max(1, Math.min(20, Math.floor(env.rpcRequestsPerSecond))) : 10;
     const params = (signature: string) => [signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: MAX_TX_VERSION, commitment: "confirmed" }];
     let unreadable = 0;
     let attempted = 0;
