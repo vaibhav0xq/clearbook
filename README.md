@@ -74,7 +74,7 @@ cargo test --manifest-path verifier/Cargo.toml
 
 The web app is a static build and the API is a long running Node process, so they deploy separately.
 
-1. Database. Create a PostgreSQL database (Neon works on the free tier) and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`.
+1. Database. Create a PostgreSQL database and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`. On Supabase use the Session pooler string (port 5432, user `postgres.<project ref>`) rather than the direct host, which is reachable over IPv6 only. Append `?sslmode=no-verify` to it: the connection is then encrypted and the driver skips the chain check that fails on the Supabase certificate authority. Neon strings work as they are.
 2. API. The `Dockerfile` at the repository root builds the API server. Point Railway, Render or Fly at the repository and set `DATABASE_URL`, `APP_URL` (the public web address) and any RPC or price keys from the table below. The container listens on `PORT`. Indexing runs keep their state in process memory, so run one instance.
 3. Web. Import the repository into Vercel. `vercel.json` carries the install command, the build command and the output directory and Vercel reads the pnpm version from the `packageManager` field, so the project needs no settings. Replace `https://api.clearbook.example` in `vercel.json` with the API address. Vercel then forwards `/api/*` to the API and the browser never talks to a second origin.
 
