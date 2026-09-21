@@ -8,6 +8,13 @@
       "when": 1789936297536,
       "tag": "0000_initial_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789991259668,
+      "tag": "0001_index_run_token",
+      "breakpoints": true
     }
   ]
 }

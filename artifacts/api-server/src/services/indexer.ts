@@ -13,7 +13,8 @@ import { badRequest, HttpError } from "../lib/errors";
 import { logger } from "../lib/logger";
 import { rpc, type ParsedTransaction, type SignatureInfo } from "./rpc";
 import { waitUntil } from "@vercel/functions";
-import { claimIndexRun, countEvents, getWallet, listEvents, replaceEvents, upsertWallet } from "./store";
+import { claimIndexRun, countEvents, finishOwnedRun, getWallet, listEvents, replaceEvents, updateOwnedRun, upsertWallet } from "./store";
+import { randomUUID } from "node:crypto";
 
 export function isValidAddress(address: string): boolean {
   if (isDemoId(address)) return true;
@@ -245,6 +246,12 @@ interface TokenAccountRef {
  */
 const INDEX_TIME_BUDGET_MS = env.rpcConfigured ? 90_000 : 150_000;
 /**
+ * Wall clock cap for a whole run, counted from before the token accounts are read. The RPC
+ * client may wait out several rate limit windows past a deadline before it checks it again, up to
+ * about 75 seconds, so this keeps the run inside the 300 second limit of a serverless host.
+ */
+const RUN_HARD_STOP_MS = 200_000;
+/**
  * A wallet stuck in "indexing" longer than this is treated as abandoned and indexed again on the
  * next request. A live run touches its row at least every 20 seconds even while it waits out a
  * rate limit, so only a lost process reads as abandoned.
@@ -274,9 +281,29 @@ interface IndexRun {
  */
 const inFlight = new Map<string, IndexRun>();
 
+async function currentRow(address: string): Promise<Wallet> {
+  const wallet = await getWallet(address);
+  if (!wallet) throw new Error(`wallet ${address} disappeared during its index run`);
+  return wallet;
+}
+
+/**
+ * Follows a run owned by another process through its row and resolves with the final row, or
+ * with the row as it stands once the run looks abandoned or has taken longer than any run may.
+ */
+async function followRun(address: string): Promise<Wallet> {
+  const giveUpAt = Date.now() + RUN_HARD_STOP_MS + INDEX_STALE_MS;
+  for (;;) {
+    const wallet = await currentRow(address);
+    if (wallet.state !== "indexing" || Date.now() - wallet.updatedAt.getTime() > INDEX_STALE_MS || Date.now() > giveUpAt) return wallet;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
 function launch(address: string): IndexRun {
   const running = inFlight.get(address);
   if (running) return running;
+  const token = randomUUID();
   const claim = claimIndexRun(
     {
       address,
@@ -288,24 +315,24 @@ function launch(address: string): IndexRun {
       signaturesScanned: 0,
       unknownTransactions: 0,
       warnings: [],
+      runToken: token,
     },
     INDEX_STALE_MS,
   );
-  const current = async (): Promise<Wallet> => {
-    const wallet = await getWallet(address);
-    if (!wallet) throw new Error(`wallet ${address} disappeared while claiming its index run`);
-    return wallet;
-  };
-  const started = claim.then((claimed) => claimed ?? current());
+  const started = claim.then((claimed) => claimed ?? currentRow(address));
   const finished = claim
-    .then((claimed) => (claimed ? indexLiveWallet(address) : current()))
+    .then((claimed) => {
+      if (!claimed) return followRun(address);
+      const run = indexLiveWallet(address, token);
+      // A serverless host ends the invocation once the response is out unless it is told that
+      // work is still running. Outside such a host this call does nothing.
+      waitUntil(run);
+      return run;
+    })
     .finally(() => inFlight.delete(address));
   // The run reports its own failures through the wallet row. Only the first write can reject, and
   // the caller of `started` sees that.
   finished.catch(() => undefined);
-  // A serverless host ends the invocation once the response is out unless it is told that work is
-  // still running. Outside such a host this call does nothing.
-  waitUntil(finished);
   const run = { started, finished };
   inFlight.set(address, run);
   return run;
@@ -332,18 +359,36 @@ export function startIndexing(address: string): Promise<Wallet> {
   return launch(address).started;
 }
 
-async function indexLiveWallet(address: string): Promise<Wallet> {
-  let lastProgressAt = Date.now();
+/** Thrown inside a run once another process has taken the wallet over. The run then ends quietly. */
+class RunTakenOver extends Error {
+  constructor() {
+    super("index run taken over by another process");
+  }
+}
+
+async function indexLiveWallet(address: string, token: string): Promise<Wallet> {
+  const runStartedAt = Date.now();
+  let lastProgressAt = runStartedAt;
   let latest = { signaturesScanned: 0, eventsIndexed: 0 };
   let progressWrite: Promise<unknown> = Promise.resolve();
+  let takenOver = false;
+  let finishing = false;
   const write = () => {
+    if (finishing || takenOver) return;
     lastProgressAt = Date.now();
     // Writes queue behind each other and never fail the run; the final write carries the truth.
-    progressWrite = progressWrite.then(() => upsertWallet({ address, state: "indexing", ...latest })).catch((err) => {
-      logger.warn({ err, address }, "Indexing progress write failed");
-    });
+    // A write that finds the row owned by someone else stops the run at its next check.
+    progressWrite = progressWrite
+      .then(() => updateOwnedRun(address, token, { state: "indexing", ...latest }))
+      .then((row) => {
+        if (!row) takenOver = true;
+      })
+      .catch((err) => {
+        logger.warn({ err, address }, "Indexing progress write failed");
+      });
   };
   const progress = (signaturesScanned: number, eventsIndexed: number) => {
+    if (takenOver) throw new RunTakenOver();
     latest = { signaturesScanned, eventsIndexed };
     if (Date.now() - lastProgressAt >= PROGRESS_WRITE_MS) write();
   };
@@ -353,12 +398,18 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     if (Date.now() - lastProgressAt >= HEARTBEAT_MS) write();
   }, HEARTBEAT_MS);
   heartbeat.unref();
+  // No progress write may land after the final row. Stops the heartbeat and drains the queue.
+  const settle = async () => {
+    finishing = true;
+    clearInterval(heartbeat);
+    await progressWrite;
+  };
   try {
     const client = rpc();
     const accounts = await client.getTokenAccountsByOwner(address);
     const stockAccounts = accounts.filter((a) => getAsset(a.mint));
     const startedAt = Date.now();
-    const deadline = startedAt + INDEX_TIME_BUDGET_MS;
+    const deadline = Math.min(startedAt + INDEX_TIME_BUDGET_MS, runStartedAt + RUN_HARD_STOP_MS);
     const scan = await collectSignatures(
       address,
       stockAccounts.map((a) => ({ pubkey: a.pubkey, amount: a.amount })),
@@ -471,9 +522,8 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
     if (unknownCount > 0) warnings.push(`${unknownCount} transaction${unknownCount === 1 ? "" : "s"} could not be classified.`);
     if (!env.rpcConfigured) warnings.push("Indexed through the public RPC endpoint. Set SOLANA_RPC_URL or HELIUS_API_KEY for deeper history.");
 
-    // The final row must land after any progress write still in flight.
-    await progressWrite;
-    await replaceEvents(address, events, "simulated");
+    await settle();
+    if (takenOver) throw new RunTakenOver();
     const hasStocks = stockAccounts.length > 0 || events.length > 0;
     const state = !hasStocks ? "empty" : truncated || unknownCount > 0 || unreadableCount > 0 ? "partial" : "ready";
     const message = !hasStocks
@@ -481,28 +531,37 @@ async function indexLiveWallet(address: string): Promise<Wallet> {
       : state === "partial"
         ? "Indexed with gaps. See the warnings for what could not be reconstructed."
         : "Indexed from Solana mainnet.";
-    // Awaited inside the try so a failed final write still lands the wallet in the error state below.
-    return await upsertWallet({
+    // Ledger and final row land together, and only if this run still owns the wallet. Awaited
+    // inside the try so a failed write still lands the wallet in the error state below.
+    const finished = await finishOwnedRun(
       address,
-      isDemo: false,
-      state,
-      source: "live",
-      message,
-      eventsIndexed: events.length,
-      signaturesScanned: signatures.length,
-      unknownTransactions: unknownCount,
-      lastSignature: signatures.length ? signatures[signatures.length - 1].signature : null,
-      lastIndexedAt: new Date(),
-      warnings,
-    });
+      token,
+      events,
+      {
+        state,
+        source: "live",
+        message,
+        eventsIndexed: events.length,
+        signaturesScanned: signatures.length,
+        unknownTransactions: unknownCount,
+        lastSignature: signatures.length ? signatures[signatures.length - 1].signature : null,
+        lastIndexedAt: new Date(),
+        warnings,
+      },
+      "simulated",
+    );
+    if (!finished) throw new RunTakenOver();
+    return finished;
   } catch (err) {
+    await settle();
+    if (err instanceof RunTakenOver || takenOver) {
+      logger.info({ address }, "Index run taken over by another process");
+      return currentRow(address);
+    }
     const message = err instanceof HttpError ? err.message : err instanceof Error ? err.message : "Indexing failed.";
     logger.error({ err, address }, "Indexing failed");
-    await progressWrite;
     // If this write fails too the row stays "indexing" and the stale rule in ensureWalletRow restarts it.
-    return upsertWallet({ address, isDemo: false, state: "error", source: "unavailable", message, lastIndexedAt: new Date(), warnings: [] });
-  } finally {
-    clearInterval(heartbeat);
+    return (await updateOwnedRun(address, token, { state: "error", source: "unavailable", message, lastIndexedAt: new Date(), warnings: [] })) ?? currentRow(address);
   }
 }
 

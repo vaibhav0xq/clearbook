@@ -126,8 +126,14 @@ export async function countEvents(address: string, source?: string): Promise<num
   return rows.length;
 }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 export async function replaceEvents(address: string, events: LedgerEventInput[], keepSource?: string): Promise<void> {
-  await db.transaction(async (tx) => {
+  await db.transaction((tx) => replaceEventsIn(tx, address, events, keepSource));
+}
+
+async function replaceEventsIn(tx: Tx, address: string, events: LedgerEventInput[], keepSource?: string): Promise<void> {
+  {
     if (keepSource) {
       const rows = await tx.select().from(ledgerEventsTable).where(eq(ledgerEventsTable.address, address));
       const drop = rows.filter((r) => r.source !== keepSource).map((r) => r.id);
@@ -141,6 +147,38 @@ export async function replaceEvents(address: string, events: LedgerEventInput[],
         await tx.insert(ledgerEventsTable).values(rows.slice(i, i + 200)).onConflictDoNothing();
       }
     }
+  }
+}
+
+/**
+ * Writes progress for the run identified by `token`. Returns the row, or undefined when the run
+ * has been taken over, in which case the caller must stop writing.
+ */
+export async function updateOwnedRun(address: string, token: string, values: Partial<Wallet>): Promise<Wallet | undefined> {
+  const rows = await db
+    .update(walletsTable)
+    .set({ ...values, updatedAt: new Date() })
+    .where(and(eq(walletsTable.address, address), eq(walletsTable.runToken, token)))
+    .returning();
+  return rows[0];
+}
+
+/**
+ * Lands the result of an index run: the ledger and the final wallet row in one transaction, only
+ * if the run still owns the wallet. A run that lost the wallet to a takeover gets undefined and
+ * leaves the ledger untouched.
+ */
+export async function finishOwnedRun(address: string, token: string, events: LedgerEventInput[], values: Partial<Wallet>, keepSource?: string): Promise<Wallet | undefined> {
+  return db.transaction(async (tx) => {
+    const owner = await tx.select({ runToken: walletsTable.runToken }).from(walletsTable).where(eq(walletsTable.address, address)).for("update");
+    if (owner[0]?.runToken !== token) return undefined;
+    await replaceEventsIn(tx, address, events, keepSource);
+    const rows = await tx
+      .update(walletsTable)
+      .set({ ...values, runToken: null, updatedAt: new Date() })
+      .where(eq(walletsTable.address, address))
+      .returning();
+    return rows[0];
   });
 }
 

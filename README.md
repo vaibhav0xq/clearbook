@@ -74,9 +74,11 @@ cargo test --manifest-path verifier/Cargo.toml
 
 The repository deploys to Vercel as one project: the web app as static files and the API as a single function behind `/api`. `vercel.json` points at `vercel-build.mjs`, which builds both and writes the Vercel build output, so the project needs no framework settings.
 
-1. Create a PostgreSQL database and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`. On Supabase use the Session pooler string (port 5432, user `postgres.<project ref>`) rather than the direct host, which is reachable over IPv6 only. Append `?sslmode=no-verify` to it: the connection is then encrypted and the driver skips the chain check that fails on the Supabase certificate authority. Neon strings work as they are.
-2. Import the repository into Vercel and set `DATABASE_URL` plus any RPC or price keys from the table below. `APP_URL` is optional there; without it the API uses the project's production domain for statement links.
+1. Create a PostgreSQL database and apply the schema once: `DATABASE_URL=postgres://... pnpm --filter @workspace/db run migrate`. On Supabase use the pooler strings (user `postgres.<project ref>`) rather than the direct host, which is reachable over IPv6 only, and append `?sslmode=no-verify` to them: the connection is then encrypted and the driver skips the chain check that fails on the Supabase certificate authority. Run the migration over the Session pooler (port 5432). Neon strings work as they are.
+2. Import the repository into Vercel and set `DATABASE_URL` plus any RPC or price keys from the table below. On Supabase give Vercel the Transaction pooler string (port 6543), which shares a small set of database connections between function instances. `APP_URL` is optional there; without it the API uses the project's production domain for statement links. Put the database and the Vercel function region in the same part of the world; the default function region is Washington, D.C.
 3. Open `/api/config` on the deployed domain. It lists which data sources are live and which run as labelled fallbacks.
+
+The build log names the pnpm version. Should it pick pnpm 9 for the lockfile, set `ENABLE_EXPERIMENTAL_COREPACK` to `1` in the project so the pinned version from `package.json` is used.
 
 An index run keeps working after its response is sent. The function declares this to the host and continues until the run finishes, within the 300 second limit of the free plan and comfortably above the 150 second budget of the public RPC. Progress lives in the database, so any instance can answer the status polls and a run whose process was lost is picked up again after 90 seconds without progress.
 

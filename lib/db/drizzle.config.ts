@@ -13,8 +13,10 @@ if (!process.env.DATABASE_URL) {
 }
 
 export default defineConfig({
-  schema: path.join(__dirname, "./src/schema/index.ts"),
-  out: path.join(__dirname, "./migrations"),
+  // Relative to the package directory, where every script runs. drizzle-kit generate mishandles
+  // absolute output paths.
+  schema: "./src/schema/index.ts",
+  out: "./migrations",
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL,

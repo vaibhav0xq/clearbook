@@ -6,6 +6,8 @@ export const walletsTable = pgTable("wallets", {
   address: text("address").primaryKey(),
   isDemo: boolean("is_demo").notNull().default(false),
   state: text("state").notNull().default("not_indexed"),
+  /** Identifies the process that owns the current index run. Its writes must carry the same token. */
+  runToken: text("run_token"),
   source: text("source").notNull().default("live"),
   message: text("message").notNull().default(""),
   eventsIndexed: integer("events_indexed").notNull().default(0),
