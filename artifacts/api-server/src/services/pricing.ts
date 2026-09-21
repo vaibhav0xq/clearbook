@@ -309,51 +309,111 @@ interface LazerResponse {
   parsed?: { timestampUs?: string | number; priceFeeds?: LazerFeed[] };
 }
 
+type PythFeedRef = { symbol: string; feed: NonNullable<ReturnType<typeof getPythFeed>> };
+
 /**
- * Pyth Pro (Lazer) latest prices. Requires PYTH_API_KEY. A 401 or 403 marks
- * the key as unauthorized and the caller falls back to the next source.
+ * Feeds the current plan does not cover. Pyth answers a request that contains one such feed
+ * with 403 "Not entitled: feed <id>" for the whole batch, so denied ids are remembered and left
+ * out of later requests. The entry expires so a plan upgrade is picked up without a restart.
+ */
+const PYTH_DENIED_TTL_MS = 6 * 60 * 60 * 1000;
+const pythDenied = new Map<number, number>();
+const pythCovered = new Set<string>();
+const NOT_ENTITLED = /Not entitled: feed (\d+)/;
+
+function pythDeniedFeed(err: unknown): number | null {
+  if (!(err instanceof UpstreamStatusError) || err.status !== 403) return null;
+  const m = NOT_ENTITLED.exec(err.bodyText);
+  return m ? Number(m[1]) : null;
+}
+
+async function pythLatest(feeds: PythFeedRef[]): Promise<LazerResponse> {
+  return fetchJson<LazerResponse>(`${env.pythBaseUrl}/v1/latest_price`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.pythApiKey}` },
+    body: {
+      priceFeedIds: feeds.map((f) => f.feed.id),
+      properties: ["price", "exponent", "publisherCount"],
+      formats: [],
+      channel: "fixed_rate@200ms",
+    },
+    timeoutMs: 8_000,
+  });
+}
+
+function readPythResponse(json: LazerResponse, feeds: PythFeedRef[], out: Map<string, RawQuote>): void {
+  const ts = json.parsed?.timestampUs ? new Date(Number(json.parsed.timestampUs) / 1000) : new Date();
+  const byId = new Map(feeds.map((f) => [f.feed.id, f]));
+  for (const pf of json.parsed?.priceFeeds ?? []) {
+    const f = byId.get(pf.priceFeedId);
+    if (!f) continue;
+    pythCovered.add(f.symbol);
+    if (pf.price === null || pf.price === undefined) continue;
+    const exponent = pf.exponent ?? f.feed.exponent ?? -8;
+    const price = Number(pf.price) * 10 ** exponent;
+    if (!Number.isFinite(price) || price <= 0) continue;
+    out.set(f.symbol, { price, publishTime: ts, confidence: null, feed: f.symbol });
+  }
+}
+
+/** Records a failed Pyth request. Returns true when the failure was a plan coverage refusal. */
+function notePythFailure(err: unknown, now: number): boolean {
+  const denied = pythDeniedFeed(err);
+  if (denied !== null) {
+    // The key itself was accepted; the plan does not include this feed.
+    pythDenied.set(denied, now + PYTH_DENIED_TTL_MS);
+    pythAuthorized = true;
+    return true;
+  }
+  if (err instanceof UpstreamStatusError && (err.status === 401 || err.status === 403)) {
+    pythAuthorized = false;
+    pythLastError = "Pyth rejected the API key.";
+  } else {
+    pythLastError = err instanceof Error ? err.message : String(err);
+  }
+  logger.warn({ err: pythLastError }, "Pyth request failed");
+  return false;
+}
+
+/**
+ * Pyth Pro latest prices. Requires PYTH_API_KEY. Feeds outside the plan are learned from the
+ * first refusal and skipped afterwards; a 401, or a 403 that names no feed, marks the key as
+ * rejected and the caller falls back to the next source.
  */
 async function fetchPyth(feedSymbols: string[]): Promise<Map<string, RawQuote>> {
   const out = new Map<string, RawQuote>();
-  const key = env.pythApiKey;
-  if (!key || feedSymbols.length === 0) return out;
+  if (!env.pythApiKey || feedSymbols.length === 0) return out;
+  const now = Date.now();
   const feeds = feedSymbols
     .map((symbol) => ({ symbol, feed: getPythFeed(symbol) }))
-    .filter((f): f is { symbol: string; feed: NonNullable<ReturnType<typeof getPythFeed>> } => !!f.feed);
+    .filter((f): f is PythFeedRef => !!f.feed)
+    .filter((f) => (pythDenied.get(f.feed.id) ?? 0) <= now);
   if (feeds.length === 0) return out;
   try {
-    const json = await fetchJson<LazerResponse>(`${env.pythBaseUrl}/v1/latest_price`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}` },
-      body: {
-        priceFeedIds: feeds.map((f) => f.feed.id),
-        properties: ["price", "exponent", "publisherCount"],
-        channel: "fixed_rate@200ms",
-        jsonBinaryEncoding: "hex",
-      },
-      timeoutMs: 8_000,
-    });
+    readPythResponse(await pythLatest(feeds), feeds, out);
     pythAuthorized = true;
     pythLastError = null;
-    const ts = json.parsed?.timestampUs ? new Date(Number(json.parsed.timestampUs) / 1000) : new Date();
-    const byId = new Map(feeds.map((f) => [f.feed.id, f]));
-    for (const pf of json.parsed?.priceFeeds ?? []) {
-      const f = byId.get(pf.priceFeedId);
-      if (!f || pf.price === null || pf.price === undefined) continue;
-      const exponent = pf.exponent ?? f.feed.exponent ?? -8;
-      const price = Number(pf.price) * 10 ** exponent;
-      if (!Number.isFinite(price) || price <= 0) continue;
-      out.set(f.symbol, { price, publishTime: ts, confidence: null, feed: f.symbol });
-    }
+    return out;
   } catch (err) {
-    if (err instanceof UpstreamStatusError && (err.status === 401 || err.status === 403)) {
-      pythAuthorized = false;
-      pythLastError = "Pyth rejected the API key.";
-    } else {
-      pythLastError = err instanceof Error ? err.message : String(err);
-    }
-    logger.warn({ err: pythLastError }, "Pyth request failed");
+    if (!notePythFailure(err, now)) return out;
   }
+  // The batch held at least one feed outside the plan. Ask for the rest one feed at a time so
+  // every refusal is learned at once; the next call batches the covered feeds again.
+  const rest = feeds.filter((f) => (pythDenied.get(f.feed.id) ?? 0) <= now);
+  await Promise.all(
+    Array.from({ length: Math.min(6, rest.length) }, async (_, worker) => {
+      for (let i = worker; i < rest.length; i += 6) {
+        const feed = rest[i];
+        try {
+          readPythResponse(await pythLatest([feed]), [feed], out);
+          pythAuthorized = true;
+          pythLastError = null;
+        } catch (err) {
+          notePythFailure(err, now);
+        }
+      }
+    }),
+  );
   return out;
 }
 
@@ -441,6 +501,7 @@ export async function priceMints(mints: string[], options: PricingOptions = {}):
   const multipliers = await readMultipliers(assets, jupiter, now);
   const marks = new Map<string, MarkBundle>();
   const sourcesUsed = new Set<string>();
+  let pythReferences = 0;
 
   for (const asset of assets) {
     const session = sessionForAsset(asset, now);
@@ -487,6 +548,7 @@ export async function priceMints(mints: string[], options: PricingOptions = {}):
     if (pythEquity) {
       referencePrice = pythEquity.price;
       referenceSource = "Pyth";
+      pythReferences++;
     } else if (p && p.markPrice > 0) {
       referencePrice = p.markPrice;
       referenceSource = "PreStocks mark";
@@ -536,7 +598,7 @@ export async function priceMints(mints: string[], options: PricingOptions = {}):
   }
 
   const feedsResolved = [...marks.values()].filter((m) => m.mark.price !== null).length;
-  const summary = summarize(sourcesUsed, feedsResolved, assets.length, errors);
+  const summary = summarize(sourcesUsed, feedsResolved, assets.length, errors, pythReferences);
   return {
     asOf: now,
     marks,
@@ -566,6 +628,7 @@ function summarize(
   resolved: number,
   total: number,
   errors: string[],
+  pythReferences: number,
 ): Pick<PricingSnapshot, "provider" | "providerLabel" | "mode" | "headline" | "detail"> {
   const live = [...sources].filter((s) => s !== "demo");
   const key = env.pythApiKey;
@@ -605,7 +668,11 @@ function summarize(
       ? "Pyth rejected the configured key, so marks come from Jupiter and PreStocks."
       : sources.has("pyth")
         ? "Pyth feeds supply token and reference prices."
-        : "Pyth returned no prices for these feeds.";
+        : pythReferences > 0
+          ? `Pyth supplies the reference price for ${pythReferences} of ${total} positions. The plan does not cover the other feeds.`
+          : pythLastError
+            ? "Pyth returned no prices for these feeds."
+            : "The Pyth plan does not cover these feeds.";
   return {
     provider,
     providerLabel,
@@ -619,6 +686,22 @@ function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function pythState(): { configured: boolean; authorized: boolean | null; lastError: string | null } {
-  return { configured: !!env.pythApiKey, authorized: env.pythApiKey ? pythAuthorized : null, lastError: pythLastError };
+export function pythState(): {
+  configured: boolean;
+  authorized: boolean | null;
+  lastError: string | null;
+  /** Feeds that returned data under the current plan and feeds the plan refused, so far. */
+  coveredFeeds: number;
+  deniedFeeds: number;
+} {
+  const now = Date.now();
+  let deniedFeeds = 0;
+  for (const expires of pythDenied.values()) if (expires > now) deniedFeeds++;
+  return {
+    configured: !!env.pythApiKey,
+    authorized: env.pythApiKey ? pythAuthorized : null,
+    lastError: pythLastError,
+    coveredFeeds: pythCovered.size,
+    deniedFeeds,
+  };
 }

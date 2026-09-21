@@ -25,7 +25,9 @@ router.get("/config", (_req, res) => {
         : pyth.authorized === false
           ? "Key rejected by Pyth."
           : pyth.authorized
-            ? "Pyth Pro feeds for wrapper tokens and reference equities."
+            ? pyth.deniedFeeds > 0
+              ? `Pyth Pro key active. The plan covers ${pyth.coveredFeeds} of the ${pyth.coveredFeeds + pyth.deniedFeeds} feeds requested so far; the rest fall back to Jupiter and PreStocks.`
+              : "Pyth Pro feeds for wrapper tokens and reference equities."
             : "Key present. Waiting for the first request.",
       requiredEnv: ["PYTH_API_KEY"],
     },

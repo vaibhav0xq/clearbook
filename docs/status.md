@@ -25,14 +25,14 @@ Last updated 20 September 2026.
 - Historical multiplier at the time of a live event is not reconstructed. Income from multiplier increases is computed from observed multiplier changes since the wallet was first indexed, so a wallet indexed today shows no historical income until the next increase.
 - Prices at the time of a historical buy or sell come from the counter asset in the transaction when it was a swap. Transfers in with no counter asset have unknown basis and are excluded from totals.
 - Dividend cash paid outside the multiplier mechanism is not detected.
-- The Pyth Pro response parser follows the published Lazer REST shape but has not been run against a real key.
+- The Pyth path has been run against a Pyth Terminal trial key. The trial plan covers a handful of feeds (TSLA, QQQ and VOO among ours), so it supplies reference prices for those and the rest fall back to Jupiter. A request that names a feed outside the plan is refused as a whole, so the server learns refused feeds from the first response and leaves them out afterwards. Wrapper token feeds need a paid plan before Pyth can be the primary mark.
 - Statement opening and closing values use the mark available at generation time, not the historical close. The statement says so in its assumptions. Period activity, closed lots and realized gains are historical.
 - Money is computed in double precision floats and rounded at presentation. Fine for a statement, not for a general ledger.
 
 ## Still needed
 
 1. A paid RPC plan. The hosted site runs on the Helius free plan at five requests per second, which reads a typical wallet in about ten seconds but leaves a wallet with thousands of signatures partial. The public endpoint, used when no key is set, rate limits every read and turns the same index into two minutes or more.
-2. A Pyth Pro key to make the Pyth path the primary mark and to show confidence intervals.
+2. A Pyth Pro plan that includes the wrapper token feeds, so Pyth becomes the primary mark and confidence intervals can be shown.
 3. A live wallet test of the Jupiter sale in a browser with Phantom or Solflare.
 4. Historical multiplier reconstruction from mint account history so income is complete for wallets indexed after an increase.
 5. Owner level history beyond the current token accounts, so stocks held in closed accounts appear in realized P/L.

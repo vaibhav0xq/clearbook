@@ -107,7 +107,7 @@ The root `Dockerfile` builds the API as a long running server for hosts that run
 | `HELIUS_API_KEY` | no | Builds a Helius RPC URL when `SOLANA_RPC_URL` is not set |
 | `RPC_REQUESTS_PER_SECOND` | no | Pace for a configured RPC provider, counting each row of a batch. Default 5, which the Helius free plan sustains. Raise it on a paid plan |
 | `VITE_SOLANA_RPC_URL` | no | RPC the browser uses to broadcast a signed transaction when the wallet cannot send it |
-| `PYTH_API_KEY` | no | Pyth Pro access token for equity reference prices |
+| `PYTH_API_KEY` | no | Pyth Pro access token. Feeds the plan covers are used for marks and reference prices, the rest fall back to Jupiter and PreStocks |
 | `PYTH_LAZER_URL` | no | Alternative Pyth Pro base URL |
 | `APP_URL` | no | Public URL printed in statements |
 | `SOLANA_CLUSTER` | no | Cluster label, default `mainnet-beta` |
