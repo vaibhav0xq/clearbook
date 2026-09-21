@@ -254,9 +254,11 @@ interface TokenAccountRef {
 
 /**
  * Wall clock budget for one indexing run, after which the run degrades to a partial ledger instead
- * of hanging. The public endpoint reads about one transaction per second, so it gets a longer budget.
+ * of hanging. A configured provider is paced at env.rpcRequestsPerSecond rows, so the 400
+ * signature cap takes about 80 seconds at the default rate. The public endpoint reads about one
+ * transaction per second, so it gets a longer budget.
  */
-const INDEX_TIME_BUDGET_MS = env.rpcConfigured ? 90_000 : 150_000;
+const INDEX_TIME_BUDGET_MS = env.rpcConfigured ? 120_000 : 150_000;
 /**
  * Wall clock cap for a whole run, counted from before the token accounts are read. Every RPC
  * request of the run carries it, so no rate limit pause runs past it, and the rest of the 300

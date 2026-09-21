@@ -80,7 +80,7 @@ The repository deploys to Vercel as one project: the web app as static files and
 
 The build log names the pnpm version. Should it pick pnpm 9 for the lockfile, set `ENABLE_EXPERIMENTAL_COREPACK` to `1` in the project so the pinned version from `package.json` is used.
 
-An index run keeps working after its response is sent. The function declares this to the host and continues until the run finishes, within the 300 second limit of the free plan and comfortably above the 150 second budget of the public RPC. Progress lives in the database, so any instance can answer the status polls and a run whose process was lost is picked up again after 90 seconds without progress.
+An index run keeps working after its response is sent. The function declares this to the host and continues until the run finishes, within the 300 second limit of the free plan and comfortably above the 150 second budget of the public RPC. A configured provider is paced at `RPC_REQUESTS_PER_SECOND`, so a wallet at the 400 signature cap takes about 80 seconds on the Helius free plan. Progress lives in the database, so any instance can answer the status polls and a run whose process was lost is picked up again after 90 seconds without progress.
 
 The root `Dockerfile` builds the API as a long running server for hosts that run containers (Railway, Render, Fly). It listens on `PORT` and needs the same environment. Serve the web build from `artifacts/clearbook/dist/public` in front of it and route `/api` to the container.
 
@@ -91,6 +91,7 @@ The root `Dockerfile` builds the API as a long running server for hosts that run
 | `DATABASE_URL` | yes | PostgreSQL connection string |
 | `SOLANA_RPC_URL` | no | Server side RPC for indexing. Falls back to the public mainnet endpoint |
 | `HELIUS_API_KEY` | no | Builds a Helius RPC URL when `SOLANA_RPC_URL` is not set |
+| `RPC_REQUESTS_PER_SECOND` | no | Pace for a configured RPC provider, counting each row of a batch. Default 5, which the Helius free plan sustains. Raise it on a paid plan |
 | `VITE_SOLANA_RPC_URL` | no | RPC the browser uses to broadcast a signed transaction when the wallet cannot send it |
 | `PYTH_API_KEY` | no | Pyth Pro access token for equity reference prices |
 | `PYTH_LAZER_URL` | no | Alternative Pyth Pro base URL |

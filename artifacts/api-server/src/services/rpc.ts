@@ -113,13 +113,63 @@ export class RpcDeadline extends Error {
   }
 }
 
+/**
+ * Paces requests to a configured provider. Providers count every row of a batch against a per
+ * second allowance and reject the whole response once it is spent, so the bucket holds rows: a
+ * request takes as many tokens as it has rows and waits for them when the bucket is short. A 429
+ * empties the bucket and holds the next request for the pause the provider asked for.
+ */
+class RowBucket {
+  private tokens = 0;
+  private refilledAt = 0;
+  private holdUntil = 0;
+
+  /** Milliseconds a request of `rows` rows has to wait before it may start. */
+  wait(rows: number, now: number): number {
+    this.refill(now);
+    const rate = env.rpcRequestsPerSecond;
+    const forRows = this.tokens >= rows ? 0 : ((rows - this.tokens) / rate) * 1000;
+    return Math.max(0, this.holdUntil - now, forRows);
+  }
+
+  take(rows: number, now: number): void {
+    this.refill(now);
+    this.tokens -= rows;
+  }
+
+  drain(holdMs: number, now: number): void {
+    this.refill(now);
+    this.tokens = 0;
+    this.holdUntil = now + holdMs;
+  }
+
+  private refill(now: number): void {
+    const rate = env.rpcRequestsPerSecond;
+    if (this.refilledAt === 0) this.tokens = rate;
+    else this.tokens = Math.min(rate, this.tokens + ((now - this.refilledAt) / 1000) * rate);
+    this.refilledAt = now;
+  }
+}
+
 class RpcClient {
   private lastBatchAt = 0;
+  private readonly bucket = new RowBucket();
 
   constructor(private readonly url: string = env.rpcUrl) {}
 
   get endpoint(): string {
     return this.url;
+  }
+
+  /** Public endpoints pace themselves per batch below. Configured providers are paced by rows. */
+  private async pace(rows: number, deadline: number): Promise<void> {
+    if (!env.rpcConfigured) return;
+    const wait = this.bucket.wait(rows, Date.now());
+    if (wait > 0) {
+      if (Date.now() + wait >= deadline) throw new RpcDeadline();
+      await sleep(wait);
+    }
+    this.bucket.take(rows, Date.now());
   }
 
   async call<T>(method: string, params: unknown[], deadline = Number.POSITIVE_INFINITY): Promise<T> {
@@ -159,9 +209,11 @@ class RpcClient {
    * with a time budget gets control back at the budget and not one retry window later.
    */
   private async post(body: unknown, deadline = Number.POSITIVE_INFINITY): Promise<Response> {
-    const attempts = env.rpcConfigured ? 2 : 5;
+    const attempts = env.rpcConfigured ? 4 : 5;
+    const rows = Array.isArray(body) ? body.length : 1;
     let retryAfter: number | null = null;
     for (let attempt = 1; ; attempt++) {
+      await this.pace(rows, deadline);
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new RpcDeadline();
       const controller = new AbortController();
@@ -183,8 +235,11 @@ class RpcClient {
         if (err instanceof UpstreamStatusError) {
           if (err.status === 401 || err.status === 403) throw upstream("RPC rejected the request. Check SOLANA_RPC_URL or HELIUS_API_KEY.");
           if (err.status === 429) {
+            // A configured provider has spent its allowance for this second. The bucket refills
+            // from empty and the pause grows with each attempt whatever Retry-After says.
+            const pause = env.rpcConfigured ? Math.max(retryAfter ?? 0, 1_000 * attempt) : (retryAfter ?? 1_500 * attempt);
+            if (env.rpcConfigured) this.bucket.drain(pause, Date.now());
             if (attempt < attempts) {
-              const pause = retryAfter ?? 1_500 * attempt;
               if (Date.now() + pause >= deadline) throw new RpcDeadline();
               await sleep(pause);
               continue;
@@ -238,7 +293,8 @@ class RpcClient {
    */
   async getParsedTransactions(signatures: string[], deadline = Number.POSITIVE_INFINITY): Promise<TransactionRead> {
     const transactions: Array<ParsedTransaction | null> = new Array<ParsedTransaction | null>(signatures.length).fill(null);
-    const chunk = env.rpcConfigured ? 25 : 10;
+    // A batch never asks for more rows than one second of the provider's allowance.
+    const chunk = env.rpcConfigured ? Math.min(25, Math.max(5, Math.floor(env.rpcRequestsPerSecond))) : 10;
     const params = (signature: string) => [signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: MAX_TX_VERSION, commitment: "confirmed" }];
     let unreadable = 0;
     let attempted = 0;

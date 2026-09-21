@@ -53,6 +53,16 @@ export const env = {
   get rpcConfigured(): boolean {
     return !!(read("SOLANA_RPC_URL") || read("HELIUS_API_KEY"));
   },
+  /**
+   * Requests per second sent to a configured provider, counting every row of a batch. The Helius
+   * free plan advertises 10 per second but in measurement sustains 5 rows per second without a
+   * 429, allows bursts of about 20 and rejects any batch above that outright. Raise this on a
+   * paid plan.
+   */
+  get rpcRequestsPerSecond(): number {
+    const v = Number(read("RPC_REQUESTS_PER_SECOND"));
+    return Number.isFinite(v) && v > 0 ? v : 5;
+  },
   /** RPC the browser may use to send signed transactions. Never contains server keys. */
   get rpcUrlPublic(): string {
     return read("PUBLIC_SOLANA_RPC_URL") ?? read("VITE_SOLANA_RPC_URL") ?? DEFAULT_RPC;
