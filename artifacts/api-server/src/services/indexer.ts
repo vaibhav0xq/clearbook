@@ -630,7 +630,7 @@ async function indexLiveWallet(address: string, token: string): Promise<Wallet> 
     if (truncated && !warnings.some((w) => w.startsWith("Indexing stopped"))) warnings.push(`History capped at ${env.maxSignatures} signatures. Older activity is summarized as an opening balance.`);
     if (!scan.ownerHistoryRead) warnings.push("Only transactions touching the current tokenized stock accounts were read. Stocks held in closed token accounts are not included.");
     if (unknownCount > 0) warnings.push(`${unknownCount} transaction${unknownCount === 1 ? "" : "s"} could not be classified.`);
-    if (!env.rpcConfigured) warnings.push("Indexed through the public RPC endpoint. Set SOLANA_RPC_URL or HELIUS_API_KEY for deeper history.");
+    if (!env.rpcConfigured) warnings.push("Indexed through the public RPC endpoint, which returns a shallower history than a configured provider.");
 
     await settle();
     if (takenOver) throw new RunTakenOver();

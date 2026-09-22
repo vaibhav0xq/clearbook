@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -6,7 +7,9 @@ import { cn } from "@/lib/utils";
  * A pointer for the landing: a small dot that sits exactly under the pointer and a ring that
  * follows it with a little lag. Elements with `data-cursor="Open"` turn the ring into a label, and
  * the scene can set a label through `setCursorLabel` when a column is under the pointer.
- * The native cursor is hidden only while this is mounted and the device has a fine pointer.
+ * The native cursor is hidden only while this is mounted and the device has a fine pointer, so
+ * this layer is portaled to the body and kept above every overlay, including the wallet picker at
+ * z-[100]. Otherwise the pointer disappears while a dialog is open.
  */
 
 const EVENT = "clearbook:cursor";
@@ -68,8 +71,8 @@ export function Cursor() {
   const text = label ?? sceneLabel;
   const shown = seen;
 
-  return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 z-[95]">
+  return createPortal(
+    <div aria-hidden className="pointer-events-none fixed inset-0 z-[200]">
       <motion.div
         className="absolute left-0 top-0"
         style={{ x: reduce ? x : rx, y: reduce ? y : ry }}
@@ -98,6 +101,7 @@ export function Cursor() {
         animate={{ opacity: shown && !text ? 1 : 0, scale: down ? 0.6 : 1 }}
         transition={{ duration: 0.2 }}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
