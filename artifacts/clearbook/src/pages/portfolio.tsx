@@ -88,9 +88,9 @@ export default function Portfolio() {
                 value={portfolio.totals.costBasis}
                 sub={
                   portfolio.totals.unknownBasisCount > 0
-                    ? portfolio.totals.unknownBasisCount === portfolio.totals.positionsCount
-                      ? "Unknown lots in every position, excluded"
-                      : `Unknown lots in ${portfolio.totals.unknownBasisCount} ${portfolio.totals.unknownBasisCount === 1 ? "position" : "positions"}, excluded`
+                    ? portfolio.positions.filter((p) => p.basisStatus === "unknown").length === portfolio.totals.positionsCount
+                      ? "Unknown for every position"
+                      : `Estimated or unknown lots in ${portfolio.totals.unknownBasisCount} ${portfolio.totals.unknownBasisCount === 1 ? "position" : "positions"}`
                     : undefined
                 }
                 size="md"

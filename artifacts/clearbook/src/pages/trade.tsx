@@ -594,7 +594,7 @@ export default function Trade() {
                         <div className="flex flex-1 flex-col gap-6">
                           <p className="max-w-[56ch] text-[13px] leading-relaxed text-muted-foreground">
                             {quoteQuery.isPending
-                              ? `Asking Jupiter for a route to sell ${formatQuantity(previewQuantity)} ${selectedPosition.symbol}. The quote usually arrives within a few seconds.`
+                              ? "Asking Jupiter for a route. The quote usually arrives within a few seconds."
                               : previewQuantity > 0
                                 ? `Review the quote to see the route, proceeds, price impact and the realized result of selling ${formatQuantity(previewQuantity)} ${selectedPosition.symbol}.`
                                 : `Enter a quantity of ${selectedPosition.symbol} to request a quote. The relief queue below shows which lots a sale would take first under ${method.toUpperCase()}.`}
