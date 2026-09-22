@@ -72,6 +72,18 @@ export function formatTime(value: string | Date | null | undefined): string {
   return Number.isNaN(d.getTime()) ? "-" : TIME.format(d);
 }
 
+const DAY_TIME = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** Time of day for today, otherwise the day as well, so "Indexed 3:13 PM" cannot refer to yesterday. */
+export function formatRecentTime(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "-";
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return sameDay ? TIME.format(d) : DAY_TIME.format(d);
+}
+
 /** Truncated hash or signature, for table cells. */
 export function truncateHash(value: string, chars = 6): string {
   if (!value) return "";

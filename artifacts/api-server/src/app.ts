@@ -36,6 +36,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(viewerContext);
 
 app.use("/api", router);
+app.use("/api", (req, res) => {
+  res.status(404).json({ code: "not_found", message: "No such API route.", details: { method: req.method, path: req.originalUrl.split("?")[0] } });
+});
 app.use(errorHandler);
 
 export default app;

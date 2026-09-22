@@ -83,7 +83,18 @@ export default function Portfolio() {
               </span>
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-7 border-t hairline pt-6 md:grid-cols-4 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-1">
-              <Figure label="Cost basis" value={portfolio.totals.costBasis} size="md" />
+              <Figure
+                label="Cost basis"
+                value={portfolio.totals.costBasis}
+                sub={
+                  portfolio.totals.unknownBasisCount > 0
+                    ? portfolio.totals.unknownBasisCount === portfolio.totals.positionsCount
+                      ? "Unknown lots in every position, excluded"
+                      : `Unknown lots in ${portfolio.totals.unknownBasisCount} ${portfolio.totals.unknownBasisCount === 1 ? "position" : "positions"}, excluded`
+                    : undefined
+                }
+                size="md"
+              />
               <Figure
                 label="Unrealized"
                 value={portfolio.totals.unrealizedPnl}

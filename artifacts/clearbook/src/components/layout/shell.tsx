@@ -8,7 +8,7 @@ import { useGetWalletStatus, useIndexWallet, useResetWallet, getGetWalletStatusQ
 import { WalletConnectButton, useConnectAndOpen } from "@/components/wallet-connect-button";
 import { useWalletSession } from "@/lib/wallet";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { truncateAddress, formatTime } from "@/lib/format";
+import { truncateAddress, formatRecentTime } from "@/lib/format";
 import { PageTransition } from "@/components/motion/page-transition";
 import { EASE_OUT } from "@/components/motion/reveal";
 import { StageProvider, StageView } from "@/components/layout/stage";
@@ -229,7 +229,7 @@ export function Shell({ address, children }: ShellProps) {
           {status.state === "indexing"
             ? `Indexing. ${status.signaturesScanned} signatures read, ${status.eventsIndexed} events so far`
             : status.lastIndexedAt
-              ? `Indexed ${formatTime(status.lastIndexedAt)}`
+              ? `Indexed ${formatRecentTime(status.lastIndexedAt)}`
               : "Not indexed yet"}
         </span>
         {status.simulatedTrades > 0 && (
@@ -269,10 +269,12 @@ export function Shell({ address, children }: ShellProps) {
             <span>{demoNote}</span>
           </span>
         )}
-        {(status.state === "error" || status.state === "partial") && !status.isDemo && <span className="text-destructive">{status.message}</span>}
+        {(status.state === "error" || status.state === "partial") && !status.isDemo && (
+          <span className={status.state === "error" ? "text-destructive" : "text-foreground/85"}>{status.message}</span>
+        )}
         {status.warnings?.map((w, i) => (
-          <span key={i} className="flex items-center gap-1.5 text-destructive">
-            <AlertTriangle className="h-3 w-3" /> {w}
+          <span key={i} className="flex items-start gap-2 leading-relaxed text-foreground/70">
+            <AlertTriangle className={cn("mt-[3px] h-3 w-3 shrink-0", status.state === "error" ? "text-destructive" : "text-primary")} /> <span>{w}</span>
           </span>
         ))}
       </div>
