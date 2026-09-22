@@ -20,7 +20,7 @@ import {
   getGetAppConfigQueryKey,
 } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { WalletConnectButton } from "@/components/wallet-connect-button";
+import { WalletConnectButton, useConnectAndOpen } from "@/components/wallet-connect-button";
 import { useWalletSession } from "@/lib/wallet";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { formatUSD, formatQuantity, truncateAddress } from "@/lib/format";
@@ -49,6 +49,24 @@ import { EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
 
 const DEMO = "demo-holder";
+
+/**
+ * Public wallets with real tokenized stock positions, read from Solana mainnet. Both belong to
+ * market makers, so their balances move between visits.
+ */
+const PUBLIC_WALLETS = [
+  {
+    address: "89eKgf8u2B5yjU46N1gNQnE4a6Zu7PTCyWBoxZmYghw3",
+    description: "Four xStocks positions with every event in the history read from chain.",
+  },
+  {
+    address: "m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz",
+    description: "Ten positions and thousands of transactions. The ledger reads the recent history and opens the rest as a balance with unknown basis.",
+  },
+];
+
+/** Scripted ledgers offered on the landing page. The empty one stays reachable by id. */
+const SAMPLE_IDS = ["demo-holder", "demo-trader"];
 
 /** A column under the pointer turns the custom cursor into a label. Stable so the scene effect does not rerun. */
 const onStoryHover = (mint: string | null) => setCursorLabel(mint ? "Open lots" : null);
@@ -186,6 +204,7 @@ export default function Home() {
   const [addressError, setAddressError] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const wallet = useWalletSession();
+  const { connect: connectWallet, busy: connectBusy } = useConnectAndOpen();
   const reduce = useReducedMotion();
 
   const storyRef = useRef<HTMLDivElement>(null);
@@ -583,9 +602,11 @@ export default function Home() {
                   </Magnetic>
                 </div>
                 {addressError && <p className="mt-2 text-[12px] text-destructive wide:text-center">{addressError}</p>}
-                {wallet.connected && wallet.publicKey && (
-                  <div className="mt-5 flex flex-wrap items-center gap-2 wide:justify-center">
-                    <span className="mr-1 text-[12px] text-foreground/55">Your wallet is connected</span>
+                <div className="mt-5 flex flex-wrap items-center gap-2 wide:justify-center">
+                  <span className="mr-1 text-[12px] text-foreground/55">
+                    {wallet.connected && wallet.publicKey ? "Your wallet is connected" : "Your own ledger"}
+                  </span>
+                  {wallet.connected && wallet.publicKey ? (
                     <Link
                       href={`/w/${wallet.publicKey}`}
                       data-cursor="Open"
@@ -595,31 +616,61 @@ export default function Home() {
                       <span className="num font-normal opacity-70">{truncateAddress(wallet.publicKey, 4)}</span>
                       <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-500 ease-out-expo group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                     </Link>
-                  </div>
-                )}
-                <div className="mt-5 flex flex-wrap items-center gap-2 wide:justify-center">
-                  <span className="mr-1 text-[12px] text-foreground/55">Or start with a demo ledger</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void connectWallet()}
+                      disabled={connectBusy}
+                      data-cursor="Open"
+                      className="group inline-flex h-8 items-center gap-2 rounded-full bg-foreground pl-3.5 pr-3 text-[12px] font-medium text-background transition-transform duration-500 ease-out-expo hover:scale-[1.03] disabled:opacity-60"
+                    >
+                      Connect a wallet
+                      <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-500 ease-out-expo group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2 wide:justify-center">
+                  <span className="mr-1 text-[12px] text-foreground/55">Public wallets, read live from chain</span>
+                  {PUBLIC_WALLETS.map((w) => (
+                    <button
+                      key={w.address}
+                      type="button"
+                      onClick={() => setLocation(`/w/${w.address}`)}
+                      title={w.description}
+                      data-cursor="Open"
+                      className="group inline-flex h-8 items-center gap-2 rounded-full border hairline bg-white/[0.03] px-3.5 text-[12px] text-foreground transition-all duration-300 hover:border-primary/50 hover:bg-primary/10"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
+                      <span className="num">{truncateAddress(w.address, 4)}</span>
+                      <ArrowUpRight className="h-3.5 w-3.5 text-foreground/50 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2 wide:justify-center">
+                  <span className="mr-1 text-[12px] text-foreground/55">Scripted samples, marked as demo</span>
                   {isLoading && !config && (
                     <>
                       <span className="h-8 w-28 rounded-full shimmer" />
                       <span className="h-8 w-24 rounded-full shimmer" />
                     </>
                   )}
-                  {config?.demoWallets?.map((demo) => (
-                    <button
-                      key={demo.id}
-                      type="button"
-                      onClick={() => setLocation(`/w/${demo.id}`)}
-                      title={demo.description}
-                      data-cursor="Open"
-                      className="group inline-flex h-8 items-center gap-2 rounded-full border hairline bg-white/[0.03] px-3.5 text-[12px] text-foreground transition-all duration-300 hover:border-primary/50 hover:bg-primary/10"
-                    >
-                      {demo.label}
-                      <ArrowUpRight className="h-3.5 w-3.5 text-foreground/50 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
-                    </button>
-                  ))}
+                  {config?.demoWallets
+                    ?.filter((demo) => SAMPLE_IDS.includes(demo.id))
+                    .map((demo) => (
+                      <button
+                        key={demo.id}
+                        type="button"
+                        onClick={() => setLocation(`/w/${demo.id}`)}
+                        title={demo.description}
+                        data-cursor="Open"
+                        className="group inline-flex h-8 items-center gap-2 rounded-full border hairline bg-white/[0.03] px-3.5 text-[12px] text-foreground transition-all duration-300 hover:border-primary/50 hover:bg-primary/10"
+                      >
+                        {demo.label}
+                        <span className="label !text-[9px] text-foreground/45">Demo</span>
+                        <ArrowUpRight className="h-3.5 w-3.5 text-foreground/50 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
+                      </button>
+                    ))}
                 </div>
-                {!wallet.available && <p className="mt-4 text-[12px] text-foreground/45">No Solana wallet detected in this browser.</p>}
               </form>
             </Chapter>
           </div>
