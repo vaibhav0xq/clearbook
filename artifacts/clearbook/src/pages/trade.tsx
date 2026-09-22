@@ -418,7 +418,13 @@ export default function Trade() {
                               : "bg-white/[0.08] text-foreground hover:bg-white/[0.12] border hairline hover:border-white/20"
                           )}
                         >
-                          {quoteQuery.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Review quote"}
+                          {quoteQuery.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" /> Asking Jupiter
+                            </>
+                          ) : (
+                            "Review quote"
+                          )}
                         </button>
                         {quoteQuery.isError && (
                           <div className="text-[13px] text-destructive flex items-start gap-2 mt-2">
@@ -587,9 +593,11 @@ export default function Trade() {
                       ) : (
                         <div className="flex flex-1 flex-col gap-6">
                           <p className="max-w-[56ch] text-[13px] leading-relaxed text-muted-foreground">
-                            {previewQuantity > 0
-                              ? `Review the quote to see the route, proceeds, price impact and the realized result of selling ${formatQuantity(previewQuantity)} ${selectedPosition.symbol}.`
-                              : `Enter a quantity of ${selectedPosition.symbol} to request a quote. The relief queue below shows which lots a sale would take first under ${method.toUpperCase()}.`}
+                            {quoteQuery.isPending
+                              ? `Asking Jupiter for a route to sell ${formatQuantity(previewQuantity)} ${selectedPosition.symbol}. The quote usually arrives within a few seconds.`
+                              : previewQuantity > 0
+                                ? `Review the quote to see the route, proceeds, price impact and the realized result of selling ${formatQuantity(previewQuantity)} ${selectedPosition.symbol}.`
+                                : `Enter a quantity of ${selectedPosition.symbol} to request a quote. The relief queue below shows which lots a sale would take first under ${method.toUpperCase()}.`}
                           </p>
                           <ol className="grid grid-cols-2 gap-x-6 gap-y-5 border-t hairline pt-5 md:grid-cols-4">
                             {SALE_STEPS.map((step, i) => (
