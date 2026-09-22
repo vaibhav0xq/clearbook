@@ -5,7 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invalidateWalletQueries } from "@/lib/wallet-queries";
 import { RefreshCw, AlertTriangle, AlertCircle, ArrowLeft } from "lucide-react";
 import { useGetWalletStatus, useIndexWallet, useResetWallet, getGetWalletStatusQueryKey, type CostMethod } from "@workspace/api-client-react";
-import { WalletConnectButton } from "@/components/wallet-connect-button";
+import { WalletConnectButton, useConnectAndOpen } from "@/components/wallet-connect-button";
+import { useWalletSession } from "@/lib/wallet";
 import { useCostMethod } from "@/hooks/use-cost-method";
 import { truncateAddress, formatTime } from "@/lib/format";
 import { PageTransition } from "@/components/motion/page-transition";
@@ -127,6 +128,38 @@ function SectionTabs({ address, className, layoutId, height = "h-14" }: { addres
   );
 }
 
+function DemoBanner() {
+  const wallet = useWalletSession();
+  const { connect, busy } = useConnectAndOpen();
+  const action = "text-[12px] font-medium text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline disabled:opacity-50";
+  return (
+    <div className="border-b border-primary/20 bg-primary/[0.07]">
+      <div className="ledger flex flex-col gap-2 py-2.5 text-[12px] leading-relaxed text-muted-foreground md:flex-row md:items-center md:gap-6">
+        <p className="flex min-w-0 items-start gap-2.5">
+          <span className="label mt-[3px] shrink-0 text-primary">Demo</span>
+          <span>
+            <span className="text-foreground">Demo ledger.</span> Positions and history are scripted, prices are live and nothing here belongs to a connected wallet.
+          </span>
+        </p>
+        <div className="flex shrink-0 items-center gap-4 md:ml-auto">
+          {wallet.connected && wallet.publicKey ? (
+            <Link href={`/w/${wallet.publicKey}`} className={action}>
+              Open my ledger
+            </Link>
+          ) : (
+            <button type="button" onClick={() => void connect()} disabled={busy} className={action}>
+              Connect a wallet
+            </button>
+          )}
+          <Link href="/" className="text-[12px] text-muted-foreground transition-colors hover:text-foreground">
+            Leave demo
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Shell({ address, children }: ShellProps) {
   const [location] = useLocation();
   const queryClient = useQueryClient();
@@ -232,7 +265,7 @@ export function Shell({ address, children }: ShellProps) {
       <div className="flex flex-col gap-2 text-[13px] text-muted-foreground">
         {demoNote && (
           <span className="flex items-start gap-2.5 leading-relaxed">
-            <span className="label mt-[3px] shrink-0 text-primary">Demo</span>
+            <span className="label mt-[3px] shrink-0 text-primary">Scenario</span>
             <span>{demoNote}</span>
           </span>
         )}
@@ -269,8 +302,8 @@ export function Shell({ address, children }: ShellProps) {
       <div className="relative flex min-h-screen flex-col bg-background">
         {/* Top bar */}
         <header className="sticky top-0 z-40 border-b hairline bg-background/85 backdrop-blur-xl">
-          <div className="ledger flex h-14 items-center gap-6 xl:gap-10">
-            <Brand />
+          <div className="ledger flex h-14 items-center gap-4 sm:gap-6 xl:gap-10">
+            <Brand compactWordmark />
             <SectionTabs address={address} layoutId="nav-active" className="hidden min-w-0 lg:flex" />
             <div className="ml-auto flex shrink-0 items-center gap-3">
               <div className="hidden md:block">
@@ -286,6 +319,9 @@ export function Shell({ address, children }: ShellProps) {
             <SectionTabs address={address} layoutId="nav-active-small" height="h-11" className="-mx-3 overflow-x-auto scrollbar-none" />
           </div>
         </header>
+
+        {/* Demo ledgers say so on every page. Nothing in them belongs to a connected wallet. */}
+        {status?.isDemo && !statusError && <DemoBanner />}
 
         {/* Ledger band */}
         <AnimatePresence initial={false}>

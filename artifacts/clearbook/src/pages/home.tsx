@@ -23,7 +23,7 @@ import { format } from "date-fns";
 import { WalletConnectButton } from "@/components/wallet-connect-button";
 import { useWalletSession } from "@/lib/wallet";
 import { useCostMethod } from "@/hooks/use-cost-method";
-import { formatUSD, formatQuantity } from "@/lib/format";
+import { formatUSD, formatQuantity, truncateAddress } from "@/lib/format";
 import { Brand } from "@/components/layout/brand";
 import { Story } from "@/components/three/story";
 import { buildStrata } from "@/components/three/strata-data";
@@ -270,10 +270,6 @@ export default function Home() {
     setLocation(`/w/${value}`);
   };
 
-  useEffect(() => {
-    if (wallet.connected && wallet.publicKey) setLocation(`/w/${wallet.publicKey}`);
-  }, [wallet.connected, wallet.publicKey, setLocation]);
-
   // Smooth scrolling ties the scene to the wheel. Reduced motion keeps native scrolling.
   const lenisRef = useRef<Lenis | null>(null);
   useEffect(() => {
@@ -434,7 +430,7 @@ export default function Home() {
                 className="mt-8 flex items-center gap-3 text-[12px] text-foreground/55"
               >
                 <span className={cn("h-1.5 w-1.5 rounded-full", demoError ? "bg-destructive" : "bg-primary animate-pulse-dot")} />
-                {demoError ? "Demo ledger unavailable. The API did not respond." : "Live from the demo ledger. Hover a column to read it."}
+                {demoError ? "Demo ledger unavailable. The API did not respond." : "Live from the demo ledger. Hover a column to read it, click one to open the demo."}
               </motion.div>
             </Chapter>
 
@@ -587,6 +583,20 @@ export default function Home() {
                   </Magnetic>
                 </div>
                 {addressError && <p className="mt-2 text-[12px] text-destructive wide:text-center">{addressError}</p>}
+                {wallet.connected && wallet.publicKey && (
+                  <div className="mt-5 flex flex-wrap items-center gap-2 wide:justify-center">
+                    <span className="mr-1 text-[12px] text-foreground/55">Your wallet is connected</span>
+                    <Link
+                      href={`/w/${wallet.publicKey}`}
+                      data-cursor="Open"
+                      className="group inline-flex h-8 items-center gap-2 rounded-full bg-foreground pl-3.5 pr-3 text-[12px] font-medium text-background transition-transform duration-500 ease-out-expo hover:scale-[1.03]"
+                    >
+                      Open my ledger
+                      <span className="num font-normal opacity-70">{truncateAddress(wallet.publicKey, 4)}</span>
+                      <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-500 ease-out-expo group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </Link>
+                  </div>
+                )}
                 <div className="mt-5 flex flex-wrap items-center gap-2 wide:justify-center">
                   <span className="mr-1 text-[12px] text-foreground/55">Or start with a demo ledger</span>
                   {isLoading && !config && (

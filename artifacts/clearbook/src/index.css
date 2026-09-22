@@ -214,9 +214,11 @@
 }
 
 /*
- * Ledger frame. The wallet pages read like a statement: one measured column, up to 1560px, with
- * gutters that stay modest so tables keep their width. The stage band and the top bar align their
- * overlays to the same frame.
+ * Ledger frame. The wallet pages read like a statement: one measured column, up to 1560px on
+ * laptops, with gutters that stay modest so tables keep their width. On wide monitors the column
+ * opens up with fluid gutters, the same as the page frame, so the tables use the display instead
+ * of sitting in a centred strip under a full width band. The stage band and the top bar align
+ * their overlays to the same frame.
  */
 :root {
   --ledger-gutter: 1.25rem;
@@ -233,9 +235,14 @@
     --stage-height: clamp(300px, 36vh, 440px);
   }
 }
+@media (min-width: 100rem) {
+  :root {
+    /* 3.75vw is 60px at the step, so the content column keeps its 1480px and grows from there. */
+    --ledger-gutter: clamp(2.5rem, 3.75vw, 9rem);
+  }
+}
 @media (min-width: 120rem) {
   :root {
-    --ledger-gutter: 3rem;
     --stage-height: clamp(360px, 34vh, 520px);
   }
 }
@@ -257,6 +264,11 @@
     max-width: 1560px;
     margin-inline: auto;
     padding-inline: var(--ledger-gutter);
+  }
+  @media (min-width: 100rem) {
+    .ledger {
+      max-width: none;
+    }
   }
   .stage-band {
     height: var(--stage-height);

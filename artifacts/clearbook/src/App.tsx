@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import { WalletSessionProvider } from '@/lib/wallet';
+import { WalletPicker } from '@/components/wallet-picker';
 import { installViewerHeader } from '@/lib/viewer';
 
 import Home from '@/pages/home';
@@ -67,6 +68,7 @@ function App() {
           <RoutedErrorBoundary>
             <Router />
           </RoutedErrorBoundary>
+          <WalletPicker />
         </WouterRouter>
       </WalletSessionProvider>
     </QueryClientProvider>

@@ -28,7 +28,7 @@ Unknown or estimated figures are always shown as such. Transfers with no known c
 
 ## Try it with your wallet
 
-1. Open https://clearbook-gray.vercel.app and connect a Solana wallet or paste an address to read it without connecting.
+1. Open https://clearbook-gray.vercel.app and connect a Solana wallet or paste an address to read it without connecting. Connect lists the wallets installed in the browser. The chosen wallet approves the connection and signs a sign in message, which costs nothing and proves the account is yours. The session is kept for seven days and ends when you disconnect from the address menu.
 2. Indexing runs in the background. A typical wallet is ready in about ten seconds on the hosted setup and the status line counts signatures and events as they are read. A wallet with a very long history gets a partial ledger with a note about what was left out.
 3. Open Statements, pick a period and generate one. The document hash, the CSV and the PDF are built from the same rows.
 4. Click Sign on chain. Your wallet signs one memo transaction that carries the hash and costs only the network fee. The proof shows the slot and the signer once the network confirms it, usually within a few seconds.
