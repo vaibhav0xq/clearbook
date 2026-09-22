@@ -10,6 +10,7 @@ pub const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuE
 pub const WSOL_MINT: &str = "So11111111111111111111111111111111111111112";
 const JUPITER_V6: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const JUPITER_V4: &str = "JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB";
+const DFLOW_V4: &str = "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH";
 
 // Copied from lib/ledger/src/registry/registry.ts.
 pub const CASH_MINTS: [(&str, &str, u8); 5] = [
@@ -388,6 +389,116 @@ fn token_deltas(tx: &Value, owner: &str) -> Vec<Delta> {
     by_mint
 }
 
+/// Cash value of a stock trade the wallet settled in SOL, read from the counterparties.
+/// A router that starts from SOL fills the stock against its stablecoin pool on the last
+/// hop, so the accounts that handed over the stock received the stablecoins in the same
+/// transaction. Returns None unless those accounts cover the whole stock amount and each
+/// of them settled in stablecoins. Mirrors stableLegAtCounterparty in the application.
+pub fn stable_leg_at_counterparty(
+    tx: &Value,
+    owner: &str,
+    stock_mint: &str,
+    stock_raw: i128,
+) -> Option<(f64, String)> {
+    struct Row {
+        owner: String,
+        mint: String,
+        pre: i128,
+        post: i128,
+    }
+    let mut rows: HashMap<u64, Row> = HashMap::new();
+    for (path, is_post) in [("/meta/preTokenBalances", false), ("/meta/postTokenBalances", true)] {
+        for row in tx.pointer(path).and_then(Value::as_array).into_iter().flatten() {
+            let Some(row_owner) = row.get("owner").and_then(Value::as_str) else {
+                continue;
+            };
+            if row_owner == owner {
+                continue;
+            }
+            let Some(index) = row.get("accountIndex").and_then(Value::as_u64) else {
+                continue;
+            };
+            let amount: i128 = row
+                .pointer("/uiTokenAmount/amount")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let entry = rows.entry(index).or_insert_with(|| Row {
+                owner: row_owner.to_string(),
+                mint: row.get("mint").and_then(Value::as_str).unwrap_or("").to_string(),
+                pre: 0,
+                post: 0,
+            });
+            if is_post {
+                entry.post = amount;
+            } else {
+                entry.pre = amount;
+            }
+        }
+    }
+    struct Side {
+        stock: i128,
+        cash: f64,
+        symbols: Vec<String>,
+    }
+    let mut by_owner: HashMap<String, Side> = HashMap::new();
+    let mut indexes: Vec<_> = rows.keys().copied().collect();
+    indexes.sort_unstable();
+    for index in indexes {
+        let row = &rows[&index];
+        let delta = row.post - row.pre;
+        if delta == 0 {
+            continue;
+        }
+        let cash = CASH_MINTS.iter().find(|v| v.0 == row.mint);
+        if row.mint != stock_mint && cash.is_none() {
+            continue;
+        }
+        let side = by_owner.entry(row.owner.clone()).or_insert(Side {
+            stock: 0,
+            cash: 0.0,
+            symbols: Vec::new(),
+        });
+        if row.mint == stock_mint {
+            side.stock += delta;
+        } else if let Some((_, symbol, decimals)) = cash {
+            side.cash += delta as f64 / 10_f64.powi(*decimals as i32);
+            if !side.symbols.iter().any(|s| s == symbol) {
+                side.symbols.push((*symbol).to_string());
+            }
+        }
+    }
+    let want_stock_sign: i128 = if stock_raw > 0 { -1 } else { 1 };
+    let mut matched: i128 = 0;
+    let mut usd = 0.0;
+    let mut symbols: Vec<String> = Vec::new();
+    for side in by_owner.values() {
+        if side.stock == 0 || side.stock.signum() != want_stock_sign {
+            continue;
+        }
+        // The pool that sent the stock must have taken in cash; one that received it must have paid out.
+        if side.cash == 0.0 || side.cash.signum() as i128 != -want_stock_sign {
+            return None;
+        }
+        matched += side.stock.abs();
+        usd += side.cash.abs();
+        for symbol in &side.symbols {
+            if !symbols.contains(symbol) {
+                symbols.push(symbol.clone());
+            }
+        }
+    }
+    if matched == 0 || matched * 1000 < stock_raw.abs() * 995 {
+        return None;
+    }
+    let symbol = if symbols.len() == 1 {
+        symbols.remove(0)
+    } else {
+        "stables".to_string()
+    };
+    Some((usd, symbol))
+}
+
 pub fn classify(
     signature: &SignatureInfo,
     tx: &Value,
@@ -429,18 +540,20 @@ pub fn classify(
     if sol.abs() < 0.0005 {
         sol = 0.0;
     }
-    let venue = tx
+    let programs: Vec<&str> = tx
         .pointer("/transaction/message/instructions")
         .and_then(Value::as_array)
-        .is_some_and(|rows| {
-            rows.iter().any(|row| {
-                matches!(
-                    row.get("programId").and_then(Value::as_str),
-                    Some(JUPITER_V6 | JUPITER_V4)
-                )
-            })
-        })
-        .then(|| "jupiter".to_string());
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row.get("programId").and_then(Value::as_str))
+        .collect();
+    let venue = if programs.contains(&JUPITER_V6) || programs.contains(&JUPITER_V4) {
+        Some("jupiter".to_string())
+    } else if programs.contains(&DFLOW_V4) {
+        Some("dflow".to_string())
+    } else {
+        None
+    };
     let timestamp = tx
         .get("blockTime")
         .and_then(Value::as_i64)
@@ -488,7 +601,19 @@ pub fn classify(
             let mut event = make(d, if d.raw > 0 { "buy" } else { "sell" });
             event.counter_asset = Some("SOL".to_string());
             event.counter_amount = Some(sol.abs());
-            event.note = Some("Settled in SOL. The USD value at trade time was not available, so the cash leg is unknown.".to_string());
+            match stable_leg_at_counterparty(tx, owner, &d.mint, d.raw) {
+                Some((usd, symbol)) => {
+                    event.gross_usd = Some(usd);
+                    event.fee_usd = Some(0.0);
+                    let leg = if symbol == "stables" { "stablecoin".to_string() } else { symbol };
+                    event.note = Some(format!(
+                        "Settled in SOL. Cash value read from the {leg} leg of the same swap."
+                    ));
+                }
+                None => {
+                    event.note = Some("Settled in SOL. The USD value at trade time was not available, so the cash leg is unknown.".to_string());
+                }
+            }
             return (vec![event], false);
         }
         let mut event = make(

@@ -131,6 +131,7 @@ Demo ledgers are scripted but priced with the same live pricing pipeline as real
 
 - Quantities are kept as raw token units. Shares of exposure are raw units divided by decimals and multiplied by the current Token-2022 multiplier, so a multiplier increase grows the shares in a lot without changing its cost.
 - Buys, sells, transfers in and out, wrapper swaps and opening balances are ledger events. Each event carries the counter asset, the fee and the reference price when one is known.
+- The cash value of a swap is the stablecoin amount the wallet paid or received. A swap paid in SOL is valued from the stablecoin leg the stock pool settled in the same transaction, since routers fill the stock against a stablecoin pool on the last hop. When no such leg covers the whole order the cost basis is marked unknown.
 - Lots are opened by buys and transfers and relieved by sells in the chosen order. Realized P/L is proceeds net of fees minus the cost of the relieved lots.
 - Marks come from the first available source in this order: Pyth Pro, Jupiter, PreStocks, demo snapshot. Every position shows its source and the age of the price.
 - Statement hashes cover the statement body without its id. A notarized statement stores the memo transaction signature and the confirmed slot.

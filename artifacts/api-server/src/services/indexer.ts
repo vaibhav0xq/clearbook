@@ -66,6 +66,57 @@ export function tokenDeltasForOwner(tx: ParsedTransaction, owner: string): Token
   return [...byMint.values()];
 }
 
+/**
+ * Cash value of a stock trade the wallet settled in SOL. A router that starts from SOL still
+ * fills the stock against its stablecoin pool on the last hop, so the accounts that handed over
+ * the stock received the stablecoins in the same transaction. Their balance changes give the
+ * exact cash leg without a price lookup. Returns null unless the counterparties account for the
+ * whole stock amount and every one of them settled in stablecoins, so a route that fills part
+ * of the order from a SOL pool stays unknown rather than understated.
+ */
+export function stableLegAtCounterparty(tx: ParsedTransaction, owner: string, stockMint: string, stockRaw: bigint): { usd: number; symbol: string } | null {
+  const rows = new Map<number, { owner: string; mint: string; pre: bigint; post: bigint; decimals: number }>();
+  for (const b of tx.meta?.preTokenBalances ?? []) {
+    if (!b.owner || b.owner === owner) continue;
+    rows.set(b.accountIndex, { owner: b.owner, mint: b.mint, pre: BigInt(b.uiTokenAmount.amount), post: 0n, decimals: b.uiTokenAmount.decimals });
+  }
+  for (const b of tx.meta?.postTokenBalances ?? []) {
+    if (!b.owner || b.owner === owner) continue;
+    const row = rows.get(b.accountIndex);
+    if (row) row.post = BigInt(b.uiTokenAmount.amount);
+    else rows.set(b.accountIndex, { owner: b.owner, mint: b.mint, pre: 0n, post: BigInt(b.uiTokenAmount.amount), decimals: b.uiTokenAmount.decimals });
+  }
+  const byOwner = new Map<string, { stock: bigint; cash: number; symbols: Set<string> }>();
+  for (const r of rows.values()) {
+    const delta = r.post - r.pre;
+    if (delta === 0n) continue;
+    const cash = CASH_MINTS[r.mint];
+    if (r.mint !== stockMint && !cash) continue;
+    const cur = byOwner.get(r.owner) ?? { stock: 0n, cash: 0, symbols: new Set<string>() };
+    if (r.mint === stockMint) cur.stock += delta;
+    else if (cash) {
+      cur.cash += Number(delta) / 10 ** cash.decimals;
+      cur.symbols.add(cash.symbol);
+    }
+    byOwner.set(r.owner, cur);
+  }
+  const wantStockSign = stockRaw > 0n ? -1n : 1n;
+  let matched = 0n;
+  let usd = 0;
+  const symbols = new Set<string>();
+  for (const c of byOwner.values()) {
+    if (c.stock === 0n || (c.stock > 0n ? 1n : -1n) !== wantStockSign) continue;
+    // The pool that sent the stock must have taken in cash; one that received the stock must have paid it out.
+    if (c.cash === 0 || Math.sign(c.cash) !== Number(-wantStockSign)) return null;
+    matched += c.stock < 0n ? -c.stock : c.stock;
+    usd += Math.abs(c.cash);
+    for (const s of c.symbols) symbols.add(s);
+  }
+  const want = stockRaw < 0n ? -stockRaw : stockRaw;
+  if (matched === 0n || matched * 1000n < want * 995n) return null;
+  return { usd, symbol: symbols.size === 1 ? [...symbols][0] : "stables" };
+}
+
 function solDeltaLamports(tx: ParsedTransaction, owner: string): number {
   const idx = tx.transaction.message.accountKeys.findIndex((k) => k.pubkey === owner);
   if (idx < 0 || !tx.meta) return 0;
@@ -101,7 +152,9 @@ function classify(sig: SignatureInfo, tx: ParsedTransaction, owner: string): Cla
   const programs = new Set(tx.transaction.message.instructions.map((i) => i.programId));
   const venue = programs.has("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4") || programs.has("JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB")
     ? "Jupiter"
-    : null;
+    : programs.has("DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH")
+      ? "DFlow"
+      : null;
   const base = (suffix: string, kind: LedgerEventInput["kind"], d: TokenDelta): LedgerEventInput => ({
     id: `${owner}:${sig.signature}:${suffix}`,
     signature: sig.signature,
@@ -139,7 +192,14 @@ function classify(sig: SignatureInfo, tx: ParsedTransaction, owner: string): Cla
       const e = base(d.mint, kind, d);
       e.counterAsset = "SOL";
       e.counterAmount = Math.abs(solAmount);
-      e.note = "Settled in SOL. The USD value at trade time was not available, so the cash leg is unknown.";
+      const leg = stableLegAtCounterparty(tx, owner, d.mint, d.raw);
+      if (leg) {
+        e.grossUsd = leg.usd;
+        e.feeUsd = 0;
+        e.note = `Settled in SOL. Cash value read from the ${leg.symbol === "stables" ? "stablecoin" : leg.symbol} leg of the same swap.`;
+      } else {
+        e.note = "Settled in SOL. The USD value at trade time was not available, so the cash leg is unknown.";
+      }
       return { events: [e], unknown: false };
     }
     const kind = d.raw > 0n ? "transfer_in" : "transfer_out";

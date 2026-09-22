@@ -1,6 +1,6 @@
 # Status: live, simulated and still needed
 
-Last updated 20 September 2026.
+Last updated 22 September 2026.
 
 ## Live today
 
@@ -23,7 +23,7 @@ Last updated 20 September 2026.
 - Simulated proofs and simulated sales are stored with a `simulated` label everywhere they appear, including exports.
 - Simulated sales and generated statements are private to the browser that made them. The browser keeps a random id in local storage and sends it with every request; the server stores it with the event or statement and filters reads by it. Two people opening the same wallet address see the same chain data and their own simulations. The id names a browser, not a person, so clearing site data starts a fresh view. A public deployment could replace it with a signed wallet session without changing the data model.
 - Historical multiplier at the time of a live event is not reconstructed. Income from multiplier increases is computed from observed multiplier changes since the wallet was first indexed, so a wallet indexed today shows no historical income until the next increase.
-- Prices at the time of a historical buy or sell come from the counter asset in the transaction when it was a swap. Transfers in with no counter asset have unknown basis and are excluded from totals.
+- Prices at the time of a historical buy or sell come from the counter asset in the transaction when it was a swap. A swap paid in SOL takes its dollar value from the stablecoin leg the pool received in the same transaction; when the route filled part of the order from a SOL pool the basis stays unknown rather than understated. Transfers in with no counter asset have unknown basis and are excluded from totals.
 - Dividend cash paid outside the multiplier mechanism is not detected.
 - The Pyth path has been run against a Pyth Terminal trial key. The trial plan covers a handful of feeds (TSLA, QQQ and VOO among ours), so it supplies reference prices for those and the rest fall back to Jupiter. A request that names a feed outside the plan is refused as a whole, so the server learns refused feeds from the first response and leaves them out afterwards. Wrapper token feeds need a paid plan before Pyth can be the primary mark.
 - Statement opening and closing values use the mark available at generation time, not the historical close. The statement says so in its assumptions. Period activity, closed lots and realized gains are historical.

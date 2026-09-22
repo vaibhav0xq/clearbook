@@ -16,7 +16,10 @@ struct Case {
     cash: Option<(String, String)>,
     lamports: Option<i64>,
     failed: Option<bool>,
+    /// Balance changes of other owners in the same transaction: (owner, mint, raw delta).
+    pools: Option<Vec<(String, String, String)>>,
     kind: Vec<String>,
+    gross_usd: Option<Vec<Option<f64>>>,
 }
 
 fn asset(mint: &str, symbol: &str, underlying: &str) -> Asset {
@@ -46,6 +49,14 @@ fn transaction(case: &Case) -> Value {
         pre.push(balance(index, mint, before.to_string(), 6));
         post.push(balance(index, mint, after.to_string(), 6));
     }
+    for (owner, mint, delta) in case.pools.iter().flatten() {
+        let index = pre.len();
+        let raw = delta.parse::<i128>().unwrap();
+        let (before, after) = if raw > 0 { (0, raw) } else { (-raw, 0) };
+        let decimals = if mint.starts_with("stock-") { 2 } else { 6 };
+        pre.push(balance_of(owner, index, mint, before.to_string(), decimals));
+        post.push(balance_of(owner, index, mint, after.to_string(), decimals));
+    }
     let pre_lamports = 2_000_000_000_i64;
     json!({
         "slot": 9,
@@ -63,10 +74,14 @@ fn transaction(case: &Case) -> Value {
 }
 
 fn balance(index: usize, mint: &str, amount: String, decimals: u8) -> Value {
+    balance_of(OWNER, index, mint, amount, decimals)
+}
+
+fn balance_of(owner: &str, index: usize, mint: &str, amount: String, decimals: u8) -> Value {
     json!({
         "accountIndex": index,
         "mint": mint,
-        "owner": OWNER,
+        "owner": owner,
         "uiTokenAmount": {"amount":amount,"decimals":decimals}
     })
 }
@@ -90,6 +105,10 @@ fn classification_fixtures_match_application_rules() {
         let kinds: Vec<_> = events.iter().map(|event| event.kind.clone()).collect();
         assert_eq!(kinds, case.kind, "{}", case.name);
         assert_eq!(unknown, case.kind.iter().any(|kind| kind == "unknown"));
+        if let Some(expected) = &case.gross_usd {
+            let gross: Vec<_> = events.iter().map(|event| event.gross_usd).collect();
+            assert_eq!(&gross, expected, "{}", case.name);
+        }
     }
 }
 
@@ -101,7 +120,9 @@ fn event_id_uses_owner_signature_and_mint() {
         cash: None,
         lamports: None,
         failed: None,
+        pools: None,
         kind: vec!["transfer_in".to_string()],
+        gross_usd: None,
     };
     let assets = HashMap::from([("stock-a".to_string(), asset("stock-a", "AAA", "AAA"))]);
     let signature = SignatureInfo {
