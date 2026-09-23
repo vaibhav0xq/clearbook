@@ -46,8 +46,10 @@ function originTrusted(req: express.Request, origin: string | undefined): boolea
   if (!origin) return true; // same origin navigations, server calls and command line clients
   if (trustedOrigins.has(origin)) return true;
   // Behind a proxy the public host arrives in X-Forwarded-Host; the Host header names the process.
+  // The scheme must match too, so a plain http page cannot speak for the https site.
+  const proto = req.get("x-forwarded-proto")?.split(",")[0].trim() || req.protocol;
   const hosts = [req.get("x-forwarded-host"), req.get("host")].filter((h): h is string => !!h);
-  return hosts.some((host) => origin === `https://${host}` || origin === `http://${host}`);
+  return hosts.some((host) => origin === `${proto}://${host}`);
 }
 app.use(
   cors((req, callback) =>

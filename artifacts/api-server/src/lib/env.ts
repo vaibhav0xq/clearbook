@@ -42,8 +42,8 @@ function publicRpcUrl(): string {
   if (!configured) return DEFAULT_RPC;
   try {
     const url = new URL(configured);
-    const sensitive = [...url.searchParams.keys()].some((key) => /key|token|secret|auth/i.test(key));
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || sensitive) return DEFAULT_RPC;
+    // Providers put keys in query strings and in paths, so only a bare https origin is accepted.
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/") return DEFAULT_RPC;
     return url.toString();
   } catch {
     return DEFAULT_RPC;
