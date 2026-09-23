@@ -138,7 +138,8 @@ function DemoBanner() {
         <p className="flex min-w-0 items-start gap-2.5">
           <span className="label mt-[3px] shrink-0 text-primary">Demo</span>
           <span>
-            <span className="text-foreground">Demo ledger.</span> Positions and history are scripted, prices are live and nothing here belongs to a connected wallet.
+            <span className="text-foreground">Demo ledger prepared for review.</span> Positions and history are scripted, prices are live and nothing here belongs to a connected wallet.{" "}
+            {wallet.connected ? "Your own ledger is one click away." : "Connect your wallet to open your own ledger."}
           </span>
         </p>
         <div className="flex shrink-0 items-center gap-4 md:ml-auto">

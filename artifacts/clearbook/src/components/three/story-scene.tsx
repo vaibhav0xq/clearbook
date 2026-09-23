@@ -4,7 +4,7 @@ import { Html, useCursor } from "@react-three/drei";
 import * as THREE from "three";
 import type { MotionValue } from "framer-motion";
 import { format } from "date-fns";
-import { formatUSD, formatQuantity } from "@/lib/format";
+import { formatUSD, formatQuantityBound, formatUSDBound } from "@/lib/format";
 import { reliefRank, type StrataColumn } from "./strata-data";
 import {
   COLOR_AMBER,
@@ -545,7 +545,7 @@ function StoryLayers({
               >
                 <span className="num text-[12px] tracking-[0.16em] text-foreground">{c.symbol}</span>
                 <span className="num text-[11px] text-muted-foreground">
-                  {showValues ? formatUSD(c.value) : `${formatQuantity(c.quantity, 4)} sh`}
+                  {showValues ? formatUSDBound(c.value) : `${formatQuantityBound(c.quantity, 4)} sh`}
                 </span>
               </div>
             </Html>
@@ -567,7 +567,7 @@ function StoryLayers({
               <div className="flex items-center gap-2.5 whitespace-nowrap text-[11px] animate-in fade-in slide-in-from-right-2 duration-500">
                 <span className="text-foreground/90">{layer.openedAt ? format(new Date(layer.openedAt), "MMM d, yyyy") : "Opening balance"}</span>
                 {chapter === 1 ? (
-                  <span className="num text-muted-foreground">{formatQuantity(layer.quantity, 2)} sh</span>
+                  <span className="num text-muted-foreground">{formatQuantityBound(layer.quantity, 2)} sh</span>
                 ) : (
                   <>
                     <span className="num text-muted-foreground">{layer.basisUnknown ? "Unknown cost" : `${formatUSD(layer.costPerShare)} / sh`}</span>

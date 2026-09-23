@@ -16,6 +16,21 @@ export function formatQuantity(value: number | null | undefined, maxDecimals = 6
   }).format(value);
 }
 
+/** A positive quantity that rounds to zero at the shown precision reads as a bound, not as nothing. */
+export function formatQuantityBound(value: number, maxDecimals: number): string {
+  if (!Number.isFinite(value)) return "-";
+  const step = 10 ** -maxDecimals;
+  if (value !== 0 && Math.abs(value) < step / 2) return `${value > 0 ? "<" : ">-"}${step.toFixed(maxDecimals)}`;
+  return formatQuantity(value === 0 ? 0 : value, maxDecimals);
+}
+
+/** A value below one cent in either direction reads as a bound, not as $0.00. */
+export function formatUSDBound(value: number): string {
+  if (!Number.isFinite(value)) return "-";
+  if (value !== 0 && Math.abs(value) < 0.005) return value > 0 ? "<$0.01" : ">-$0.01";
+  return formatUSD(value === 0 ? 0 : value);
+}
+
 export function formatPercent(value: number | null | undefined): string {
   if (value === null || value === undefined) return "-";
   const sign = value > 0 ? "+" : "";

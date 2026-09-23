@@ -2,10 +2,13 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpRight, Loader2, X } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useWalletSession } from "@/lib/wallet";
 import { EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
+
+/** The scripted ledger offered to reviewers who hold no tokenized stock. Marked as demo on every page. */
+const DEMO_LEDGER = "demo-holder";
 
 /** Wallets offered with an install link when the browser has not registered them. */
 const KNOWN_WALLETS = [
@@ -24,6 +27,11 @@ export function WalletPicker() {
   const panelRef = useRef<HTMLDivElement>(null);
   const open = wallet.pickerOpen;
   const { closePicker } = wallet;
+  const [, setLocation] = useLocation();
+  const openDemo = () => {
+    closePicker();
+    setLocation(`/w/${DEMO_LEDGER}`);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -168,7 +176,25 @@ export function WalletPicker() {
               </p>
             )}
 
-            <p className="mt-5 border-t hairline pt-4 text-[12px] leading-relaxed text-muted-foreground">
+            <div className="mt-5 border-t hairline pt-4">
+              <span className="label text-muted-foreground">Reviewing without holdings?</span>
+              <button
+                type="button"
+                onClick={openDemo}
+                disabled={busy}
+                className="group mt-2.5 flex w-full items-center gap-3 rounded-xl border hairline bg-white/[0.02] px-3.5 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-50"
+              >
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-[13px] font-medium text-foreground">Open the demo ledger</span>
+                  <span className="text-[11px] leading-relaxed text-muted-foreground">
+                    Scripted positions and history with live prices, prepared for review. Nothing in it belongs to a wallet.
+                  </span>
+                </span>
+                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+              </button>
+            </div>
+
+            <p className="mt-4 text-[12px] leading-relaxed text-muted-foreground">
               Reading does not need a wallet.{" "}
               <Link href="/" onClick={closePicker} className="text-foreground underline-offset-4 hover:underline">
                 Paste an address

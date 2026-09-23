@@ -18,8 +18,15 @@ import {
   useListStatements,
   useListCorporateActions,
   getGetAppConfigQueryKey,
+  getGetPortfolioQueryKey,
+  getListLotsQueryKey,
+  getListStatementsQueryKey,
+  getListCorporateActionsQueryKey,
+  type Portfolio,
 } from "@workspace/api-client-react";
 import { format } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateWalletQueries } from "@/lib/wallet-queries";
 import { WalletConnectButton, useConnectAndOpen } from "@/components/wallet-connect-button";
 import { useWalletSession } from "@/lib/wallet";
 import { useCostMethod } from "@/hooks/use-cost-method";
@@ -48,8 +55,6 @@ import { Cursor, setCursorLabel } from "@/components/motion/cursor";
 import { EASE_OUT } from "@/components/motion/reveal";
 import { cn } from "@/lib/utils";
 
-const DEMO = "demo-holder";
-
 /**
  * Public wallets with real tokenized stock positions, read from Solana mainnet. Both belong to
  * market makers, so their balances move between visits.
@@ -65,8 +70,20 @@ const PUBLIC_WALLETS = [
   },
 ];
 
-/** Scripted ledgers offered on the landing page. The empty one stays reachable by id. */
-const SAMPLE_IDS = ["demo-holder", "demo-trader"];
+/**
+ * The wallet behind the story when no connected wallet holds tokenized stocks. Real history from
+ * mainnet, so every figure on the landing page can be checked on chain.
+ */
+const SHOWCASE = PUBLIC_WALLETS[0].address;
+
+/** A portfolio answered before the wallet's indexing finished can still be missing positions. */
+function isIndexing(portfolio: Portfolio | undefined): boolean {
+  const state = portfolio?.walletStatus.state;
+  return state === "indexing" || state === "not_indexed";
+}
+
+/** Portfolio queries poll while the wallet is being indexed and stop on their own after that. */
+const pollWhileIndexing = (query: { state: { data?: Portfolio } }) => (isIndexing(query.state.data) ? 2000 : false);
 
 /** A column under the pointer turns the custom cursor into a label. Stable so the scene effect does not rerun. */
 const onStoryHover = (mint: string | null) => setCursorLabel(mint ? "Open lots" : null);
@@ -193,17 +210,39 @@ function Figure({ label, children, className, caps = true }: { label: string; ch
 }
 
 export default function Home() {
-  const { data: config, isLoading } = useGetAppConfig({ query: { queryKey: getGetAppConfigQueryKey() } });
+  const { data: config } = useGetAppConfig({ query: { queryKey: getGetAppConfigQueryKey() } });
   const { method } = useCostMethod();
-  const { data: demoPortfolio, error: demoError } = useGetPortfolio(DEMO, { method });
-  const { data: demoLots, error: lotsError } = useListLots(DEMO, { method, status: "open" });
-  const { data: demoStatements } = useListStatements(DEMO);
-  const { data: demoEvents } = useListCorporateActions(DEMO);
+  const wallet = useWalletSession();
+
+  // The story reads a connected wallet when it holds tokenized stocks, otherwise the public
+  // showcase wallet. Both are real history from mainnet. A first request for a wallet starts its
+  // indexing and answers with whatever is stored so far, so a wallet only counts as empty once
+  // its indexing has finished, and the showcase waits for that answer so the scene does not
+  // switch ledgers mid scroll.
+  const own = wallet.connected && wallet.publicKey ? wallet.publicKey : null;
+  const ownQuery = useGetPortfolio(own ?? "", { method }, { query: { queryKey: getGetPortfolioQueryKey(own ?? "", { method }), enabled: !!own, refetchInterval: pollWhileIndexing } });
+  const ownSettled = !!own && (ownQuery.isError || (ownQuery.isSuccess && !isIndexing(ownQuery.data)));
+  const ownHoldsStocks = ownSettled && (ownQuery.data?.positions.length ?? 0) > 0;
+  const storyAddress = ownHoldsStocks ? own : SHOWCASE;
+  const storyEnabled = !own || ownSettled;
+  const { data: storyPortfolio, error: storyError } = useGetPortfolio(storyAddress, { method }, { query: { queryKey: getGetPortfolioQueryKey(storyAddress, { method }), enabled: storyEnabled, refetchInterval: pollWhileIndexing } });
+  const { data: storyLots, error: lotsError } = useListLots(storyAddress, { method, status: "open" }, { query: { queryKey: getListLotsQueryKey(storyAddress, { method, status: "open" }), enabled: storyEnabled } });
+  const { data: storyStatements } = useListStatements(storyAddress, { query: { queryKey: getListStatementsQueryKey(storyAddress), enabled: storyEnabled } });
+  const { data: storyEvents } = useListCorporateActions(storyAddress, { query: { queryKey: getListCorporateActionsQueryKey(storyAddress), enabled: storyEnabled } });
+
+  // Lots, events and statements answered while the wallet was still indexing are refreshed once
+  // its indexing finishes.
+  const queryClient = useQueryClient();
+  const storyIndexing = isIndexing(storyPortfolio);
+  const wasIndexing = useRef(false);
+  useEffect(() => {
+    if (wasIndexing.current && !storyIndexing) void invalidateWalletQueries(queryClient, storyAddress);
+    wasIndexing.current = storyIndexing;
+  }, [storyIndexing, queryClient, storyAddress]);
 
   const [addressInput, setAddressInput] = useState("");
   const [addressError, setAddressError] = useState<string | null>(null);
   const [, setLocation] = useLocation();
-  const wallet = useWalletSession();
   const { connect: connectWallet, busy: connectBusy } = useConnectAndOpen();
   const reduce = useReducedMotion();
 
@@ -231,9 +270,9 @@ export default function Home() {
     return () => window.clearTimeout(id);
   }, []);
 
-  const columns = useMemo(() => (demoPortfolio ? buildStrata(demoPortfolio.positions, demoLots) : []), [demoPortfolio, demoLots]);
+  const columns = useMemo(() => (storyPortfolio ? buildStrata(storyPortfolio.positions, storyLots) : []), [storyPortfolio, storyLots]);
   // Without lot data buildStrata shows one aggregate layer per position, which is the balance view, not a lot view.
-  const lotsReady = !!demoLots;
+  const lotsReady = !!storyLots;
   const featured = useMemo(
     () =>
       lotsReady
@@ -242,11 +281,14 @@ export default function Home() {
     [columns, lotsReady],
   );
   const incomeEvent = useMemo(() => {
-    const dividends = demoEvents?.filter((e) => e.kind === "dividend_reinvested" && columns.some((c) => c.mint === e.mint)) ?? [];
-    return dividends[0] ?? demoEvents?.find((e) => columns.some((c) => c.mint === e.mint)) ?? null;
-  }, [demoEvents, columns]);
+    const dividends = storyEvents?.filter((e) => e.kind === "dividend_reinvested" && columns.some((c) => c.mint === e.mint)) ?? [];
+    return dividends[0] ?? storyEvents?.find((e) => columns.some((c) => c.mint === e.mint)) ?? null;
+  }, [storyEvents, columns]);
   const incomeColumn = columns.find((c) => c.mint === incomeEvent?.mint) ?? null;
-  const latestStatement = demoStatements?.[0] ?? null;
+  const latestStatement = storyStatements?.[0] ?? null;
+  const eventsReady = !!storyEvents;
+  const statementsReady = !!storyStatements;
+  const whose = ownHoldsStocks ? "your wallet" : "this wallet";
   const openLots = columns.reduce((s, c) => s + c.layers.length, 0);
   const saleQuantity = storySaleQuantity(featured ?? undefined);
 
@@ -269,8 +311,8 @@ export default function Home() {
     return (incomeEvent.previousMultiplier + (incomeEvent.newMultiplier - incomeEvent.previousMultiplier) * w).toFixed(6);
   });
   const effectOpacity = useTransform(progress, (p) => seg(dividendWave(p), 0.85, 1));
-  const netText = useTransform(progress, (p) => formatUSD((demoPortfolio?.totals.netValue ?? 0) * colorize(p)));
-  const unrealizedText = useTransform(progress, (p) => formatUSD((demoPortfolio?.totals.unrealizedPnl ?? 0) * colorize(p)));
+  const netText = useTransform(progress, (p) => formatUSD((storyPortfolio?.totals.netValue ?? 0) * colorize(p)));
+  const unrealizedText = useTransform(progress, (p) => formatUSD((storyPortfolio?.totals.unrealizedPnl ?? 0) * colorize(p)));
   const digestText = useTransform(progress, (p) =>
     latestStatement ? revealDigest(latestStatement.hash, scan(p), Math.floor(p * 4000)) : "",
   );
@@ -343,14 +385,15 @@ export default function Home() {
             <Link href="/methodology" className="hidden text-[13px] text-foreground/60 transition-colors hover:text-foreground sm:inline">
               Methodology
             </Link>
-            <Link
-              href={`/w/${DEMO}`}
-              data-cursor="Open"
+            <button
+              type="button"
+              onClick={() => scrollToChapter(CHAPTER_COUNT - 1)}
+              data-cursor="Go"
               className="group inline-flex h-9 items-center gap-2 rounded-full bg-primary pl-4 pr-3 text-[12px] font-medium text-primary-foreground transition-transform duration-500 ease-out-expo hover:scale-[1.03]"
             >
-              Open demo ledger
-              <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-500 ease-out-expo group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </Link>
+              Open a ledger
+              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-500 ease-out-expo group-hover:translate-x-0.5" />
+            </button>
             <div className="hidden sm:block">
               <WalletConnectButton />
             </div>
@@ -410,7 +453,7 @@ export default function Home() {
               progress={progress}
               featuredMint={featured?.mint ?? null}
               incomeMint={incomeColumn?.mint ?? null}
-              onSelectColumn={() => setLocation(`/w/${DEMO}`)}
+              onSelectColumn={() => setLocation(`/w/${storyAddress}`)}
               onHoverColumn={onStoryHover}
             />
             <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[60] h-[52svh] bg-gradient-to-t from-background via-background/85 to-transparent wide:h-48 wide:via-background/40" />
@@ -448,8 +491,12 @@ export default function Home() {
                 transition={{ duration: 1, delay: 1.4 }}
                 className="mt-8 flex items-center gap-3 text-[12px] text-foreground/55"
               >
-                <span className={cn("h-1.5 w-1.5 rounded-full", demoError ? "bg-destructive" : "bg-primary animate-pulse-dot")} />
-                {demoError ? "Demo ledger unavailable. The API did not respond." : "Live from the demo ledger. Hover a column to read it, click one to open the demo."}
+                <span className={cn("h-1.5 w-1.5 rounded-full", storyError ? "bg-destructive" : "bg-primary animate-pulse-dot")} />
+                {storyError
+                  ? "The ledger could not be read. The API did not respond."
+                  : ownHoldsStocks
+                    ? "Read live from your wallet. Hover a column to read it, click one to open your ledger."
+                    : "Read live from a public wallet on Solana mainnet. Hover a column to read it, click one to open the ledger."}
               </motion.div>
             </Chapter>
 
@@ -461,7 +508,7 @@ export default function Home() {
               {lotsError ? (
                 <p className="mt-8 text-[13px] text-destructive/90">Open lots could not be loaded. {lotsError.message}</p>
               ) : (
-                <Figure label="Open lots on the demo ledger" className="mt-8">
+                <Figure label={`Open lots in ${whose}`} className="mt-8">
                   {lotsReady ? openLots : "..."} <span className="text-[16px] text-foreground/50">in {columns.length} positions</span>
                 </Figure>
               )}
@@ -511,6 +558,11 @@ export default function Home() {
               <Eyebrow index={3}>Income</Eyebrow>
               <Headline lines={["Dividends arrive", "as multiplier", "changes."]} />
               <Lede>Read from the mint itself and booked as reinvested income.</Lede>
+              {eventsReady && !incomeEvent && (
+                <p className="mt-8 max-w-[420px] text-[13px] leading-relaxed text-foreground/55">
+                  No multiplier change has reached {whose} while it held its positions. When one arrives, the ledger books it as income on the day it takes effect.
+                </p>
+              )}
               {incomeEvent && (
                 <div className="mt-8 flex flex-wrap items-end gap-x-10 gap-y-5">
                   <Figure caps={false} label={`${incomeEvent.symbol} multiplier, ${format(new Date(incomeEvent.effectiveAt), "MMM d, yyyy")}`}>
@@ -556,7 +608,11 @@ export default function Home() {
                   <motion.span className="num break-all text-[15px] leading-relaxed text-foreground md:text-[17px]">{digestText}</motion.span>
                 ) : (
                   <span className="text-[13px] text-foreground/55">
-                    {demoError ? "Statements unavailable." : "No statement on the demo ledger yet. Generate one to see its hash here."}
+                    {storyError
+                      ? "Statements unavailable."
+                      : statementsReady
+                        ? `No statement has been issued for ${whose} yet. Open the ledger and generate one to see its hash here.`
+                        : "..."}
                   </span>
                 )}
               </div>
@@ -645,31 +701,6 @@ export default function Home() {
                       <ArrowUpRight className="h-3.5 w-3.5 text-foreground/50 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
                     </button>
                   ))}
-                </div>
-                <div className="mt-2.5 flex flex-wrap items-center gap-2 wide:justify-center">
-                  <span className="mr-1 text-[12px] text-foreground/55">Scripted samples, marked as demo</span>
-                  {isLoading && !config && (
-                    <>
-                      <span className="h-8 w-28 rounded-full shimmer" />
-                      <span className="h-8 w-24 rounded-full shimmer" />
-                    </>
-                  )}
-                  {config?.demoWallets
-                    ?.filter((demo) => SAMPLE_IDS.includes(demo.id))
-                    .map((demo) => (
-                      <button
-                        key={demo.id}
-                        type="button"
-                        onClick={() => setLocation(`/w/${demo.id}`)}
-                        title={demo.description}
-                        data-cursor="Open"
-                        className="group inline-flex h-8 items-center gap-2 rounded-full border hairline bg-white/[0.03] px-3.5 text-[12px] text-foreground transition-all duration-300 hover:border-primary/50 hover:bg-primary/10"
-                      >
-                        {demo.label}
-                        <span className="label !text-[9px] text-foreground/45">Demo</span>
-                        <ArrowUpRight className="h-3.5 w-3.5 text-foreground/50 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
-                      </button>
-                    ))}
                 </div>
               </form>
             </Chapter>

@@ -20,7 +20,7 @@ Live at https://clearbook-gray.vercel.app. Built for the Stocklana hackathon. Ma
 - Tax lot export per tax year in the Form 1099-B column layout, with estimated and unknown basis labeled and a wash sale check on losses
 - Notarization: a memo transaction that writes the statement hash to Solana signed by the visitor's wallet or a clearly labeled simulated proof when no wallet is connected
 - One sell action through Jupiter that relieves lots and updates the ledger, with a simulated path that does the same bookkeeping without a transaction
-- Three demo ledgers so the product can be reviewed without holding any tokenized stock
+- Three demo ledgers so the product can be reviewed without holding any tokenized stock. The wallet dialog offers one and every demo page says it is scripted
 
 Unknown or estimated figures are always shown as such. Transfers with no known cost are excluded from the totals and listed in the statement assumptions.
 

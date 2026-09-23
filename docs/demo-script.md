@@ -6,11 +6,11 @@ Three minutes. Use the Active trader ledger for the walk through and the Long te
 
 "Tokenized stocks trade like tokens but they are securities. Anyone holding xStocks or Ondo tokens has no brokerage statement, no cost basis and no record of the dividends that arrive as multiplier changes. Clearbook is the post trade accounting layer that gives them one."
 
-Open the home page. Scroll through the landing story: the demo ledger as columns of lots, the relief order changing the gain on the same sale, a dividend arriving as a multiplier change, the marks and the statement hash.
+Open the home page. Scroll through the landing story: a public mainnet wallet as columns of lots, the relief order changing the gain on the same sale, the marks and the statement hash. When a connected wallet holds tokenized stocks the story reads that wallet instead.
 
 ## 0:20 Portfolio
 
-Click Active trader.
+Click Connect wallet and choose Open the demo ledger, or paste `demo-trader` into the address field.
 
 - Five summary figures: net value, cost basis, unrealized P/L, realized P/L and income estimate.
 - Each position carries an issuer badge, the mark with its source and age, plus the raw token quantity next to the shares of exposure when a multiplier is in force.
