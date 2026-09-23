@@ -45,6 +45,13 @@ paths:
       tags: [config]
       summary: Runtime configuration
       description: Which data sources are live, which are simulated and which demo wallets are available.
+      parameters:
+        - in: query
+          name: probe
+          required: false
+          schema:
+            type: boolean
+          description: When true, pricing sources this instance has not heard from yet are exercised once within a short deadline, so their reported state is observed rather than assumed. Status pages set it; other callers leave it off.
       responses:
         "200":
           description: Configuration
@@ -634,7 +641,7 @@ components:
       enum: [open, closed, all]
     DataMode:
       type: string
-      description: live means real upstream data, fallback means a keyless real source, demo means scripted data, simulated means an action that never touched the chain
+      description: live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key
       enum: [live, fallback, demo, simulated, unavailable]
     IssuerId:
       type: string

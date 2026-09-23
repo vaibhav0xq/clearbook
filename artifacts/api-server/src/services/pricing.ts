@@ -129,6 +129,26 @@ let prestocksCache: CacheEntry<Map<string, PreStocksEntry>> | null = null;
 let pythAuthorized: boolean | null = null;
 let pythLastError: string | null = null;
 
+/** What this instance has seen from a keyless source: the last good answer and the last failure. */
+export interface SourceHealth {
+  lastOkAt: number | null;
+  lastError: string | null;
+  lastErrorAt: number | null;
+}
+const jupiterHealth: SourceHealth = { lastOkAt: null, lastError: null, lastErrorAt: null };
+const prestocksHealth: SourceHealth = { lastOkAt: null, lastError: null, lastErrorAt: null };
+
+function noteOk(health: SourceHealth): void {
+  health.lastOkAt = Date.now();
+  health.lastError = null;
+  health.lastErrorAt = null;
+}
+
+function noteFailure(health: SourceHealth, err: unknown): void {
+  health.lastError = reason(err);
+  health.lastErrorAt = Date.now();
+}
+
 export function toSessionView(info: SessionInfo): SessionView {
   return {
     state: info.state,
@@ -183,10 +203,17 @@ async function loadJupiter(mints: string[]): Promise<void> {
     const chunk = mints.slice(i, i + 50);
     // Stamped before the request so the reported age is never younger than the price.
     const at = Date.now();
-    const json = await fetchJson<Record<string, JupiterPrice | null>>(
-      `https://lite-api.jup.ag/price/v3?ids=${chunk.join(",")}`,
-      { timeoutMs: 8_000 },
-    );
+    let json: Record<string, JupiterPrice | null>;
+    try {
+      json = await fetchJson<Record<string, JupiterPrice | null>>(
+        `https://lite-api.jup.ag/price/v3?ids=${chunk.join(",")}`,
+        { timeoutMs: 8_000 },
+      );
+    } catch (err) {
+      noteFailure(jupiterHealth, err);
+      throw err;
+    }
+    noteOk(jupiterHealth);
     for (const m of chunk) jupiterCache.set(m, { at, value: json[m] ?? null });
   }
 }
@@ -251,11 +278,16 @@ function loadPreStocks(): Promise<Observed<Map<string, PreStocksEntry>>> {
   const at = Date.now();
   const load = fetchJson<PreStocksEntry[]>("https://prestocks.com/api/prestocks", { timeoutMs: 8_000 })
     .then((list) => {
+      noteOk(prestocksHealth);
       const map = new Map<string, PreStocksEntry>();
       for (const e of list) map.set(e.contract_address, e);
       const entry: Observed<Map<string, PreStocksEntry>> = { at, value: map };
       prestocksCache = entry;
       return entry;
+    })
+    .catch((err: unknown) => {
+      noteFailure(prestocksHealth, err);
+      throw err;
     })
     .finally(() => {
       if (prestocksInflight === load) prestocksInflight = null;
@@ -684,6 +716,48 @@ function summarize(
 
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+export function sourceHealth(): { jupiter: SourceHealth; prestocks: SourceHealth } {
+  return { jupiter: { ...jupiterHealth }, prestocks: { ...prestocksHealth } };
+}
+
+/**
+ * Exercises every pricing source this instance has not heard from yet, so a status page reports
+ * what was observed rather than what is configured. One Pyth covered stock and one PreStocks mint
+ * touch all three sources. Bounded by the budget; a request that outlives it keeps running and
+ * updates the state for the next reader. Cheap when everything has been seen: no request goes out.
+ */
+export async function probeSources(budgetMs: number): Promise<void> {
+  const pyth = pythState();
+  const unseen = {
+    pyth: pyth.configured && pyth.authorized === null,
+    jupiter: jupiterHealth.lastOkAt === null && jupiterHealth.lastErrorAt === null,
+    prestocks: prestocksHealth.lastOkAt === null && prestocksHealth.lastErrorAt === null,
+  };
+  if (!unseen.pyth && !unseen.jupiter && !unseen.prestocks) return;
+  const assets = listAssets();
+  const mints = new Set<string>();
+  if (unseen.pyth || unseen.jupiter) {
+    const stock = assets.find((a) => a.issuer === "xstocks" && a.underlyingSymbol === "TSLA" && a.pythEquityFeed) ?? assets.find((a) => a.pythEquityFeed);
+    if (stock) mints.add(stock.mint);
+  }
+  if (unseen.prestocks) {
+    const pre = assets.find((a) => a.issuer === "prestocks");
+    if (pre) mints.add(pre.mint);
+  }
+  if (mints.size === 0) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, budgetMs);
+  });
+  try {
+    await Promise.race([priceMints([...mints]).then(() => undefined), budget]);
+  } catch (err) {
+    logger.warn({ err: reason(err) }, "Source probe failed");
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export function pythState(): {

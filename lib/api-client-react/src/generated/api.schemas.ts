@@ -37,7 +37,7 @@ export const LotStatusFilter = {
 } as const;
 
 /**
- * live means real upstream data, fallback means a keyless real source, demo means scripted data, simulated means an action that never touched the chain
+ * live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key
  */
 export type DataMode = typeof DataMode[keyof typeof DataMode];
 
@@ -876,6 +876,13 @@ export type NotFoundResponse = ApiError;
 export type UpstreamErrorResponse = ApiError;
 
 export type CostMethodParameter = CostMethod;
+
+export type GetAppConfigParams = {
+/**
+ * When true, pricing sources this instance has not heard from yet are exercised once within a short deadline, so their reported state is observed rather than assumed. Status pages set it; other callers leave it off.
+ */
+probe?: boolean;
+};
 
 export type GetPortfolioParams = {
 /**

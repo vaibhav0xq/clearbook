@@ -27,6 +27,7 @@ import type {
   CorporateActionEvent,
   ExportTaxLotsCsvParams,
   ForbiddenResponse,
+  GetAppConfigParams,
   GetPortfolioParams,
   GetTaxLotsParams,
   HealthStatus,
@@ -162,21 +163,28 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-export const getGetAppConfigUrl = () => {
+export const getGetAppConfigUrl = (params?: GetAppConfigParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/config`
+  return stringifiedParams.length > 0 ? `/api/config?${stringifiedParams}` : `/api/config`
 }
 
 /**
  * Which data sources are live, which are simulated and which demo wallets are available.
  * @summary Runtime configuration
  */
-export const getAppConfig = async ( options?: Parameters<typeof customFetch>[1]): Promise<AppConfig> => {
+export const getAppConfig = async (params?: GetAppConfigParams, options?: Parameters<typeof customFetch>[1]): Promise<AppConfig> => {
 
-  return customFetch<AppConfig>(getGetAppConfigUrl(),
+  return customFetch<AppConfig>(getGetAppConfigUrl(params),
   {
     ...options,
     method: 'GET'
@@ -189,23 +197,23 @@ export const getAppConfig = async ( options?: Parameters<typeof customFetch>[1])
 
 
 
-export const getGetAppConfigQueryKey = () => {
+export const getGetAppConfigQueryKey = (params?: GetAppConfigParams,) => {
     return [
-    `/api/config`
+    `/api/config`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetAppConfigQueryOptions = <TData = Awaited<ReturnType<typeof getAppConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAppConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetAppConfigQueryOptions = <TData = Awaited<ReturnType<typeof getAppConfig>>, TError = ErrorType<unknown>>(params?: GetAppConfigParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAppConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetAppConfigQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetAppConfigQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAppConfig>>> = ({ signal }) => getAppConfig({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAppConfig>>> = ({ signal }) => getAppConfig(params, { signal, ...requestOptions });
 
 
 
@@ -223,11 +231,11 @@ export type GetAppConfigQueryError = ErrorType<unknown>
  */
 
 export function useGetAppConfig<TData = Awaited<ReturnType<typeof getAppConfig>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAppConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetAppConfigParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAppConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetAppConfigQueryOptions(options)
+  const queryOptions = getGetAppConfigQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

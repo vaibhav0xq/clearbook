@@ -21,6 +21,7 @@ export * from './dataMode';
 export * from './demoWallet';
 export * from './exportTaxLotsCsvParams';
 export * from './forbiddenResponse';
+export * from './getAppConfigParams';
 export * from './getPortfolioParams';
 export * from './getTaxLotsParams';
 export * from './healthStatus';

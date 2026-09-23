@@ -2,12 +2,33 @@ import { Router, type IRouter } from "express";
 import { GetAppConfigResponse, ListAssetsResponse, ListIssuersResponse } from "@workspace/api-zod";
 import { ISSUERS, listAssets, listDemoWallets } from "@workspace/ledger";
 import { env } from "../lib/env";
-import { pythState } from "../services/pricing";
+import { probeSources, pythState, sourceHealth, type SourceHealth } from "../services/pricing";
 
 const router: IRouter = Router();
 
-router.get("/config", (_req, res) => {
+/** Probe budget for `?probe=true`. Long enough for one round trip to each source on a cold instance. */
+const PROBE_BUDGET_MS = 3_500;
+
+/**
+ * Status of a keyless source from what this instance has observed. A failure newer than the last
+ * good answer reports unavailable; nothing observed yet says so instead of guessing.
+ */
+function keylessSource(id: string, label: string, role: string, health: SourceHealth) {
+  const failing = health.lastErrorAt !== null && (health.lastOkAt === null || health.lastErrorAt > health.lastOkAt);
+  const mode = failing ? "unavailable" : "live";
+  const detail = failing
+    ? `${role} Last request failed: ${health.lastError}. Cached prices serve until it answers again.`
+    : health.lastOkAt === null
+      ? `${role} No request yet from this instance.`
+      : role;
+  return { id, label, mode, detail, requiredEnv: [] as string[] };
+}
+
+router.get("/config", async (req, res) => {
+  // A status page asks for observed state; other callers get the cheap answer.
+  if (String(req.query.probe) === "true") await probeSources(PROBE_BUDGET_MS);
   const pyth = pythState();
+  const health = sourceHealth();
   const sources = [
     {
       id: "solana_rpc",
@@ -31,8 +52,8 @@ router.get("/config", (_req, res) => {
             : "Key present. Waiting for the first request.",
       requiredEnv: ["PYTH_API_KEY"],
     },
-    { id: "jupiter", label: "Jupiter", mode: "fallback", detail: "Keyless price and swap API. Used for marks, multipliers and sell routes.", requiredEnv: [] },
-    { id: "prestocks", label: "PreStocks", mode: "fallback", detail: "Keyless mark and token prices for pre-IPO tokens.", requiredEnv: [] },
+    keylessSource("jupiter", "Jupiter", "Keyless price and swap API. Second pricing source after Pyth, also read for multipliers and sell routes.", health.jupiter),
+    keylessSource("prestocks", "PreStocks", "Keyless mark and token prices for pre IPO tokens. Third pricing source, used for PreStocks mints.", health.prestocks),
     {
       id: "notary",
       label: "Notarization",

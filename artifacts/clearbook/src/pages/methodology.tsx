@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useListIssuers, useListAssets, useGetAppConfig } from "@workspace/api-client-react";
 import { ArrowLeft } from "lucide-react";
@@ -7,10 +8,25 @@ import { Panel, Pill, Skeleton } from "@/components/surface";
 
 const DEMO = "demo-holder";
 
+const FILTER_INPUT =
+  "h-9 w-full rounded-lg border hairline bg-white/[0.03] px-3 text-[13px] text-foreground placeholder:text-muted-foreground/60 transition-colors focus:border-primary/50 focus:bg-white/[0.05] focus:outline-none";
+
 export default function Methodology() {
-  const { data: config, isLoading: isConfigLoading } = useGetAppConfig();
+  // The status cards ask the API to exercise any source it has not heard from yet, so a fresh
+  // instance reports observed state instead of "no request yet".
+  const { data: config, isLoading: isConfigLoading } = useGetAppConfig({ probe: true });
   const { data: issuers, isLoading: isIssuersLoading } = useListIssuers();
   const { data: assets, isLoading: isAssetsLoading } = useListAssets();
+  const [assetFilter, setAssetFilter] = useState("");
+
+  // The registry holds several hundred mints. The list lives in a box of fixed height with its
+  // own scroll and a symbol filter, so the page keeps the length of its prose.
+  const visibleAssets = useMemo(() => {
+    if (!assets) return [];
+    const needle = assetFilter.trim().toLowerCase();
+    if (!needle) return assets;
+    return assets.filter(asset => asset.symbol.toLowerCase().includes(needle) || asset.issuer.toLowerCase().includes(needle));
+  }, [assets, assetFilter]);
 
   return (
     <div className="relative min-h-screen flex flex-col">
@@ -131,7 +147,7 @@ export default function Methodology() {
                       <Panel key={source.id} className="p-6 flex flex-col gap-3">
                         <div className="flex items-center justify-between">
                           <span className="text-[15px] font-medium text-foreground">{source.label}</span>
-                          <Pill tone={source.mode === "live" ? "gain" : source.mode === "demo" ? "amber" : "loss"}>{source.mode}</Pill>
+                          <Pill tone={source.mode === "live" ? "gain" : source.mode === "unavailable" ? "loss" : "amber"}>{source.mode}</Pill>
                         </div>
                         <p className="text-[14px] text-muted-foreground leading-relaxed">{source.detail}</p>
                         {source.requiredEnv.length > 0 && (
@@ -173,29 +189,53 @@ export default function Methodology() {
                   </div>
 
                   <div className="flex flex-col gap-6">
-                    <h3 className="text-foreground font-medium text-[15px]">Recognized assets</h3>
+                    <div className="flex items-baseline justify-between gap-4">
+                      <h3 className="text-foreground font-medium text-[15px]">Recognized assets</h3>
+                      {assets ? (
+                        <span className="num text-[12px] text-muted-foreground">
+                          {assetFilter.trim() ? `${visibleAssets.length} of ${assets.length}` : `${assets.length} mints`}
+                        </span>
+                      ) : null}
+                    </div>
                     {isAssetsLoading ? (
                       <Skeleton className="h-64 rounded-2xl" />
                     ) : assets ? (
-                      <Panel className="overflow-hidden">
-                        <table className="w-full text-left">
-                          <thead>
-                            <tr className="border-b hairline">
-                              <th className="label py-3.5 px-5 font-normal">Symbol</th>
-                              <th className="label py-3.5 px-5 font-normal">Issuer</th>
-                              <th className="label py-3.5 px-5 font-normal">Class</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/[0.05]">
-                            {assets.map(asset => (
-                              <tr key={asset.mint} className="row-hover">
-                                <td className="py-3.5 px-5 text-[14px]"><span className="num text-foreground tracking-[0.08em]">{asset.symbol}</span></td>
-                                <td className="py-3.5 px-5 text-[14px] text-muted-foreground">{asset.issuer}</td>
-                                <td className="py-3.5 px-5 text-[14px] text-muted-foreground capitalize">{asset.assetClass.replace('_', ' ')}</td>
+                      <Panel className="overflow-hidden flex flex-col">
+                        <div className="p-3 border-b hairline">
+                          <input
+                            type="search"
+                            value={assetFilter}
+                            onChange={(e) => setAssetFilter(e.target.value)}
+                            placeholder="Filter by symbol or issuer"
+                            aria-label="Filter recognized assets"
+                            className={FILTER_INPUT}
+                          />
+                        </div>
+                        <div className="max-h-[480px] overflow-y-auto">
+                          <table className="w-full text-left">
+                            <thead className="sticky top-0 z-10 bg-[hsl(220_6%_7%)]">
+                              <tr className="border-b hairline">
+                                <th className="label py-3.5 px-5 font-normal">Symbol</th>
+                                <th className="label py-3.5 px-5 font-normal">Issuer</th>
+                                <th className="label py-3.5 px-5 font-normal">Class</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-white/[0.05]">
+                              {visibleAssets.map(asset => (
+                                <tr key={asset.mint} className="row-hover">
+                                  <td className="py-3 px-5 text-[14px]"><span className="num text-foreground tracking-[0.08em]">{asset.symbol}</span></td>
+                                  <td className="py-3 px-5 text-[14px] text-muted-foreground">{asset.issuer}</td>
+                                  <td className="py-3 px-5 text-[14px] text-muted-foreground capitalize">{asset.assetClass.replace('_', ' ')}</td>
+                                </tr>
+                              ))}
+                              {visibleAssets.length === 0 ? (
+                                <tr>
+                                  <td colSpan={3} className="py-8 px-5 text-center text-[14px] text-muted-foreground">No asset matches that filter.</td>
+                                </tr>
+                              ) : null}
+                            </tbody>
+                          </table>
+                        </div>
                       </Panel>
                     ) : null}
                   </div>

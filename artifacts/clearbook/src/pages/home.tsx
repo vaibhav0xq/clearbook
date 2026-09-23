@@ -210,7 +210,7 @@ function Figure({ label, children, className, caps = true }: { label: string; ch
 }
 
 export default function Home() {
-  const { data: config } = useGetAppConfig({ query: { queryKey: getGetAppConfigQueryKey() } });
+  const { data: config } = useGetAppConfig(undefined, { query: { queryKey: getGetAppConfigQueryKey() } });
   const { method } = useCostMethod();
   const wallet = useWalletSession();
 

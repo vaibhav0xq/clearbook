@@ -6,16 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export type GetAppConfigParams = {
 /**
- * live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key
+ * When true, pricing sources this instance has not heard from yet are exercised once within a short deadline, so their reported state is observed rather than assumed. Status pages set it; other callers leave it off.
  */
-export type DataMode = typeof DataMode[keyof typeof DataMode];
-
-
-export const DataMode = {
-  live: 'live',
-  fallback: 'fallback',
-  demo: 'demo',
-  simulated: 'simulated',
-  unavailable: 'unavailable',
-} as const;
+probe?: boolean;
+};
