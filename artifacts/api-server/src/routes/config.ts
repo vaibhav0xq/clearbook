@@ -14,14 +14,14 @@ const PROBE_BUDGET_MS = 3_500;
  * good answer reports unavailable; nothing observed yet says so instead of guessing.
  */
 function keylessSource(id: string, label: string, role: string, health: SourceHealth) {
-  const failing = health.lastErrorAt !== null && (health.lastOkAt === null || health.lastErrorAt > health.lastOkAt);
-  const mode = failing ? "unavailable" : "live";
-  const detail = failing
-    ? `${role} Last request failed: ${health.lastError}. Cached prices serve until it answers again.`
-    : health.lastOkAt === null
-      ? `${role} No request yet from this instance.`
-      : role;
-  return { id, label, mode, detail, requiredEnv: [] as string[] };
+  // A good answer clears the error, so a present error is the latest observation.
+  if (health.lastError !== null) {
+    return { id, label, mode: "unavailable", detail: `${role} Last request failed: ${health.lastError}. Cached prices serve until it answers again.`, requiredEnv: [] as string[] };
+  }
+  if (health.lastOkAt === null) {
+    return { id, label, mode: "unknown", detail: `${role} No answer from this instance yet.`, requiredEnv: [] as string[] };
+  }
+  return { id, label, mode: "live", detail: role, requiredEnv: [] as string[] };
 }
 
 router.get("/config", async (req, res) => {
@@ -40,16 +40,20 @@ router.get("/config", async (req, res) => {
     {
       id: "pyth",
       label: "Pyth",
-      mode: !pyth.configured ? "unavailable" : pyth.authorized === false ? "unavailable" : "live",
+      // The last error clears on a good answer, so a present error is the latest observation,
+      // whether or not the key was accepted before.
+      mode: !pyth.configured || pyth.authorized === false || pyth.lastError ? "unavailable" : pyth.authorized ? "live" : "unknown",
       detail: !pyth.configured
         ? "No PYTH_API_KEY. Marks fall back to Jupiter and PreStocks."
         : pyth.authorized === false
           ? "Key rejected by Pyth."
-          : pyth.authorized
-            ? pyth.deniedFeeds > 0
-              ? `Pyth Pro key active. The plan covers ${pyth.coveredFeeds} of the ${pyth.coveredFeeds + pyth.deniedFeeds} feeds requested so far; the rest fall back to Jupiter and PreStocks.`
-              : "Pyth Pro feeds for wrapper tokens and reference equities."
-            : "Key present. Waiting for the first request.",
+          : pyth.lastError
+            ? `Last request failed: ${pyth.lastError}. Marks fall back to Jupiter and PreStocks until it answers again.`
+            : pyth.authorized
+              ? pyth.deniedFeeds > 0
+                ? `Pyth Pro key active. The plan covers ${pyth.coveredFeeds} of the ${pyth.coveredFeeds + pyth.deniedFeeds} feeds requested so far; the rest fall back to Jupiter and PreStocks.`
+                : "Pyth Pro feeds for wrapper tokens and reference equities."
+              : "Key present. No answer from this instance yet.",
       requiredEnv: ["PYTH_API_KEY"],
     },
     keylessSource("jupiter", "Jupiter", "Keyless price and swap API. Second pricing source after Pyth, also read for multipliers and sell routes.", health.jupiter),

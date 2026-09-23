@@ -33,7 +33,7 @@ export const GetAppConfigResponse = zod.object({
   "sources": zod.array(zod.object({
   "id": zod.string().describe('solana_rpc, pyth, jupiter, backed, prestocks, notary'),
   "label": zod.string(),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "detail": zod.string(),
   "requiredEnv": zod.array(zod.string())
 })),
@@ -102,7 +102,7 @@ export const IndexWalletResponse = zod.object({
   "isDemo": zod.boolean(),
   "demoLabel": zod.string().nullable(),
   "state": zod.enum(['not_indexed', 'indexing', 'ready', 'partial', 'empty', 'error']),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "message": zod.string(),
   "eventsIndexed": zod.number().int(),
   "signaturesScanned": zod.number().int(),
@@ -126,7 +126,7 @@ export const ResetWalletResponse = zod.object({
   "isDemo": zod.boolean(),
   "demoLabel": zod.string().nullable(),
   "state": zod.enum(['not_indexed', 'indexing', 'ready', 'partial', 'empty', 'error']),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "message": zod.string(),
   "eventsIndexed": zod.number().int(),
   "signaturesScanned": zod.number().int(),
@@ -151,7 +151,7 @@ export const GetWalletStatusResponse = zod.object({
   "isDemo": zod.boolean(),
   "demoLabel": zod.string().nullable(),
   "state": zod.enum(['not_indexed', 'indexing', 'ready', 'partial', 'empty', 'error']),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "message": zod.string(),
   "eventsIndexed": zod.number().int(),
   "signaturesScanned": zod.number().int(),
@@ -260,7 +260,7 @@ export const GetPortfolioResponse = zod.object({
   "pricing": zod.object({
   "provider": zod.enum(['pyth', 'jupiter', 'prestocks', 'mixed', 'demo', 'none']),
   "providerLabel": zod.string(),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "headline": zod.string(),
   "detail": zod.string(),
   "asOf": zod.coerce.date(),
@@ -309,7 +309,7 @@ export const GetPortfolioResponse = zod.object({
   "isDemo": zod.boolean(),
   "demoLabel": zod.string().nullable(),
   "state": zod.enum(['not_indexed', 'indexing', 'ready', 'partial', 'empty', 'error']),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "message": zod.string(),
   "eventsIndexed": zod.number().int(),
   "signaturesScanned": zod.number().int(),
@@ -464,7 +464,7 @@ export const ListActivityResponse = zod.object({
   "realizedPnl": zod.number().nullable(),
   "term": zod.enum(['short', 'long'])
 }).describe('Portion of a lot consumed by a disposal')),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "venue": zod.string().nullable(),
   "note": zod.string().nullable(),
   "explorerUrl": zod.string().nullable()
@@ -514,7 +514,7 @@ export const GetPricingStatusParams = zod.object({
 export const GetPricingStatusResponse = zod.object({
   "provider": zod.enum(['pyth', 'jupiter', 'prestocks', 'mixed', 'demo', 'none']),
   "providerLabel": zod.string(),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "headline": zod.string(),
   "detail": zod.string(),
   "asOf": zod.coerce.date(),
@@ -668,7 +668,7 @@ export const CreateStatementResponse = zod.object({
   "realizedPnl": zod.number().nullable(),
   "term": zod.enum(['short', 'long'])
 }).describe('Portion of a lot consumed by a disposal')),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "venue": zod.string().nullable(),
   "note": zod.string().nullable(),
   "explorerUrl": zod.string().nullable()
@@ -704,7 +704,7 @@ export const CreateStatementResponse = zod.object({
   "pricing": zod.object({
   "provider": zod.enum(['pyth', 'jupiter', 'prestocks', 'mixed', 'demo', 'none']),
   "providerLabel": zod.string(),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "headline": zod.string(),
   "detail": zod.string(),
   "asOf": zod.coerce.date(),
@@ -751,7 +751,7 @@ export const CreateStatementResponse = zod.object({
   "dataSources": zod.array(zod.object({
   "id": zod.string().describe('solana_rpc, pyth, jupiter, backed, prestocks, notary'),
   "label": zod.string(),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "detail": zod.string(),
   "requiredEnv": zod.array(zod.string())
 })),
@@ -852,7 +852,7 @@ export const GetStatementResponse = zod.object({
   "realizedPnl": zod.number().nullable(),
   "term": zod.enum(['short', 'long'])
 }).describe('Portion of a lot consumed by a disposal')),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "venue": zod.string().nullable(),
   "note": zod.string().nullable(),
   "explorerUrl": zod.string().nullable()
@@ -888,7 +888,7 @@ export const GetStatementResponse = zod.object({
   "pricing": zod.object({
   "provider": zod.enum(['pyth', 'jupiter', 'prestocks', 'mixed', 'demo', 'none']),
   "providerLabel": zod.string(),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "headline": zod.string(),
   "detail": zod.string(),
   "asOf": zod.coerce.date(),
@@ -935,7 +935,7 @@ export const GetStatementResponse = zod.object({
   "dataSources": zod.array(zod.object({
   "id": zod.string().describe('solana_rpc, pyth, jupiter, backed, prestocks, notary'),
   "label": zod.string(),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "detail": zod.string(),
   "requiredEnv": zod.array(zod.string())
 })),
@@ -1074,7 +1074,7 @@ export const QuoteTradeResponse = zod.object({
   "priceImpactPct": zod.number().nullable(),
   "slippageBps": zod.number().int(),
   "route": zod.array(zod.string()),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "modeLabel": zod.string(),
   "canExecuteOnChain": zod.boolean(),
   "blockedReason": zod.string().nullable(),
@@ -1135,7 +1135,7 @@ export const ConfirmTradeBody = zod.object({
 
 export const ConfirmTradeResponse = zod.object({
   "status": zod.enum(['confirmed', 'simulated', 'pending', 'failed']),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "signature": zod.string().nullable(),
   "explorerUrl": zod.string().nullable(),
   "event": zod.object({
@@ -1164,7 +1164,7 @@ export const ConfirmTradeResponse = zod.object({
   "realizedPnl": zod.number().nullable(),
   "term": zod.enum(['short', 'long'])
 }).describe('Portion of a lot consumed by a disposal')),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "venue": zod.string().nullable(),
   "note": zod.string().nullable(),
   "explorerUrl": zod.string().nullable()
@@ -1178,7 +1178,7 @@ export const ConfirmTradeResponse = zod.object({
   "isDemo": zod.boolean(),
   "demoLabel": zod.string().nullable(),
   "state": zod.enum(['not_indexed', 'indexing', 'ready', 'partial', 'empty', 'error']),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "message": zod.string(),
   "eventsIndexed": zod.number().int(),
   "signaturesScanned": zod.number().int(),
@@ -1203,7 +1203,7 @@ export const SimulateTradeBody = zod.object({
 
 export const SimulateTradeResponse = zod.object({
   "status": zod.enum(['confirmed', 'simulated', 'pending', 'failed']),
-  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "signature": zod.string().nullable(),
   "explorerUrl": zod.string().nullable(),
   "event": zod.object({
@@ -1232,7 +1232,7 @@ export const SimulateTradeResponse = zod.object({
   "realizedPnl": zod.number().nullable(),
   "term": zod.enum(['short', 'long'])
 }).describe('Portion of a lot consumed by a disposal')),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "venue": zod.string().nullable(),
   "note": zod.string().nullable(),
   "explorerUrl": zod.string().nullable()
@@ -1246,7 +1246,7 @@ export const SimulateTradeResponse = zod.object({
   "isDemo": zod.boolean(),
   "demoLabel": zod.string().nullable(),
   "state": zod.enum(['not_indexed', 'indexing', 'ready', 'partial', 'empty', 'error']),
-  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key'),
+  "source": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
   "message": zod.string(),
   "eventsIndexed": zod.number().int(),
   "signaturesScanned": zod.number().int(),

@@ -641,8 +641,8 @@ components:
       enum: [open, closed, all]
     DataMode:
       type: string
-      description: live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key
-      enum: [live, fallback, demo, simulated, unavailable]
+      description: live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet
+      enum: [live, fallback, demo, simulated, unavailable, unknown]
     IssuerId:
       type: string
       enum: [xstocks, ondo, prestocks, unknown]

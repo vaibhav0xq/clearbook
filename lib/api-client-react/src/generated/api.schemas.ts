@@ -37,7 +37,7 @@ export const LotStatusFilter = {
 } as const;
 
 /**
- * live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key
+ * live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet
  */
 export type DataMode = typeof DataMode[keyof typeof DataMode];
 
@@ -48,6 +48,7 @@ export const DataMode = {
   demo: 'demo',
   simulated: 'simulated',
   unavailable: 'unavailable',
+  unknown: 'unknown',
 } as const;
 
 export type IssuerId = typeof IssuerId[keyof typeof IssuerId];

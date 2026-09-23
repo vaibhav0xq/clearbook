@@ -13,6 +13,7 @@ import {
   type RegistryAsset,
   type SessionInfo,
 } from "@workspace/ledger";
+import { waitUntil } from "@vercel/functions";
 import { env } from "../lib/env";
 import { fetchJson, UpstreamStatusError } from "../lib/http";
 import { logger } from "../lib/logger";
@@ -722,41 +723,51 @@ export function sourceHealth(): { jupiter: SourceHealth; prestocks: SourceHealth
   return { jupiter: { ...jupiterHealth }, prestocks: { ...prestocksHealth } };
 }
 
+let probeInflight: Promise<void> | null = null;
+
 /**
  * Exercises every pricing source this instance has not heard from yet, so a status page reports
  * what was observed rather than what is configured. One Pyth covered stock and one PreStocks mint
- * touch all three sources. Bounded by the budget; a request that outlives it keeps running and
- * updates the state for the next reader. Cheap when everything has been seen: no request goes out.
+ * touch all three sources through the same fetch paths the marks use, without the multiplier
+ * reads. Concurrent callers share one run. The caller waits at most the budget; the run itself is
+ * handed to the host so it can finish and leave its answer for the next reader. Cheap when
+ * everything has been seen: no request goes out.
  */
-export async function probeSources(budgetMs: number): Promise<void> {
-  const pyth = pythState();
-  const unseen = {
-    pyth: pyth.configured && pyth.authorized === null,
-    jupiter: jupiterHealth.lastOkAt === null && jupiterHealth.lastErrorAt === null,
-    prestocks: prestocksHealth.lastOkAt === null && prestocksHealth.lastErrorAt === null,
-  };
-  if (!unseen.pyth && !unseen.jupiter && !unseen.prestocks) return;
-  const assets = listAssets();
-  const mints = new Set<string>();
-  if (unseen.pyth || unseen.jupiter) {
-    const stock = assets.find((a) => a.issuer === "xstocks" && a.underlyingSymbol === "TSLA" && a.pythEquityFeed) ?? assets.find((a) => a.pythEquityFeed);
-    if (stock) mints.add(stock.mint);
+export function probeSources(budgetMs: number): Promise<void> {
+  if (!probeInflight) {
+    const run = runSourceProbe().finally(() => {
+      if (probeInflight === run) probeInflight = null;
+    });
+    probeInflight = run;
+    waitUntil(run);
   }
-  if (unseen.prestocks) {
-    const pre = assets.find((a) => a.issuer === "prestocks");
-    if (pre) mints.add(pre.mint);
-  }
-  if (mints.size === 0) return;
+  const run = probeInflight;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const budget = new Promise<void>((resolve) => {
     timer = setTimeout(resolve, budgetMs);
   });
-  try {
-    await Promise.race([priceMints([...mints]).then(() => undefined), budget]);
-  } catch (err) {
-    logger.warn({ err: reason(err) }, "Source probe failed");
-  } finally {
+  return Promise.race([run, budget]).finally(() => {
     if (timer) clearTimeout(timer);
+  });
+}
+
+async function runSourceProbe(): Promise<void> {
+  const pyth = pythState();
+  const unseen = {
+    pyth: pyth.configured && pyth.authorized === null && pyth.lastError === null,
+    jupiter: jupiterHealth.lastOkAt === null && jupiterHealth.lastError === null,
+    prestocks: prestocksHealth.lastOkAt === null && prestocksHealth.lastError === null,
+  };
+  if (!unseen.pyth && !unseen.jupiter && !unseen.prestocks) return;
+  const assets = listAssets();
+  const stock =
+    assets.find((a) => a.issuer === "xstocks" && a.underlyingSymbol === "TSLA" && a.pythEquityFeed) ?? assets.find((a) => a.pythEquityFeed);
+  const tasks: Promise<unknown>[] = [];
+  if (unseen.pyth && stock) tasks.push(fetchPyth([stock.pythWrapperFeed, stock.pythEquityFeed].filter((f): f is string => !!f)));
+  if (unseen.jupiter && stock) tasks.push(fetchJupiter([stock.mint]));
+  if (unseen.prestocks && assets.some((a) => a.issuer === "prestocks")) tasks.push(fetchPreStocks());
+  for (const result of await Promise.allSettled(tasks)) {
+    if (result.status === "rejected") logger.warn({ err: reason(result.reason) }, "Source probe failed");
   }
 }
 
