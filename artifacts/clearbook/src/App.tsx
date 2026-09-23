@@ -4,6 +4,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import { WalletSessionProvider } from '@/lib/wallet';
 import { WalletPicker } from '@/components/wallet-picker';
+import { ScrollReset } from '@/components/layout/scroll-reset';
 import { installViewerHeader } from '@/lib/viewer';
 
 import Home from '@/pages/home';
@@ -65,6 +66,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <WalletSessionProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+          <ScrollReset />
           <RoutedErrorBoundary>
             <Router />
           </RoutedErrorBoundary>

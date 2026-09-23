@@ -361,6 +361,11 @@ export default function Home() {
     [reduce],
   );
 
+  const scrollToTop = useCallback(() => {
+    if (lenisRef.current) lenisRef.current.scrollTo(0, { duration: 1.4 });
+    else window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  }, [reduce]);
+
   const activeMethod = RELIEF_METHODS[methodIndex];
 
   return (
@@ -380,7 +385,7 @@ export default function Home() {
             scrolled && "py-3",
           )}
         >
-          <Brand />
+          <Brand onHome={scrollToTop} />
           <nav className="flex items-center gap-2 md:gap-4">
             <Link href="/methodology" className="hidden text-[13px] text-foreground/60 transition-colors hover:text-foreground sm:inline">
               Methodology
