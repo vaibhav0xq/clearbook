@@ -252,7 +252,7 @@ class RpcClient {
         return res;
       } catch (err) {
         if (err instanceof UpstreamStatusError) {
-          if (err.status === 401 || err.status === 403) throw upstream("RPC rejected the request. Check SOLANA_RPC_URL or HELIUS_API_KEY.");
+          if (err.status === 401 || err.status === 403) throw upstream("RPC rejected the request. Check the RPC configuration.");
           if (err.status === 429) {
             // A configured provider has spent its allowance for this second. The bucket refills
             // from empty and the pause grows with each attempt whatever Retry-After says.

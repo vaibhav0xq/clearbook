@@ -150,11 +150,6 @@ export default function Methodology() {
                           <Pill tone={source.mode === "live" ? "gain" : source.mode === "unavailable" ? "loss" : "amber"}>{source.mode}</Pill>
                         </div>
                         <p className="text-[14px] text-muted-foreground leading-relaxed">{source.detail}</p>
-                        {source.requiredEnv.length > 0 && (
-                          <div className="mt-auto pt-4 border-t hairline num text-[11px] text-muted-foreground/60">
-                            Requires: {source.requiredEnv.join(", ")}
-                          </div>
-                        )}
                       </Panel>
                     ))}
                   </div>

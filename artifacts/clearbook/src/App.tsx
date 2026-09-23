@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
@@ -61,11 +61,60 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 
+function RouteMetadata() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    const path = location.split('?')[0];
+    const walletRoute = path.match(/^\/w\/[^/]+(?:\/([^/]+))?(?:\/[^/]+)?$/);
+    const section = walletRoute?.[1];
+    const page =
+      path === '/'
+        ? null
+        : path === '/methodology'
+          ? 'Methodology'
+          : walletRoute
+            ? section === 'lots'
+              ? 'Tax lots'
+              : section === 'trade'
+                ? 'Trade'
+                : section === 'statements'
+                  ? path.split('/').length > 4
+                    ? 'Statement'
+                    : 'Statements'
+                  : section === 'activity'
+                    ? 'Activity'
+                    : section === 'events'
+                      ? 'Corporate actions'
+                      : 'Portfolio'
+            : 'Page not found';
+    const title = page ? `${page} | Clearbook` : 'Clearbook | Brokerage statements for tokenized stocks';
+    const description =
+      page === 'Methodology'
+        ? 'How Clearbook reconstructs brokerage statements, tax lots, marks and income from public Solana history.'
+        : 'Brokerage statements, tax lots and post trade accounting for tokenized stocks on Solana.';
+    const canonical = new URL(path, 'https://clearbook.bond').href;
+
+    document.title = title;
+    document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', description);
+    document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.setAttribute('content', title);
+    document.querySelector<HTMLMetaElement>('meta[property="og:description"]')?.setAttribute('content', description);
+    document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.setAttribute('content', canonical);
+    document.querySelector<HTMLMetaElement>('meta[name="twitter:title"]')?.setAttribute('content', title);
+    document.querySelector<HTMLMetaElement>('meta[name="twitter:description"]')?.setAttribute('content', description);
+    document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.setAttribute('content', page === 'Page not found' ? 'noindex, follow' : 'index, follow');
+    document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute('href', canonical);
+  }, [location]);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WalletSessionProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+          <RouteMetadata />
           <ScrollReset />
           <RoutedErrorBoundary>
             <Router />

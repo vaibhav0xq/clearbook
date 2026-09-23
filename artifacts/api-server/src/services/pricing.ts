@@ -16,7 +16,7 @@ import {
 import { waitUntil } from "@vercel/functions";
 import { env } from "../lib/env";
 import { fetchJson, UpstreamStatusError } from "../lib/http";
-import { logger } from "../lib/logger";
+import { logger, scrubSecrets } from "../lib/logger";
 import { effectiveMultiplier, rpc } from "./rpc";
 
 /** API facing mark shape (mirrors the OpenAPI Mark schema). */
@@ -696,7 +696,7 @@ function summarize(
   const labelFor: Record<string, string> = { pyth: "Pyth", jupiter: "Jupiter", prestocks: "PreStocks" };
   const providerLabel = live.length > 1 ? live.map((s) => labelFor[s] ?? s).join(" and ") : labelFor[live[0]] ?? live[0];
   const pythNote = !key
-    ? "Add PYTH_API_KEY to mark against Pyth wrapper and equity feeds."
+    ? "Pyth is not configured, so marks come from Jupiter and PreStocks."
     : pythAuthorized === false
       ? "Pyth rejected the configured key, so marks come from Jupiter and PreStocks."
       : sources.has("pyth")
@@ -716,7 +716,8 @@ function summarize(
 }
 
 function reason(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  const message = err instanceof Error ? err.message : String(err);
+  return scrubSecrets(message).slice(0, 300);
 }
 
 export function sourceHealth(): { jupiter: SourceHealth; prestocks: SourceHealth } {

@@ -34,8 +34,7 @@ export const GetAppConfigResponse = zod.object({
   "id": zod.string().describe('solana_rpc, pyth, jupiter, backed, prestocks, notary'),
   "label": zod.string(),
   "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
-  "detail": zod.string(),
-  "requiredEnv": zod.array(zod.string())
+  "detail": zod.string()
 })),
   "demoWallets": zod.array(zod.object({
   "id": zod.string().describe('Identifier accepted anywhere a wallet address is accepted'),
@@ -752,8 +751,7 @@ export const CreateStatementResponse = zod.object({
   "id": zod.string().describe('solana_rpc, pyth, jupiter, backed, prestocks, notary'),
   "label": zod.string(),
   "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
-  "detail": zod.string(),
-  "requiredEnv": zod.array(zod.string())
+  "detail": zod.string()
 })),
   "proof": zod.object({
   "status": zod.enum(['none', 'pending', 'confirmed', 'failed', 'simulated']),
@@ -936,8 +934,7 @@ export const GetStatementResponse = zod.object({
   "id": zod.string().describe('solana_rpc, pyth, jupiter, backed, prestocks, notary'),
   "label": zod.string(),
   "mode": zod.enum(['live', 'fallback', 'demo', 'simulated', 'unavailable', 'unknown']).describe('live means real upstream data, fallback means a public or keyless substitute for a configured source, demo means scripted data, simulated means an action that never touched the chain, unavailable means the source is failing or has no key, unknown means nothing has been observed yet'),
-  "detail": zod.string(),
-  "requiredEnv": zod.array(zod.string())
+  "detail": zod.string()
 })),
   "proof": zod.object({
   "status": zod.enum(['none', 'pending', 'confirmed', 'failed', 'simulated']),

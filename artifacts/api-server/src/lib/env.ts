@@ -37,6 +37,19 @@ function read(name: string): string | undefined {
   return v && v.trim().length > 0 ? v.trim() : undefined;
 }
 
+function publicRpcUrl(): string {
+  const configured = read("PUBLIC_SOLANA_RPC_URL");
+  if (!configured) return DEFAULT_RPC;
+  try {
+    const url = new URL(configured);
+    const sensitive = [...url.searchParams.keys()].some((key) => /key|token|secret|auth/i.test(key));
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || sensitive) return DEFAULT_RPC;
+    return url.toString();
+  } catch {
+    return DEFAULT_RPC;
+  }
+}
+
 export const env = {
   get heliusApiKey(): string | undefined {
     return read("HELIUS_API_KEY");
@@ -65,7 +78,7 @@ export const env = {
   },
   /** RPC the browser may use to send signed transactions. Never contains server keys. */
   get rpcUrlPublic(): string {
-    return read("PUBLIC_SOLANA_RPC_URL") ?? read("VITE_SOLANA_RPC_URL") ?? DEFAULT_RPC;
+    return publicRpcUrl();
   },
   get pythApiKey(): string | undefined {
     return read("PYTH_API_KEY");

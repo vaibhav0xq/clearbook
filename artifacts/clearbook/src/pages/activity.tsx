@@ -181,7 +181,7 @@ export default function Activity() {
                 <TableHead className="hidden md:table-cell">Time</TableHead>
                 <TableHead>Event</TableHead>
                 <TableHead className="hidden sm:table-cell">Asset</TableHead>
-                <TableHead align="right" className="hidden sm:table-cell">Quantity</TableHead>
+                <TableHead align="right" className="hidden lg:table-cell">Quantity</TableHead>
                 <TableHead align="right" className="hidden md:table-cell">Price</TableHead>
                 <TableHead align="right" className="hidden lg:table-cell">Fee</TableHead>
                 <TableHead align="right">Value</TableHead>
@@ -222,7 +222,7 @@ export default function Activity() {
                           <span className="text-[11px] text-muted-foreground">{issuerLabel(event.issuer)}</span>
                         </div>
                       </TableCell>
-                      <TableCell align="right" className="hidden sm:table-cell">
+                      <TableCell align="right" className="hidden lg:table-cell">
                         <div className="flex flex-col items-end gap-1">
                           <span className={cn("num", event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : "text-foreground")}>
                             {event.quantity > 0 ? "+" : ""}
@@ -260,7 +260,7 @@ export default function Activity() {
                         <div className="flex flex-col items-end gap-1">
                           <span className={cn("num", event.grossAmount !== null ? "text-foreground" : "text-muted-foreground")}>{formatUSD(event.grossAmount)}</span>
                           <div className="flex flex-col items-end gap-1 lg:hidden">
-                            <span className={cn("num text-[11px] sm:hidden", event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : "text-muted-foreground")}>
+                            <span className={cn("num text-[11px] lg:hidden", event.quantity > 0 ? "text-success" : event.quantity < 0 ? "text-destructive" : "text-muted-foreground")}>
                               {event.quantity > 0 ? "+" : ""}
                               {formatQuantity(event.quantity)} sh
                             </span>

@@ -16,12 +16,12 @@ const PROBE_BUDGET_MS = 3_500;
 function keylessSource(id: string, label: string, role: string, health: SourceHealth) {
   // A good answer clears the error, so a present error is the latest observation.
   if (health.lastError !== null) {
-    return { id, label, mode: "unavailable", detail: `${role} Last request failed: ${health.lastError}. Cached prices serve until it answers again.`, requiredEnv: [] as string[] };
+    return { id, label, mode: "unavailable", detail: `${role} The latest request failed. Cached prices serve until it answers again.` };
   }
   if (health.lastOkAt === null) {
-    return { id, label, mode: "unknown", detail: `${role} No answer from this instance yet.`, requiredEnv: [] as string[] };
+    return { id, label, mode: "unknown", detail: `${role} No answer from this instance yet.` };
   }
-  return { id, label, mode: "live", detail: role, requiredEnv: [] as string[] };
+  return { id, label, mode: "live", detail: role };
 }
 
 router.get("/config", async (req, res) => {
@@ -35,7 +35,6 @@ router.get("/config", async (req, res) => {
       label: "Solana RPC",
       mode: env.rpcConfigured ? "live" : "fallback",
       detail: env.rpcConfigured ? "Configured RPC provider." : "Public mainnet endpoint. Rate limited and shallow history.",
-      requiredEnv: ["SOLANA_RPC_URL", "HELIUS_API_KEY"],
     },
     {
       id: "pyth",
@@ -44,17 +43,16 @@ router.get("/config", async (req, res) => {
       // whether or not the key was accepted before.
       mode: !pyth.configured || pyth.authorized === false || pyth.lastError ? "unavailable" : pyth.authorized ? "live" : "unknown",
       detail: !pyth.configured
-        ? "No PYTH_API_KEY. Marks fall back to Jupiter and PreStocks."
+        ? "This source is not configured. Marks fall back to Jupiter and PreStocks."
         : pyth.authorized === false
           ? "Key rejected by Pyth."
           : pyth.lastError
-            ? `Last request failed: ${pyth.lastError}. Marks fall back to Jupiter and PreStocks until it answers again.`
+            ? "The latest request failed. Marks fall back to Jupiter and PreStocks until it answers again."
             : pyth.authorized
               ? pyth.deniedFeeds > 0
                 ? `Pyth Pro key active. The plan covers ${pyth.coveredFeeds} of the ${pyth.coveredFeeds + pyth.deniedFeeds} feeds requested so far; the rest fall back to Jupiter and PreStocks.`
                 : "Pyth Pro feeds for wrapper tokens and reference equities."
               : "Key present. No answer from this instance yet.",
-      requiredEnv: ["PYTH_API_KEY"],
     },
     keylessSource("jupiter", "Jupiter", "Keyless price and swap API. Second pricing source after Pyth, also read for multipliers and sell routes.", health.jupiter),
     keylessSource("prestocks", "PreStocks", "Keyless mark and token prices for pre IPO tokens. Third pricing source, used for PreStocks mints.", health.prestocks),
@@ -63,7 +61,6 @@ router.get("/config", async (req, res) => {
       label: "Notarization",
       mode: "live",
       detail: "Your wallet signs a memo transaction with the statement hash. No server key is held.",
-      requiredEnv: [],
     },
   ];
   const demoWallets = listDemoWallets().map((w) => ({

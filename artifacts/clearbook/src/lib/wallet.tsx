@@ -264,7 +264,9 @@ function useInstalledWallets(): Wallet[] {
 
 /** Sends a fully signed transaction through the public RPC when the wallet cannot send it itself. */
 async function sendRaw(signed: Uint8Array): Promise<string> {
-  const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+  // This fallback is deliberately keyless. Build time environment variables must not place
+  // provider credentials in the browser bundle.
+  const rpcUrl = 'https://api.mainnet-beta.solana.com';
   const res = await fetch(rpcUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

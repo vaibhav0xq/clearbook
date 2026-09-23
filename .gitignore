@@ -66,3 +66,10 @@ __pycache__/
 # deployment output
 .vercel
 dist-vercel
+
+# Keys and wallets never belong in the repository
+*.pem
+*.key
+*keypair*.json
+wallet*.json
+id.json

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
-import { logger } from "./logger";
+import { logger, scrubSecrets } from "./logger";
 
 export class HttpError extends Error {
   constructor(
@@ -41,12 +41,14 @@ export const unauthorizedUpstream = (message: string, details?: Record<string, u
 
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof HttpError) {
-    if (err.status >= 500) logger.error({ err, url: req.url }, err.message);
-    res.status(err.status).json({ code: err.code, message: err.message, details: err.details });
+    // Messages on our own errors are authored for the reader. Anything interpolated from a
+    // provider is scrubbed so a credential can never ride along.
+    if (err.status >= 500) logger.error({ err, code: err.code, path: req.path }, "Request failed");
+    res.status(err.status).json({ code: err.code, message: scrubSecrets(err.message), details: err.details });
     return;
   }
   if (err instanceof UpstreamStatusError) {
-    logger.warn({ url: req.url, upstream: err.host, status: err.status }, "Upstream request failed");
+    logger.warn({ path: req.path, upstream: err.host, status: err.status }, "Upstream request failed");
     res.status(502).json({ code: "upstream_error", message: err.message, details: { upstream: err.host, status: err.status } });
     return;
   }
@@ -54,7 +56,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     res.status(400).json({ code: "validation_error", message: "Request failed validation.", details: { issues: err.issues } });
     return;
   }
-  logger.error({ err, url: req.url }, "Unhandled error");
-  const message = err instanceof Error ? err.message : "Unexpected error";
-  res.status(500).json({ code: "internal_error", message });
+  // Unexpected failures stay inside the log. The reader gets a generic answer, never a stack,
+  // a path or a database message.
+  logger.error({ err, path: req.path }, "Unhandled error");
+  res.status(500).json({ code: "internal_error", message: "The request could not be completed." });
 }

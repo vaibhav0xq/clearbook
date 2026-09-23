@@ -64,6 +64,7 @@ export default function Portfolio() {
         <ErrorState title="Unable to load this portfolio" message={error.data?.message ?? error.message} />
       ) : portfolio ? (
         <div className="flex flex-col gap-10 md:gap-12">
+          <h1 className="sr-only">Portfolio</h1>
           {/* Account summary: the value on the left, its components in one row on the right */}
           <section className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
             <div className="flex flex-col gap-3">

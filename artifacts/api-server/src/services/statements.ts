@@ -211,15 +211,14 @@ export async function createStatement(address: string, input: CreateStatementInp
 
 function buildDataSources(ctx: WalletContext, marks: Map<string, StatementMark>) {
   const isDemo = ctx.wallet.isDemo;
-  const sources: Array<{ id: string; label: string; mode: string; detail: string; requiredEnv: string[] }> = [
+  const sources: Array<{ id: string; label: string; mode: string; detail: string }> = [
     isDemo
-      ? { id: "demo_ledger", label: "Scripted demo ledger", mode: "demo", detail: "Transactions come from a stored scenario, not from the chain.", requiredEnv: [] }
+      ? { id: "demo_ledger", label: "Scripted demo ledger", mode: "demo", detail: "Transactions come from a stored scenario, not from the chain." }
       : {
           id: "solana_rpc",
           label: "Solana transaction history",
           mode: "live",
           detail: `${ctx.wallet.signaturesScanned} signatures scanned, ${ctx.wallet.eventsIndexed} ledger events.`,
-          requiredEnv: ["SOLANA_RPC_URL", "HELIUS_API_KEY"],
         },
   ];
   const counts = new Map<string, { label: string; count: number }>();
@@ -235,7 +234,6 @@ function buildDataSources(ctx: WalletContext, marks: Map<string, StatementMark>)
       label,
       mode: source === "pyth" ? "live" : source === "demo" ? "demo" : "fallback",
       detail: `${count} position${count === 1 ? "" : "s"} marked with ${label}.`,
-      requiredEnv: source === "pyth" ? ["PYTH_API_KEY"] : [],
     });
   }
   return sources;

@@ -49,7 +49,7 @@ lib/db                   Drizzle schema for PostgreSQL and the SQL migrations ge
 indexer/                 Rust command that builds wallet history from Solana
 verifier/                Rust command that recomputes a statement hash and checks the memo transaction
 audit/                   Python replay of the ledger that cross checks lots against the API
-docs/                    Demo script, status notes and research
+docs/                    Demo script and status notes
 ```
 
 The API contract lives in `lib/api-spec/openapi.yaml`. After a change run `pnpm --filter @workspace/api-spec run codegen`.
@@ -106,7 +106,7 @@ The root `Dockerfile` builds the API as a long running server for hosts that run
 | `SOLANA_RPC_URL` | no | Server side RPC for indexing. Falls back to the public mainnet endpoint |
 | `HELIUS_API_KEY` | no | Builds a Helius RPC URL when `SOLANA_RPC_URL` is not set |
 | `RPC_REQUESTS_PER_SECOND` | no | Pace for a configured RPC provider, counting each row of a batch. Default 5, which the Helius free plan sustains. Raise it on a paid plan |
-| `VITE_SOLANA_RPC_URL` | no | RPC the browser uses to broadcast a signed transaction when the wallet cannot send it |
+| `PUBLIC_SOLANA_RPC_URL` | no | Keyless public RPC reported by `/api/config`. URLs that carry a key or token are ignored |
 | `PYTH_API_KEY` | no | Pyth Pro access token. Feeds the plan covers are used for marks and reference prices, the rest fall back to Jupiter and PreStocks |
 | `PYTH_LAZER_URL` | no | Alternative Pyth Pro base URL |
 | `APP_URL` | no | Public URL printed in statements |

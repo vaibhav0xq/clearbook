@@ -658,11 +658,7 @@ components:
           $ref: "#/components/schemas/DataMode"
         detail:
           type: string
-        requiredEnv:
-          type: array
-          items:
-            type: string
-      required: [id, label, mode, detail, requiredEnv]
+      required: [id, label, mode, detail]
     DemoWallet:
       type: object
       properties:

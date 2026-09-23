@@ -13,5 +13,4 @@ export interface SourceStatus {
   label: string;
   mode: DataMode;
   detail: string;
-  requiredEnv: string[];
 }
