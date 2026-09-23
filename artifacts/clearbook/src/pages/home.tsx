@@ -739,12 +739,6 @@ export default function Home() {
             <p className="max-w-sm text-[13px] leading-relaxed text-foreground/55">
               Figures are rebuilt from public Solana history. Estimates are labeled. Nothing here is tax advice.
             </p>
-            <p className="text-[13px] text-foreground/55">
-              Built by{" "}
-              <a href="https://vaibhav0xq.com" target="_blank" rel="noreferrer" className="text-foreground/80 transition-colors hover:text-primary">
-                Vaibhav
-              </a>
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px]">
             {config?.sources?.map((s) => (
