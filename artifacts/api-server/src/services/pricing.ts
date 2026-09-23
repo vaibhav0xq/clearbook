@@ -751,21 +751,34 @@ export function probeSources(budgetMs: number): Promise<void> {
   });
 }
 
+/**
+ * How long a keyless source keeps reporting a failure before a status read asks it again. Without
+ * this one timeout would pin the light red until a wallet holding that issuer's mints got priced.
+ */
+const PROBE_RETRY_MS = 60_000;
+
+/** A keyless source is due when this instance has never asked it or its last answer was a failure that has aged past the retry window. */
+function probeDue(health: SourceHealth, now: number): boolean {
+  if (health.lastError !== null) return health.lastErrorAt === null || now - health.lastErrorAt >= PROBE_RETRY_MS;
+  return health.lastOkAt === null;
+}
+
 async function runSourceProbe(): Promise<void> {
   const pyth = pythState();
-  const unseen = {
+  const now = Date.now();
+  const due = {
     pyth: pyth.configured && pyth.authorized === null && pyth.lastError === null,
-    jupiter: jupiterHealth.lastOkAt === null && jupiterHealth.lastError === null,
-    prestocks: prestocksHealth.lastOkAt === null && prestocksHealth.lastError === null,
+    jupiter: probeDue(jupiterHealth, now),
+    prestocks: probeDue(prestocksHealth, now),
   };
-  if (!unseen.pyth && !unseen.jupiter && !unseen.prestocks) return;
+  if (!due.pyth && !due.jupiter && !due.prestocks) return;
   const assets = listAssets();
   const stock =
     assets.find((a) => a.issuer === "xstocks" && a.underlyingSymbol === "TSLA" && a.pythEquityFeed) ?? assets.find((a) => a.pythEquityFeed);
   const tasks: Promise<unknown>[] = [];
-  if (unseen.pyth && stock) tasks.push(fetchPyth([stock.pythWrapperFeed, stock.pythEquityFeed].filter((f): f is string => !!f)));
-  if (unseen.jupiter && stock) tasks.push(fetchJupiter([stock.mint]));
-  if (unseen.prestocks && assets.some((a) => a.issuer === "prestocks")) tasks.push(fetchPreStocks());
+  if (due.pyth && stock) tasks.push(fetchPyth([stock.pythWrapperFeed, stock.pythEquityFeed].filter((f): f is string => !!f)));
+  if (due.jupiter && stock) tasks.push(fetchJupiter([stock.mint]));
+  if (due.prestocks && assets.some((a) => a.issuer === "prestocks")) tasks.push(fetchPreStocks());
   for (const result of await Promise.allSettled(tasks)) {
     if (result.status === "rejected") logger.warn({ err: reason(result.reason) }, "Source probe failed");
   }

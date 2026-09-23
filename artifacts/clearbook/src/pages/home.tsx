@@ -212,7 +212,9 @@ function Figure({ label, children, className, caps = true }: { label: string; ch
 }
 
 export default function Home() {
-  const { data: config } = useGetAppConfig(undefined, { query: { queryKey: getGetAppConfigQueryKey() } });
+  // probe: the footer lights report what this server has observed, so ask it to exercise every
+  // source it has not heard from. Cheap once the sources have answered and shared with Methodology.
+  const { data: config } = useGetAppConfig({ probe: true }, { query: { queryKey: getGetAppConfigQueryKey({ probe: true }) } });
   const { method } = useCostMethod();
   const wallet = useWalletSession();
 
@@ -740,8 +742,9 @@ export default function Home() {
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px]">
             {config?.sources?.map((s) => (
-              <span key={s.id} className="inline-flex items-center gap-2 text-foreground/70">
-                <span className={cn("h-1.5 w-1.5 rounded-full", s.mode === "live" ? "bg-success" : s.mode === "demo" ? "bg-primary" : "bg-destructive")} />
+              <span key={s.id} title={s.detail} className="inline-flex items-center gap-2 text-foreground/70">
+                {/* Green answered, red failed on its last request, amber for everything in between: not asked yet, a fallback or demo data. */}
+                <span className={cn("h-1.5 w-1.5 rounded-full", s.mode === "live" ? "bg-success" : s.mode === "unavailable" ? "bg-destructive" : "bg-primary")} />
                 {s.label}
               </span>
             ))}
