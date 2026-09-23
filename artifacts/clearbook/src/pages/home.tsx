@@ -37,6 +37,8 @@ import { buildStrata } from "@/components/three/strata-data";
 import {
   CHAPTERS,
   CHAPTER_COUNT,
+  COPY_ENTER,
+  COPY_EXIT,
   METHOD_COPY,
   RELIEF_METHODS,
   chapterAnchor,
@@ -121,8 +123,8 @@ function Chapter({
   const opacity = useTransform(progress, (p) => copyVisibility(p, index));
   const y = useTransform(progress, (p) => {
     const l = p * CHAPTER_COUNT - index;
-    if (index > 0 && l < 0.24) return (1 - seg(l, 0.04, 0.24)) * 36;
-    if (index < CHAPTER_COUNT - 1 && l > 0.7) return -seg(l, 0.7, 0.9) * 36;
+    if (index > 0 && l < COPY_ENTER[1]) return (1 - seg(l, COPY_ENTER[0], COPY_ENTER[1])) * 36;
+    if (index < CHAPTER_COUNT - 1 && l > COPY_EXIT[0]) return -seg(l, COPY_EXIT[0], COPY_EXIT[1]) * 36;
     return 0;
   });
   const blurPx = useTransform(opacity, (o) => (1 - o) * 6);

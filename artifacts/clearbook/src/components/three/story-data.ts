@@ -48,9 +48,20 @@ export function local(p: number, i: number): number {
   return clamp01(p * CHAPTER_COUNT - i);
 }
 
-/** Position of the pinned area (0 to 1) that scrolls chapter i into its hold phase. */
+/**
+ * Copy for a chapter rises in over COPY_ENTER and leaves over COPY_EXIT, both in chapter local
+ * progress. The hold phase between them is where the chapter reads settled.
+ */
+export const COPY_ENTER: readonly [number, number] = [0.04, 0.24];
+export const COPY_EXIT: readonly [number, number] = [0.7, 0.9];
+
+/**
+ * Position of the pinned area (0 to 1) that scrolls chapter i into its hold phase. It sits past the
+ * end of the copy's entry ramp, so a programmatic scroll never parks on a half faded, still blurred
+ * chapter; anywhere inside the ramp the copy has less than full opacity and a residual blur.
+ */
 export function chapterAnchor(i: number): number {
-  return (i + 0.18) / CHAPTER_COUNT;
+  return (i + COPY_ENTER[1] + 0.06) / CHAPTER_COUNT;
 }
 
 /** Layers separate into lots at the start of chapter one. */
@@ -76,8 +87,8 @@ export function scan(p: number): number {
 /** Copy for chapter i fades in early and out late. Chapter zero starts visible. */
 export function copyVisibility(p: number, i: number): number {
   const l = p * CHAPTER_COUNT - i;
-  const enter = i === 0 ? 1 : seg(l, 0.04, 0.24);
-  const exit = i === CHAPTER_COUNT - 1 ? 0 : seg(l, 0.7, 0.9);
+  const enter = i === 0 ? 1 : seg(l, COPY_ENTER[0], COPY_ENTER[1]);
+  const exit = i === CHAPTER_COUNT - 1 ? 0 : seg(l, COPY_EXIT[0], COPY_EXIT[1]);
   return enter * (1 - exit);
 }
 
