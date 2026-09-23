@@ -398,9 +398,17 @@ export function Shell({ address, children }: ShellProps) {
 
         <footer className="ledger flex flex-col justify-between gap-3 border-t hairline py-5 text-[12px] text-muted-foreground md:flex-row md:items-center">
           <span>Figures are rebuilt from public Solana history. Estimates are labeled. Nothing here is tax advice.</span>
-          <Link href="/methodology" className="transition-colors hover:text-foreground">
-            Methodology
-          </Link>
+          <span className="flex items-center gap-5">
+            <span>
+              Built by{" "}
+              <a href="https://vaibhav0xq.com" target="_blank" rel="noreferrer" className="text-foreground/80 transition-colors hover:text-foreground">
+                Vaibhav
+              </a>
+            </span>
+            <Link href="/methodology" className="transition-colors hover:text-foreground">
+              Methodology
+            </Link>
+          </span>
         </footer>
       </div>
     </StageProvider>

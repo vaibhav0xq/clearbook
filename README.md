@@ -166,3 +166,7 @@ See `docs/status.md` for what is live, what is simulated and what still needs wo
 ## License
 
 MIT. See `LICENSE`.
+
+## Author
+
+Built by [Vaibhav](https://vaibhav0xq.com).
